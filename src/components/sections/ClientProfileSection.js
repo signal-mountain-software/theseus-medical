@@ -4,6 +4,8 @@ import { Box, Typography, TextField, Button, Avatar, Switch, RadioGroup, Radio, 
 import { AVATextStyle } from '../../util/AVAStyles';
 import { AVAclasses } from '../../util/AVAStyles';
 import AVAUploadFile from '../../util/AVAUploadFile';
+import QuickSearch from './QuickSearch';
+import useSession from '../../hooks/useSession';
 
 import * as XLSX from 'xlsx';
 import { dbClient } from '../../util/AVAUtilities';
@@ -14,9 +16,13 @@ import CheckCircleIcon from '@material-ui/icons/CheckCircle';
 export default ({ currentValues, reactData, updateReactData, updateField }) => {
 
   const AVAClass = AVAclasses();
+  const { state } = useSession();
   const [localColor, setLocalColor] = React.useState(
     currentValues.customizationRecs?.client_style?.customization_value?.backgroundColor || '#ffffff'
   );
+  const [groupPickerReactData, setGroupPickerReactData] = React.useState({ selections: [] });
+  const [showGroupPicker, setShowGroupPicker] = React.useState(false);
+  const defaultEventGroups = currentValues.customizationRecs.client_style?.customization_value?.new_event_defaultGroups || [];
 
   const preauthFileInputRef = React.useRef(null);
   const [preauthImportStatus, setPreauthImportStatus] = React.useState(null);
@@ -646,45 +652,110 @@ export default ({ currentValues, reactData, updateReactData, updateField }) => {
 
 
 
+
+
+
+
+
+
       <Typography
         style={AVATextStyle({ margin: { top: 1 } })}
       >
-        {'Show Forms section in Profile'}
+        {'Restrict New Events to Specific Groups by Default'}
       </Typography>
       <Box flexGrow={2} display='flex' alignItems='center'
         justifyContent='flex-start' marginBottom={1} flexDirection='row'>
         <Typography
           style={AVATextStyle({
             size: 0.8, margin: { right: 0.8 },
-            bold: !currentValues.customizationRecs.client_style?.customization_value?.suppress_forms_in_profile
+            bold: defaultEventGroups.length === 0
           })}
         >
-          {'Show'}
+          {'No Restriction'}
         </Typography>
         <Switch
-          checked={currentValues.customizationRecs.client_style?.customization_value?.suppress_forms_in_profile}
-          onClick={async (event) => {
-            await updateField({
-              updateList:
-                [{
+          checked={defaultEventGroups.length > 0}
+          onClick={async () => {
+            if (defaultEventGroups.length > 0) {
+              await updateField({
+                updateList: [{
                   tableName: 'customizationRecs',
-                  fieldName: 'client_style.customization_value.suppress_forms_in_profile',
-                  newData: !currentValues.customizationRecs.client_style?.customization_value?.suppress_forms_in_profile
+                  fieldName: 'client_style.customization_value.new_event_defaultGroups',
+                  newData: []
                 }]
-            });
+              });
+            }
+            else {
+              setGroupPickerReactData({ selections: [] });
+              setShowGroupPicker(true);
+            }
           }}
-          name="ShowFFormsInProfile"
+          name="RestrictNewEventsToGroups"
           color="primary"
         />
         <Typography
           style={AVATextStyle({
             size: 0.8, margin: { left: 0.8 },
-            bold: currentValues.customizationRecs.client_style?.customization_value?.suppress_forms_in_profile
+            bold: defaultEventGroups.length > 0
           })}
         >
-          {'Hide'}
+          {'Restrict to Selected Groups'}
         </Typography>
       </Box>
+      {defaultEventGroups.length > 0 &&
+        <Box display='flex' flexDirection='column' marginBottom={1} style={{ marginLeft: '16px' }}>
+          <Typography style={AVATextStyle({ size: 0.8, bold: true })}>
+            {'Default Groups:'}
+          </Typography>
+          {defaultEventGroups.map((groupId, index) => (
+            <Typography key={`default_event_group_${index}`} style={AVATextStyle({ size: 0.8, margin: { left: 0.5 } })}>
+              {`\u2022 ${state.groups?.groupNames?.[groupId] || groupId}`}
+            </Typography>
+          ))}
+          <Button
+            className={AVAClass.AVAButton}
+            size='small'
+            style={{ width: 'fit-content', marginTop: '8px', alignSelf: 'flex-start' }}
+            onClick={() => {
+              setGroupPickerReactData({
+                selections: defaultEventGroups.map((groupId) => ({ group_id: groupId, group_name: state.groups?.groupNames?.[groupId] || groupId }))
+              });
+              setShowGroupPicker(true);
+            }}
+          >
+            {'Change Groups'}
+          </Button>
+        </Box>
+      }
+      {showGroupPicker &&
+        <QuickSearch
+          reactData={groupPickerReactData}
+          updateReactData={(newData) => {
+            setGroupPickerReactData(prev => Object.assign({}, prev, newData));
+          }}
+          options={{
+            keepSelections: true,
+            withGroups: true,
+            restrictGroups: false,
+            withPreferred: false,
+            showAll: true,
+            hidePeople: true,
+            buttonText: { empty: 'Exit', selected: 'Save & Exit' },
+            showGroupList: true,
+            title: 'Select Default Groups to Restrict New Events To',
+          }}
+          onClose={async (selections) => {
+            setShowGroupPicker(false);
+            await updateField({
+              updateList: [{
+                tableName: 'customizationRecs',
+                fieldName: 'client_style.customization_value.new_event_defaultGroups',
+                newData: (selections || []).map((entry) => entry.group_id)
+              }]
+            });
+          }}
+        />
+      }
 
 
 

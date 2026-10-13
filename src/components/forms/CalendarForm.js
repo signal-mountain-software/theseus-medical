@@ -21,7 +21,6 @@ import SwapHorizIcon from '@material-ui/icons/SwapHoriz';
 import HomeIcon from '@material-ui/icons/Home';
 import AutorenewIcon from '@material-ui/icons/Autorenew';
 import PrintIcon from '@material-ui/icons/Print';
-import AddEventIcon from '@material-ui/icons/Event';
 import DateRangeIcon from '@material-ui/icons/DateRange';
 import CalendarViewDayIcon from '@material-ui/icons/CalendarViewDay';
 import GroupIcon from '@material-ui/icons/Group';
@@ -2398,15 +2397,17 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
           {!reactData.loading && reactData.addPersonalEvent &&
             <NewCalendarEvent
               patient={reactData.isAppointment ? reactData.selectedPersonRec : state.session}
-              personalEvent={!reactData.isAppointment}
+              personalEvent={reactData.administrative_account ? false : !reactData.isAppointment}
               showNewEvent={true}
               options={{
                 setPerson: reactData.isAppointment,
                 setDate: ((reactData.appointmentDate && !reactData.appointmentDate.error) ? reactData.appointmentDate : null),
                 setStart: reactData.appointmentStart,
                 setEnd: reactData.appointmentEnd,
+                // redundant with the top-level props below, matching the shape NewCalendarEvent is given elsewhere (e.g. MainMenuV3)
+                ...(reactData.administrative_account ? { personalEvent: false, isAppointment: false, showNewEvent: true } : {})
               }}
-              isAppointment={reactData.isAppointment}
+              isAppointment={reactData.administrative_account ? false : reactData.isAppointment}
               onClose={(newEvent) => {
                 let reactUpdObj = {
                   addPersonalEvent: false,
@@ -2863,19 +2864,19 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
               className={AVAClass.AVAButton}
               style={{ backgroundColor: 'green', color: 'white' }}
               size='small'
-              startIcon={<AddEventIcon fontSize="small" />}
               onClick={async () => {
                 let reactUpdObj = {
-                  addPersonalEvent: true
+                  addPersonalEvent: true,
+                  isAppointment: false
                 };
-                if (reactData.selectedPerson_id !== state.session.person_id) {
+                if (!reactData.administrative_account && (reactData.selectedPerson_id !== state.session.person_id)) {
                   reactUpdObj.selectedPersonRec = await getPerson(reactData.selectedPerson_id);
                   reactUpdObj.isAppointment = true;
                 }
                 updateReactData(reactUpdObj, true);
               }}
             >
-              {(reactData.selectedPerson_id !== state.session.person_id) ? 'Make an Appointment' : 'Add an Event'}
+              {reactData.administrative_account ? 'Add a Community Event' : 'Add a Private/Personal Event'}
             </Button>
           }
         </Box>

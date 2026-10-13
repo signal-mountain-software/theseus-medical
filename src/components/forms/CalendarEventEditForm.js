@@ -5,7 +5,6 @@ import { getMemberList } from '../../util/AVAGroups';
 import { cl, makeArray, dbClient, isEmpty, deepCopy, titleCase, isMobile, recordExists } from '../../util/AVAUtilities';
 import { makeName, getImage, getPerson } from '../../util/AVAPeople';
 import { sendMessages } from '../../util/AVAMessages';
-import { putServiceRequest } from '../../util/AVAServiceRequest';
 import MakeMessage from './MakeMessage';
 import FormFillB from './FormFillB';
 
@@ -50,7 +49,6 @@ import AllIn from '@material-ui/icons/PeopleOutline';
 import MarkedIn from '@material-ui/icons/AccountCircle';
 import RadioButtonUncheckedIcon from '@material-ui/icons/RadioButtonUnchecked';
 
-import PersonFilter from '../forms/PersonFilter';
 import QuickSearch from '../sections/QuickSearch';
 import AVATextInput from '../forms/AVATextInput';
 import AVAConfirm from '../forms/AVAConfirm';
@@ -280,10 +278,8 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
     editOwnerInfo: false,
     editIndex: false,
     popupMenuOpen: false,
-    choiceList: [],
     signUpObject: pSignUps || {},
     attachedSR: false,
-    selectAssignTo: false,
     defaultValues: defaultValues || { "noDefaults": true },
     cancelPending: false,
     numberOfOwnedSlots: 0,
@@ -300,6 +296,11 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
     },
     selectSlotOwner: false,
     slotOwnerQuickSearch: {
+      selections: [],
+      linkedPersonFilter: { raw: '', lower: '' }
+    },
+    ownerInfoQuickSearch: {
+      accessList: [],
       selections: [],
       linkedPersonFilter: { raw: '', lower: '' }
     }
@@ -719,10 +720,16 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
   };
 
   const setChoices = async ({ pGroups, noCurrent }) => {
-    // if (reactData.choiceList.length > 0) { return; }
     let response = [];
     let gList = [];
-    if (Array.isArray(pGroups)) {
+    // An event restricted to specific groups (anything other than "*all") overrides pGroups entirely - never widen beyond it
+    const eventRestrictedGroups = (Array.isArray(pOccData.groups) && (pOccData.groups.length > 0) && !pOccData.groups.includes('*all'))
+      ? pOccData.groups
+      : null;
+    if (eventRestrictedGroups) {
+      gList = [...eventRestrictedGroups];
+    }
+    else if (Array.isArray(pGroups)) {
       pGroups.forEach(grp => {
         grp = grp.replace('~group:', '');
         gList.push(...(grp.replace(/[[\]]/g, '').split(/,|~/g)));
@@ -733,13 +740,6 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
       gList = pGroups.replace(/[[\]]/g, '').split(/,|~/g);
     }
     else { gList = [pGroups]; }
-    if (pOccData.groups) {        // If this event is restricted to specific groups, only allow names from those groups
-      pOccData.groups.forEach(g => {
-        if (!gList.includes(g)) {
-          gList.push(g);
-        }
-      });
-    }
     let memberInfo = await getMemberList(gList, pClient, { "sort": true, "exclude": false });
     /* getMemberList returns
         {
@@ -794,9 +794,6 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
         cl(`response push error at index ${e} with ${mInfo}`);
       }
     };
-    updateReactData({
-      choiceList: response
-    }, false);
     return response;
   };
 
@@ -1856,46 +1853,6 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
               }}
               keepMounted>
               <MenuList className={classes.popUpMenu}>
-                {(pOccData.signup_type === 'none') && isEventOwner &&
-                  <MenuItem
-                    onClick={async () => {
-                      await setChoices({ pGroups: peopleList });
-                      updateReactData({
-                        editIndex: false,
-                        popupMenuOpen: false,
-                      }, false);
-                      setEditSlot(false);
-                      setSelectNewSlotOwner(true);
-                    }}
-                  >
-                    <Box
-                      display='flex' flexDirection='row' alignItems={'center'}
-                      key={'vRowHome'}
-                    >
-                      <PersonAddIcon />
-                      <Typography className={classes.popUpMenuRow} >{'Add a person'}</Typography>
-                    </Box>
-                  </MenuItem>
-                }
-                {isEventOwner && reactData.defaultValues.allowAssign &&
-                  <MenuItem
-                    onClick={async () => {
-                      await setChoices({ pGroups: reactData.defaultValues.allowAssign });
-                      updateReactData({
-                        selectAssignTo: true,
-                        popupMenuOpen: false,
-                      }, true);
-                    }}
-                  >
-                    <Box
-                      display='flex' flexDirection='row' alignItems={'center'}
-                      key={'vRowHome'}
-                    >
-                      <PersonAddIcon />
-                      <Typography className={classes.popUpMenuRow} >{'Assign'}</Typography>
-                    </Box>
-                  </MenuItem>
-                }
                 <MenuItem
                   onClick={async () => {
                     await handlePrint(pEventCode, 'full');
@@ -2138,6 +2095,11 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                     updateReactData({
                       popupMenuOpen: false,
                       editOwnerInfo: true,
+                      ownerInfoQuickSearch: {
+                        accessList: state.accessList[state.session.client_id].list,
+                        selections: makeArray(pOccData.owner).map(person_id => ({ person_id })),
+                        linkedPersonFilter: { raw: '', lower: '' }
+                      }
                     }, true);
 
                   }}
@@ -2614,143 +2576,152 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
           />
         }
         {selectNewSlotOwner &&
-          <PersonFilter
-            prompt={`Who are you adding?`}
-            splitter={'%%'}
-            peopleList={reactData.choiceList}
-            multiSelect={!editSlot}
-            onCancel={() => {
-              setSelectNewSlotOwner(false);
+          <QuickSearch
+            reactData={reactData.newSlotOwnerQuickSearch || {
+              accessList: [],
+              selections: [],
+              linkedPersonFilter: { raw: '', lower: '' }
             }}
-            onSelect={async (selectedPerson) => {
+            updateReactData={(newData) => {
+              updateReactData({
+                newSlotOwnerQuickSearch: Object.assign({}, reactData.newSlotOwnerQuickSearch || {}, newData)
+              }, true);
+            }}
+            options={{
+              keepSelections: true,
+              withGroups: false,
+              withPreferred: false,
+              hidePeople: false,
+              pickOne: editSlot,
+              showAll: true,
+              title: `Who are you adding?`,
+              buttonText: editSlot ? 'Assign' : 'Add'
+            }}
+            onClose={async (selections) => {
               setSelectNewSlotOwner(false);
-              let nArray = selectedPerson.split('%%');
-              let pID;
-              if (nArray.length === 1) {
-                pID = nArray[0];
-                selectedPerson = nArray[0];
-              }
-              else {
-                pID = nArray[1];
-                selectedPerson = `${nArray[0]}%%${nArray[1]}`;
-              }
-              let availability_list = await (myAvailability(
-                {
-                  check_date: pOccData.date,
-                  check_person_id: pID,
-                  check_client: state.session.client_id
-                }
-              ));
-              console.log(availability_list);
-              let slotObj = { person: selectedPerson };
-              let newSlotStart24;
-              let newSlotEnd24;
-              if (editSlot) {
-                let listIndex = reactData.editIndex;
-                if (!reactData.editIndex && (reactData.editIndex !== 0)) {
-                  listIndex = eventSlotList.findIndex(slot => {
-                    return (slot.slotData.status === 'available');
-                  });
-                }
-                if ((listIndex < 0) || (!listIndex && (listIndex !== 0))) {   // no assigned slot
-                  slotObj.slot = pID;
-                  slotObj.index = eventSlotList.length;
-                  newSlotStart24 = 0;
-                  newSlotEnd24 = 2359;
-                }
-                else {
-                  slotObj.slot = eventSlotList[listIndex].slotData.id;
-                  slotObj.index = listIndex;
-                  newSlotStart24 = eventSlotList[listIndex].slotData.slot_start_time24;
-                  newSlotEnd24 = eventSlotList[listIndex].slotData.slot_end_time24;
-                }
-                if (!reactData.signUpObject.hasOwnProperty(pID)) {
-                  reactData.signUpObject[pID] = [];
-                }
-                reactData.signUpObject[pID].push(Object.assign({},
+              updateReactData({ newSlotOwnerQuickSearch: false }, false);
+              for (const chosen of (selections || [])) {
+                if (!chosen || !chosen.person_id) { continue; }
+                let pID = chosen.person_id;
+                let selectedPerson = `${chosen.display_name || await makeName(pID)}%%${pID}%%${chosen.search_data || ''}`;
+                let availability_list = await (myAvailability(
                   {
-                    occurrence_date: pOccData.occurrence_date,
-                    event_id: pOccData.event_id,
-                    event_description: pOccData.description,
-                    start_time24: newSlotStart24,
-                    end_time24: newSlotEnd24
-                  },
+                    check_date: pOccData.date,
+                    check_person_id: pID,
+                    check_client: state.session.client_id
+                  }
                 ));
-                updateReactData({
-                  signUpObject: reactData.signUpObject
-                }, false);
-              }
-              await handleAllocateSlot({ body: slotObj });
-              // Check for other occurrences in this event
-              let othersExist = await checkOtherOccurrences();
-              if (othersExist && (othersExist.length > 0)) {
-                updateReactData({
-                  other_occurrences: othersExist,
-                  popupMenuOpen: false,
-                  alert: {
-                    severity: 'warning',
-                    title: `You are signed up!`,
-                    message: <div>
-                      This event has multiple occurrences.<br />
-                      Would you like to sign up for ALL occurrences of this event?<br />
-                    </div>,
-                    action: [
-                      {
-                        text: `No. Just this one.`,
-                        function: (async () => {
-                          updateReactData({
-                            alert: false
-                          }, true);
-                        })
-                      },
-                      {
-                        text: `Yes, sign me up for all future occurrences`,
-                        function: (async () => {
-                          let eventID = pEventCode.split('#')[0];
-                          let todayYMD = makeDate(new Date()).numeric;
-                          let failures = 0;
-                          for (let next_event of reactData.other_occurrences) {
-                            if (next_event >= todayYMD) {
-                              pEventCode = `${eventID}#${next_event}`;
-                              let result = await handleAllocateSlot({
-                                body: Object.assign({}, slotObj, { rejectDuplicate: true, no_messaging: true }),
-                                allocateEventCode: pEventCode,
-                                allocateOccurrence: next_event,
-                              });
-                              if (typeof (result) === "object" && !result.success) {
-                                failures++;
+                console.log(availability_list);
+                let slotObj = { person: selectedPerson };
+                let newSlotStart24;
+                let newSlotEnd24;
+                if (editSlot) {
+                  let listIndex = reactData.editIndex;
+                  if (!reactData.editIndex && (reactData.editIndex !== 0)) {
+                    listIndex = eventSlotList.findIndex(slot => {
+                      return (slot.slotData.status === 'available');
+                    });
+                  }
+                  if ((listIndex < 0) || (!listIndex && (listIndex !== 0))) {   // no assigned slot
+                    slotObj.slot = pID;
+                    slotObj.index = eventSlotList.length;
+                    newSlotStart24 = 0;
+                    newSlotEnd24 = 2359;
+                  }
+                  else {
+                    slotObj.slot = eventSlotList[listIndex].slotData.id;
+                    slotObj.index = listIndex;
+                    newSlotStart24 = eventSlotList[listIndex].slotData.slot_start_time24;
+                    newSlotEnd24 = eventSlotList[listIndex].slotData.slot_end_time24;
+                  }
+                  if (!reactData.signUpObject.hasOwnProperty(pID)) {
+                    reactData.signUpObject[pID] = [];
+                  }
+                  reactData.signUpObject[pID].push(Object.assign({},
+                    {
+                      occurrence_date: pOccData.occurrence_date,
+                      event_id: pOccData.event_id,
+                      event_description: pOccData.description,
+                      start_time24: newSlotStart24,
+                      end_time24: newSlotEnd24
+                    },
+                  ));
+                  updateReactData({
+                    signUpObject: reactData.signUpObject
+                  }, false);
+                }
+                await handleAllocateSlot({ body: slotObj });
+                // Check for other occurrences in this event
+                let othersExist = await checkOtherOccurrences();
+                if (othersExist && (othersExist.length > 0)) {
+                  updateReactData({
+                    other_occurrences: othersExist,
+                    popupMenuOpen: false,
+                    alert: {
+                      severity: 'warning',
+                      title: `You are signed up!`,
+                      message: <div>
+                        This event has multiple occurrences.<br />
+                        Would you like to sign up for ALL occurrences of this event?<br />
+                      </div>,
+                      action: [
+                        {
+                          text: `No. Just this one.`,
+                          function: (async () => {
+                            updateReactData({
+                              alert: false
+                            }, true);
+                          })
+                        },
+                        {
+                          text: `Yes, sign me up for all future occurrences`,
+                          function: (async () => {
+                            let eventID = pEventCode.split('#')[0];
+                            let todayYMD = makeDate(new Date()).numeric;
+                            let failures = 0;
+                            for (let next_event of reactData.other_occurrences) {
+                              if (next_event >= todayYMD) {
+                                // local copy avoids mutating the outer pEventCode prop from within this loop-declared closure
+                                const thisEventCode = `${eventID}#${next_event}`;
+                                let result = await handleAllocateSlot({
+                                  body: Object.assign({}, slotObj, { rejectDuplicate: true, no_messaging: true }),
+                                  allocateEventCode: thisEventCode,
+                                  allocateOccurrence: next_event,
+                                });
+                                if (typeof (result) === "object" && !result.success) {
+                                  failures++;
+                                }
                               }
                             }
-                          }
-                          if (failures > 0) {
-                            updateReactData({
-                              alert: {
-                                severity: 'error',
-                                title: `Some sign-ups failed`,
-                                message: `For ${failures} occurrence(s), someone else was already signed up.`,
-                                action: [
-                                  {
-                                    text: `Acknowledged`,
-                                    function: (async () => {
-                                      onReset({ no_change: true });
-                                    })
-                                  }
-                                ]
-                              }
-                            }, true);
-                          }
-                          else {
-                            onReset({ no_change: true });
-                          }
-                        })
-                      }
-                    ]
-                  }
-                }, true);
+                            if (failures > 0) {
+                              updateReactData({
+                                alert: {
+                                  severity: 'error',
+                                  title: `Some sign-ups failed`,
+                                  message: `For ${failures} occurrence(s), someone else was already signed up.`,
+                                  action: [
+                                    {
+                                      text: `Acknowledged`,
+                                      function: (async () => {
+                                        onReset({ no_change: true });
+                                      })
+                                    }
+                                  ]
+                                }
+                              }, true);
+                            }
+                            else {
+                              onReset({ no_change: true });
+                            }
+                          })
+                        }
+                      ]
+                    }
+                  }, true);
+                }
               }
             }}
-          >
-          </PersonFilter>
+          />
         }
         {reactData.promptForMessage &&
           (reactData.messageType !== 'group') &&
@@ -3061,24 +3032,31 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
           />
         }
         {reactData.editOwnerInfo &&
-          <PersonFilter
-            prompt={'Select owners'}
-            peopleList={state.accessList[state.session.client_id].shortList}
-            alreadyChecked={pOccData.owner}
-            onCancel={() => {
-              reactData.editOwnerInfo = false;
-              setReactData(reactData);
-              setForceRedisplay(!forceRedisplay);
+          <QuickSearch
+            reactData={reactData.ownerInfoQuickSearch}
+            updateReactData={(newData) => {
+              updateReactData({
+                ownerInfoQuickSearch: Object.assign({}, reactData.ownerInfoQuickSearch, newData)
+              }, true);
             }}
-            onSelect={async (selectedPeople) => {
-              await handleUpdateOwner(selectedPeople);
-              reactData.editOwnerInfo = false;
-              setReactData(reactData);
-              setForceRedisplay(!forceRedisplay);
+            options={{
+              keepSelections: true,
+              withGroups: false,
+              withPreferred: false,
+              hidePeople: false,
+              pickOne: false,
+              showAll: true,
+              title: 'Select owners',
+              buttonText: { empty: 'Exit', selected: 'Save & Exit' }
             }}
-            allowRandom={true}
-            multiSelect={true}
-            returnValue={'object'}
+            onClose={async (selections) => {
+              const newOwners = Object.fromEntries((selections || []).map(s => [s.person_id, s.person_name || s.person_id]));
+              await handleUpdateOwner(newOwners);
+              updateReactData({
+                editOwnerInfo: false,
+                ownerInfoQuickSearch: false
+              }, true);
+            }}
           />
         }
         {reactData.cancelPending &&
@@ -3099,57 +3077,6 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
               onReset({ event_cancelled: true });
             }}
             allowCancel={true}
-          />
-        }
-        {reactData.selectAssignTo &&
-          <PersonFilter
-            prompt={'Assign to whom?'}
-            peopleList={reactData.choiceList}
-            multiSelect={false}
-            splitter={'%%'}
-            onCancel={() => {
-              updateReactData({
-                selectAssignTo: false,
-                choiceList: []
-              }, true);
-            }}
-            onSelect={async (selectedPerson) => {
-              let currentTime = makeDate(new Date());
-              let assigned_to = selectedPerson.split('%%')[1];
-              let assigned_to_name = await makeName(assigned_to);
-              let putSR = {
-                client: state.session.client_id,
-                author: state.session.patient_id,
-                proxy_user: state.session.user_id,
-                requestType: 'checklist',
-                activity_key: "",
-                onBehalfOf: state.session.patient_display_name,
-                foreign_key: pEventCode,
-                history: [`Checklist assigned to ${assigned_to_name} ${currentTime.oaDate}`],
-                assign_to: assigned_to,
-                last_status: 'assigned',
-                request: {},
-                messaging: {}
-              };
-              let result = await putServiceRequest(putSR);
-              result.assigned_to_name = assigned_to_name;
-              let messageText = `${state.session.patient_display_name} has assigned you to "${pOccData.description}" - ${makeDate(pOccData.date).relative}`;
-              let messageObj = {
-                client: state.session.client_id,
-                author: state.session.patient_id,
-                messageText: messageText,
-                thread_id: `svc_checklist/${result.request_id}`,
-                recipientList: [assigned_to],
-                subject: `${pOccData.description} assigned to you`
-              };
-              await sendMessages(messageObj);
-              updateReactData({
-                selectAssignTo: false,
-                popupMenuOpen: false,
-                choiceList: [],
-                attachedSR: result
-              }, true);
-            }}
           />
         }
         {reactData.editWaitList &&
@@ -3353,7 +3280,13 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                           summaryInfo.totalSlots++;
                           if (s.slotData.owner) {
                             summaryInfo.ownedSlots++;
-                            summaryInfo.slot_owners[s.slotData.owner] = s.slotData.id;
+                            // same owner can hold multiple slots (e.g. multiple seats/times) - don't collapse them into one entry
+                            let ownerKey = s.slotData.owner;
+                            let instance_number = 0;
+                            while (summaryInfo.slot_owners.hasOwnProperty(ownerKey)) {
+                              ownerKey = `${s.slotData.owner}%%${instance_number++}`;
+                            }
+                            summaryInfo.slot_owners[ownerKey] = s.slotData.id;
                           }
                           if (s.marked) {
                             summaryInfo.markedSlots++;
@@ -3419,7 +3352,14 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                       console.log(firstAvailableSlot);
                       if (isEventOwner) {
                         setEditSlot(true);
-                        await setChoices({ pGroups: peopleList });
+                        const directoryChoices = await setChoices({ pGroups: peopleList });
+                        updateReactData({
+                          newSlotOwnerQuickSearch: {
+                            accessList: mapChoiceListToQuickSearchAccessList(directoryChoices || []),
+                            selections: [],
+                            linkedPersonFilter: { raw: '', lower: '' }
+                          }
+                        }, false);
                         setSelectNewSlotOwner(true);
                       }
                       else {

@@ -19,7 +19,7 @@ import useSession from '../../hooks/useSession';
 import useMediaQuery from '@material-ui/core/useMediaQuery';
 import { getImage, getPerson, formatPhone } from '../../util/AVAPeople';
 import { AVAclasses } from '../../util/AVAStyles';
-import { isEmpty, sentenceCase, getObject, lambda } from '../../util/AVAUtilities';
+import { isEmpty, sentenceCase, getObject, lambda, titleCase } from '../../util/AVAUtilities';
 import { determineClass, getRole } from '../../util/AVAGroups';
 import PeopleMaintenance from '../dialogs/PeopleMaintenance';
 import MakeMessage from './MakeMessage';
@@ -257,6 +257,7 @@ const getSearchBlob = (person) => {
         person?.name?.first,
         person?.name?.last,
         person?.location,
+        ...Object.values(person?.address || {}),
         person?.messaging?.sms,
         person?.messaging?.voice,
         person?.messaging?.office,
@@ -742,7 +743,19 @@ export default function GroupPhotoDirectory({ options = {}, onReset = () => { } 
                                     mergePartnerLabel = `(and ${partnerName})`;
                                 }
                             }
-                            if (!isEmpty(person.address)) {
+                            const addressStyle = state.session?.directory_format?.addressStyle;
+                            if (addressStyle === '*none') {
+                                addressValue = '';
+                            }
+                            else if (addressStyle === 'apartment_suite') {
+                                addressValue = (person.address?.apartment_suite || '').trim();
+                            }
+                            else if (addressStyle === 'short') {
+                                const city = person.address?.city;
+                                const stateVal = person.address?.state || person.state;
+                                addressValue = [city && titleCase(city), stateVal].filter(Boolean).join(', ');
+                            }
+                            else if (!isEmpty(person.address)) {
                                 let returnValue = '';
                                 let splitAddress = person.address?.address?.split('~') || [''];
                                 if (splitAddress) {
@@ -752,12 +765,13 @@ export default function GroupPhotoDirectory({ options = {}, onReset = () => { } 
                                     };
                                 }
                                 if (person.address?.address2) { returnValue += `; ${person.address.address2}`; }
-                                if (person.address?.city) { returnValue += `<br/ >${person.address.city}`; }
+                                if (person.address?.apartment_suite) { returnValue += ` ${person.address.apartment_suite}`; }
+                                if (person.address?.city) { returnValue += `; ${person.address.city}`; }
                                 if (person.address?.state) { returnValue += `, ${person.address.state}`; }
                                 else if (person.state) { returnValue += `, ${person.state}`; }
                                 if (person.address?.zip_code || person.address?.zip) { returnValue += ` ${person.address.zip_code || person.address.zip}`; }
                                 else if (person.zip) { returnValue += ` ${person.zip}`; }
-                                addressValue = returnValue;
+                                addressValue = returnValue.replace(/^[\s:,]+/, '');
                             }
                             else if (!isEmpty(person.location)) {
                                 [addressValue, imbeddedTitle] = person.location.split('~');

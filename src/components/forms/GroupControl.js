@@ -2,8 +2,10 @@ import React from 'react';
 
 import useSession from '../../hooks/useSession';
 
-import { createNewGroup, getGroupMembers, getMemberList, addMember, removeMember, getRole } from '../../util/AVAGroups';
+import { createNewGroup, getGroupMembers, getMemberList, addMember, removeMember, getRole, getPersonGroups } from '../../util/AVAGroups';
 import { dbClient, isObject, listFromArray, cl, recordExists } from '../../util/AVAUtilities';
+import { occurrenceData } from '../../util/AVACalendars';
+import { makeDate } from '../../util/AVADateTime';
 import PeopleMaintenance from '../dialogs/PeopleMaintenance';
 import GroupMaintenance from '../dialogs/GroupMaintenance';
 import AVAConfirm from './AVAConfirm';
@@ -46,6 +48,7 @@ import AddCircleOutlineIcon from '@material-ui/icons/AddCircleOutline';
 import SaveIcon from '@material-ui/icons/Save';
 import BuildIcon from '@material-ui/icons/Build';
 import OpenWithIcon from '@material-ui/icons/OpenWith';
+import EventIcon from '@material-ui/icons/Event';
 
 import { SET_GROUPS, SET_ACCESSLIST } from '../../contexts/Session/actions';
 
@@ -157,6 +160,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
   const personRowDragResetRef = React.useRef(null);
   const personRowShiftAnchorRef = React.useRef(null); // last ctrl/shift-clicked row index, for shift-range selection
   const familyDataCacheRef = React.useRef({});
+  const skipExtrasRecomputeRef = React.useRef(false); // set by a ctrl-click intersection that already narrowed extraPeople itself
   const [selectedFieldDropTargetIndex, setSelectedFieldDropTargetIndex] = React.useState(null);
   const [selectedFieldDragIndex, setSelectedFieldDragIndex] = React.useState(null);
   // Admin Mode "Add group" inline input - which row it's open for, its uncommitted text,
@@ -176,6 +180,15 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
   // Admin Mode inline trash icon (leaf rows only) - holds the group_id awaiting AVAConfirm, once
   // requestDeleteGroup's live children/members checks have already passed.
   const [deleteGroupConfirmTarget, setDeleteGroupConfirmTarget] = React.useState(null);
+  // Removing a person from a group whose descendant(s) they're still actively in (see
+  // findActiveDescendantMemberships) - holds { draggedFrom, conflictGroupIds } awaiting AVAConfirm.
+  const [removeConflict, setRemoveConflict] = React.useState(null);
+
+  // Events section (left list) - deliberately independent of groupsManagedObject/reactData's group
+  // fields per product decision: visual continuity only, no shared data model or admin actions.
+  // eventsExpanded holds node keys: event_id, `${event_id}::upcoming`, `${event_id}::past`, or the
+  // '__EVENTS_ROOT__' sentinel for the top-level "Events" header itself.
+  const [eventsExpanded, setEventsExpanded] = React.useState(() => new Set());
 
   const { dispatch, state } = useSession();
 
@@ -237,6 +250,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
     selectedGroupIds: [],
     selectedGroupMembersPerGroup: {},
     intersectionMode: false,
+    intersectingEventKey: false, // set when a ctrl-clicked group's intersection was narrowed against an event's attendees, so that event row can be highlighted
     selectedGroupRec: false,
     selectedGroupMembers: false,
     sortedGroupMembers: [],
@@ -260,7 +274,15 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
     exportFilterPromptSpecs: [],
     updatesMade: false,
     viewPeopleMaintenance: false,
-    viewGroupMaintenance: false
+    viewGroupMaintenance: false,
+
+    // Events section (left list) - see eventsExpanded above for the rest of this feature's state.
+    // Intentionally not merged with any selectedGroup* field.
+    eventOccurrences: null, // null = not yet loaded; loaded lazily on first expand of the Events header
+    eventsLoading: false,
+    selectedEventOccurrence: false,
+    selectedEventAttendees: [],
+    loadingEventAttendees: false
   });
   const [refreshTrigger, setRefreshTrigger] = React.useState(false);
   const updateReactData = (newData, force = false) => {
@@ -310,8 +332,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
         selectedPersonFirstName: false,
         selectedPersonLastName: false
       };
-      if (!reactData.selectedGroupRec) {
-        // if no group is selected, then assume selection of the highest group in the list
+      if (!reactData.selectedGroupRec && !reactData.selectedEventOccurrence) {
+        // if no group AND no event occurrence is selected, then assume selection of the highest group in the list
         let listEntry = Object.keys(groupsManagedObject)[0];
         let memberList = await selectMembers(listEntry, { live: true });
         reactUpdObj.selectedGroup_id = listEntry;
@@ -392,9 +414,19 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
   // builds the deduplicated list of family members / primary caregivers to layer onto the right-hand people list
   React.useEffect(() => {
     if (!reactData.showFamilyMembers && !reactData.showPrimaryCaregivers) {
+      // Toggling off always wins, even if a ctrl-click narrowing was still pending consumption below -
+      // otherwise a quick toggle-off right after an intersection could skip clearing extraPeople entirely.
+      skipExtrasRecomputeRef.current = false;
       if ((reactData.extraPeople || []).length > 0) {
         updateReactData({ extraPeople: [] }, true);
       }
+      return;
+    }
+    if (skipExtrasRecomputeRef.current) {
+      // A ctrl-click intersection already filtered extraPeople directly (independent of whether each
+      // extra's linked base person survived) - a full recompute here would wrongly re-derive them from
+      // (and limit them to) the narrowed base instead.
+      skipExtrasRecomputeRef.current = false;
       return;
     }
     let cancelled = false;
@@ -521,7 +553,14 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
             },
             ...(sourceIsTopLevel ? [] : [{
               text: 'Move',
-              function: async () => { await executeMovePerson(draggedFrom, droppedOn); }
+              function: async () => {
+                const conflictGroupIds = await findActiveDescendantMemberships(draggedFrom.personObj.person_id, draggedFrom.personGroup);
+                if (conflictGroupIds.length > 0) {
+                  setRemoveConflict({ draggedFrom, droppedOn, conflictGroupIds, action: 'move' });
+                  return;
+                }
+                await executeMovePerson(draggedFrom, droppedOn);
+              }
             }])
           ]
         }
@@ -614,7 +653,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
     updateReactData(reactUpdObj, true);
   };
 
-  const executeMovePerson = async (draggedFrom, droppedOn) => {
+  const executeMovePerson = async (draggedFrom, droppedOn, extraGroupIds = []) => {
     const person_id = draggedFrom.personObj.person_id;
     const firstName = (draggedFrom.personObj.name?.first || '').trim() || 'This person';
 
@@ -644,9 +683,10 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
       .filter(g => !currentGroups.includes(g))
       .map(g => groupsManagedObject[g]?.group_name || g);
 
-    // delegate DB writes: add destination then remove source (removeMember handles orphan cleanup)
+    // delegate DB writes: add destination then remove source (removeMember handles orphan cleanup);
+    // extraGroupIds carries descendant groups the caller already confirmed removing alongside the source
     await addMember(person_id, pSession.client_id, droppedOn.group_id, { allowParent: true });
-    const newGroupList = await removeMember(person_id, pSession.client_id, draggedFrom.personGroup);
+    const newGroupList = await removeMember(person_id, pSession.client_id, [draggedFrom.personGroup, ...extraGroupIds]);
 
     // get fresh groups from DB — removeMember may have pruned orphaned ancestors
     const freshPerson = await getPerson(person_id);
@@ -693,7 +733,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
     }, true);
   };
 
-  const executeRemovePersonFromGroup = async (draggedFrom) => {
+  const executeRemovePersonFromGroup = async (draggedFrom, extraGroupIds = []) => {
     const person_id = draggedFrom.personObj.person_id;
     const firstName = (draggedFrom.personObj.name?.first || '').trim() || 'This person';
 
@@ -703,8 +743,9 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
     const accessEntry = state.accessList?.[pSession.client_id]?.list?.find(p => p.person_id === person_id);
     const currentGroups = [...(accessEntry?.groups || [])];
 
-    // delegate DB write to removeMember (handles orphan cleanup + PeopleGroups soft-delete)
-    const newGroupList = await removeMember(person_id, pSession.client_id, draggedFrom.personGroup);
+    // delegate DB write to removeMember (handles orphan cleanup + PeopleGroups soft-delete);
+    // extraGroupIds carries descendant groups the caller already confirmed removing alongside this one
+    const newGroupList = await removeMember(person_id, pSession.client_id, [draggedFrom.personGroup, ...extraGroupIds]);
 
     // get fresh groups from DB — removeMember may have pruned orphaned ancestors
     const freshPerson = await getPerson(person_id);
@@ -773,12 +814,46 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
     }
   }
 
-  async function openFieldPicker() {
+  // Raw list of whoever is currently showing on the right side, after filter + ctrl/shift-selection
+  // is applied - source is the selected group's members, OR (when an event occurrence is selected
+  // instead) that occurrence's attendees. Directory/export/report actions should work off this
+  // regardless of which right-side panel is active.
+  function getVisibleRawPeopleList() {
     const rowSelection = reactData.selectedPersonRowIds || [];
-    const visibleMemberIds = (reactData.lower_people_filter
-      ? reactData.sortedGroupMembers?.filter(p => OKtoShow(p))
-      : reactData.sortedGroupMembers
-    )?.filter((p) => ((rowSelection.length === 0) || rowSelection.includes(p))) || [];
+
+    if (reactData.selectedEventOccurrence) {
+      const filtered = eventAttendeeDisplayRows.filter((a) => ((rowSelection.length === 0) || rowSelection.includes(a.person_id)));
+      return {
+        ids: filtered.map((a) => a.person_id),
+        lookup: Object.fromEntries(filtered.map((a) => [a.person_id, a])),
+        baseName: reactData.selectedEventOccurrence.description || 'event'
+      };
+    }
+
+    // Mirror exactly what's rendered on the right side - base rows plus their indented (tier 2)
+    // extras - however that list was derived (plain selection, filtered, or ctrl-click narrowed).
+    // Tier-3 placeholder owner rows are excluded - they exist only as context for a surviving
+    // extra beneath them and were never really part of the current selection.
+    const visibleRows = personListDisplayRows.filter((row) => !row.isPhantomOwner
+      && ((rowSelection.length === 0) || rowSelection.includes(row.person_id)));
+
+    const visibleMemberIds = [...new Set(visibleRows.map((row) => row.person_id))];
+    const lookup = {};
+    for (const row of visibleRows) {
+      if (lookup[row.person_id]) { continue; }
+      lookup[row.person_id] = row.isExtra
+        ? { person_id: row.person_id, name: { first: row.first, last: row.last }, display_name: row.display_name }
+        : reactData.selectedGroupMembers?.[row.person_id];
+    }
+    return {
+      ids: visibleMemberIds,
+      lookup,
+      baseName: reactData.selectedGroupRec?.group_name || reactData.selectedGroup_id || 'group'
+    };
+  }
+
+  async function openFieldPicker() {
+    const { ids: visibleMemberIds } = getVisibleRawPeopleList();
 
     if (visibleMemberIds.length === 0) {
       updateReactData({
@@ -826,16 +901,18 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
   }
 
   function getVisiblePeopleForDirectory() {
-    const rowSelection = reactData.selectedPersonRowIds || [];
-    const visibleMemberIds = (reactData.lower_people_filter
-      ? reactData.sortedGroupMembers?.filter(p => OKtoShow(p))
-      : reactData.sortedGroupMembers
-    )?.filter((p) => ((rowSelection.length === 0) || rowSelection.includes(p))) || [];
+    const { ids: visibleMemberIds } = getVisibleRawPeopleList();
 
     // When explicit group IDs were requested (directoryGroupIds), bypass the accessList.list
     // filter — return raw person_id strings so GroupPhotoDirectory fetches any missing records
     // from the DB directly, showing the full group regardless of the viewer's authorization.
     if (directoryGroupIds && directoryGroupIds.length > 0) {
+      return visibleMemberIds;
+    }
+
+    // Event attendees aren't guaranteed to be in the viewer's own accessList (e.g. cross-group
+    // signups) — pass raw person_id strings and let GroupPhotoDirectory fetch missing records.
+    if (reactData.selectedEventOccurrence) {
       return visibleMemberIds;
     }
 
@@ -1043,11 +1120,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
   async function buildCurrentPeopleListExportData(options = {}) {
     const arraySeparator = (typeof options?.arraySeparator === 'string') ? options.arraySeparator : '; ';
     const preserveGroupedRaw = !!options?.preserveGroupedRaw;
-    const rowSelection = reactData.selectedPersonRowIds || [];
-    const visibleMemberIds = (reactData.lower_people_filter
-      ? reactData.sortedGroupMembers?.filter(p => OKtoShow(p))
-      : reactData.sortedGroupMembers
-    )?.filter((p) => ((rowSelection.length === 0) || rowSelection.includes(p))) || [];
+    const { ids: visibleMemberIds, lookup: peopleLookup, baseName } = getVisibleRawPeopleList();
 
     if (visibleMemberIds.length === 0) {
       updateReactData({
@@ -1075,8 +1148,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
     ];
 
     const rows = visibleMemberIds.map((this_person) => {
-      const personRec = reactData.selectedGroupMembers?.[this_person] || {};
-      const person_id = personRec.person_id || '';
+      const personRec = peopleLookup?.[this_person] || {};
+      const person_id = personRec.person_id || this_person || '';
       const firstName = (personRec.name?.first || '').trim();
       const lastName = (personRec.name?.last || '').trim();
       const fullName = `${firstName} ${lastName}`.trim();
@@ -1120,10 +1193,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
       });
     }
 
-    const safeGroupName = sanitizeExportBaseName(
-      reactData.selectedGroupRec?.group_name || reactData.selectedGroup_id || 'group',
-      'group'
-    );
+    const safeGroupName = sanitizeExportBaseName(baseName, 'group');
 
     return {
       header,
@@ -1146,7 +1216,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
     return searchString.includes(reactData.lower_people_filter);
   };
 
-  // merges real group members with any extra family/caregiver entries into one alphabetically sorted list
+  // groups real group members with their linked family/caregiver entries indented immediately beneath
+  // them (each alphabetized within its own tier), instead of merging everyone into one flat A-Z list
   function buildDisplayRows() {
     const baseIds = (reactData.lower_people_filter
       ? reactData.sortedGroupMembers?.filter(p => OKtoShow(p))
@@ -1160,34 +1231,77 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
       isExtra: false
     }));
 
-    // when a text filter is active, an extra person is only shown if one of the
-    // primary accounts it's linked to still passes the filter — not its own name
-    const baseIdSet = new Set(baseIds);
-    const extraRows = (reactData.extraPeople || [])
-      .filter(this_extra => !reactData.lower_people_filter || (this_extra.linkedPersonIds || []).some(pid => baseIdSet.has(pid)))
-      .map(this_extra => {
-        const [first, ...rest] = (this_extra.display_name || '').split(' ');
-        return {
+    // "present" = still actually part of the current selection (survived any ctrl-click intersection),
+    // as opposed to merely passing (or failing) the text filter
+    const presentBaseIdSet = new Set(Object.keys(reactData.selectedGroupMembers || {}));
+    const visibleBaseIdSet = new Set(baseIds);
+
+    const sortRowsAlpha = (rows) => rows.sort((a, b) => {
+      if (state.session.client_style.sort_order === 'last_first') {
+        if (a.last === b.last) { return (a.first > b.first) ? 1 : -1; }
+        return (a.last > b.last) ? 1 : -1;
+      }
+      if (a.first === b.first) { return (a.last > b.last) ? 1 : -1; }
+      return (a.first > b.first) ? 1 : -1;
+    });
+
+    // group extras by each linked owner - an extra linked to multiple selected people is
+    // intentionally duplicated once under each owner (see repo notes), not shown just once
+    const extrasByOwner = new Map();
+    for (const this_extra of (reactData.extraPeople || [])) {
+      const linkedIds = this_extra.linkedPersonIds || [];
+      // orphaned: every owner this extra is linked to has been narrowed out of the current
+      // selection entirely (e.g. by a ctrl-click intersection) - text filtering shouldn't hide
+      // it in that case, since it's not the text filter that excluded it
+      const isOrphaned = linkedIds.length > 0 && linkedIds.every(pid => !presentBaseIdSet.has(pid));
+      const passesFilter = !reactData.lower_people_filter || isOrphaned || linkedIds.some(pid => visibleBaseIdSet.has(pid));
+      if (!passesFilter) { continue; }
+      const [first, ...rest] = (this_extra.display_name || '').split(' ');
+      for (const owner_id of linkedIds) {
+        if (!extrasByOwner.has(owner_id)) { extrasByOwner.set(owner_id, []); }
+        extrasByOwner.get(owner_id).push({
           person_id: this_extra.person_id,
           first: first || this_extra.display_name,
           last: rest.join(' '),
           display_name: this_extra.display_name,
           isExtra: true,
           kind: this_extra.kind
+        });
+      }
+    }
+    for (const rows of extrasByOwner.values()) { sortRowsAlpha(rows); }
+
+    sortRowsAlpha(baseRows);
+    const combinedRows = [];
+    const seenOwners = new Set();
+    for (const row of baseRows) {
+      combinedRows.push(row);
+      seenOwners.add(row.person_id);
+      combinedRows.push(...(extrasByOwner.get(row.person_id) || []));
+    }
+
+    // owners narrowed out of the selection but still referenced by a surviving extra get a
+    // translucent, display-only placeholder row so the indented extra beneath still has an anchor
+    const phantomRows = [...extrasByOwner.keys()]
+      .filter(owner_id => !seenOwners.has(owner_id))
+      .map(owner_id => {
+        const display_name = resolveDisplayName(owner_id);
+        const [first, ...rest] = (display_name || '').split(' ');
+        return {
+          person_id: owner_id,
+          first: first || display_name,
+          last: rest.join(' '),
+          display_name,
+          isExtra: false,
+          isPhantomOwner: true
         };
       });
+    sortRowsAlpha(phantomRows);
+    for (const row of phantomRows) {
+      combinedRows.push(row);
+      combinedRows.push(...(extrasByOwner.get(row.person_id) || []));
+    }
 
-    const combinedRows = [...baseRows, ...extraRows];
-    combinedRows.sort((a, b) => {
-      if (state.session.client_style.sort_order === 'last_first') {
-        if (a.last === b.last) { return (a.first > b.first) ? 1 : -1; }
-        return (a.last > b.last) ? 1 : -1;
-      }
-      else {
-        if (a.first === b.first) { return (a.last > b.last) ? 1 : -1; }
-        return (a.first > b.first) ? 1 : -1;
-      }
-    });
     return combinedRows;
   }
 
@@ -1272,11 +1386,27 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
     updateReactData(reactUpdObj, true);
   };
 
+  // removeMember() only cleans up orphaned ANCESTOR memberships, not descendants - a person removed
+  // from a parent group stays actively enrolled in any descendant group they were separately added
+  // to, silently defeating the removal. Returns the subset of group_id's descendants they're still
+  // actively (live, not cached) a member of, so the caller can warn/offer to remove those too.
+  const findActiveDescendantMemberships = async (person_id, group_id) => {
+    const descendants = getDescendants(group_id);
+    if (descendants.length === 0) { return []; }
+    const activeGroups = await getPersonGroups(person_id, pSession.client_id);
+    return descendants.filter(d => activeGroups.includes(d));
+  };
+
   const handleDrop_removePerson = async (ev) => {
     ev.preventDefault();
     let draggedFrom = JSON.parse(ev.dataTransfer.getData('id'));
     console.log(draggedFrom);
     if (draggedFrom.hasOwnProperty('personGroup')) {
+      const conflictGroupIds = await findActiveDescendantMemberships(draggedFrom.personObj.person_id, draggedFrom.personGroup);
+      if (conflictGroupIds.length > 0) {
+        setRemoveConflict({ draggedFrom, conflictGroupIds, action: 'remove' });
+        return;
+      }
       await executeRemovePersonFromGroup(draggedFrom);
     }
     else if (draggedFrom.hasOwnProperty('groupObj')) {
@@ -1742,11 +1872,30 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
 
   const canDragManage = !!(pSession?.adminAccount || reactData.administrative_account);
   const personListDisplayRows = buildDisplayRows();
+  // Directory/export should be enabled whenever anything real (base row or tier-2 extra) is
+  // visible - tier-3 placeholder owner rows are context-only and don't count.
+  const hasExportablePeople = personListDisplayRows.some((row) => !row.isPhantomOwner);
   const personRowSelectedStyle = (person_id) => (reactData.selectedPersonRowIds || []).includes(person_id) ? {
     backgroundColor: reactData.isDarkMode ? '#0d47a1' : '#90caf9',
     color: reactData.isDarkMode ? '#ffffff' : '#0d47a1',
     fontWeight: 'bold',
   } : {};
+
+  // Events section (left list) - split the flat, already-sorted (ascending) occurrence list into
+  // Past (most-recent-first) and Upcoming (soonest-first) once per render.
+  const todayNumeric$ = makeDate('today').numeric$;
+  const upcomingEventOccurrences = (reactData.eventOccurrences || []).filter((o) => o.occurrence_date >= todayNumeric$);
+  const pastEventOccurrences = (reactData.eventOccurrences || []).filter((o) => o.occurrence_date < todayNumeric$).reverse();
+
+  // Same lower_people_filter used by the group roster applies to event attendees, and the same
+  // selectedPersonRowIds/handlePersonRowSelectClick machinery drives ctrl/shift row selection here.
+  const eventAttendeeDisplayRows = (reactData.selectedEventAttendees || []).filter((attendee) => {
+    if (!reactData.lower_people_filter) { return true; }
+    const allValues = Object.values(attendee).flatMap((value) =>
+      (typeof value === 'object' && value !== null) ? Object.values(value) : value
+    );
+    return allValues.filter((v) => v != null).join(' ').toLowerCase().includes(reactData.lower_people_filter);
+  });
 
   const classes = useStyles();
   const AVAClass = AVAclasses();
@@ -1817,11 +1966,30 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
     // data has People.groups set but is missing PeopleGroups rows for __TOP__/ALL.
     const normalizedGroup = (this_group || '').toString().toUpperCase();
     if (normalizedGroup === '__TOP__' || normalizedGroup === 'ALL') {
+      // A person may have been deliberately removed (membership_status: 'inactive') without their
+      // legacy People.groups array being cleaned up - exclude those explicitly so the backfill below
+      // doesn't resurrect them.
+      const inactiveIds = new Set();
+      let inactiveLastKey;
+      do {
+        const inactiveParams = {
+          TableName: 'PeopleGroups',
+          IndexName: 'status-index',
+          KeyConditionExpression: 'client_group_id = :cgid AND membership_status = :inactive',
+          ExpressionAttributeValues: { ':cgid': cgid, ':inactive': 'inactive' },
+        };
+        if (inactiveLastKey) { inactiveParams.ExclusiveStartKey = inactiveLastKey; }
+        const inactiveResult = await dbClient.query(inactiveParams).promise()
+          .catch(err => { cl({ 'selectMembers: PeopleGroups inactive query error': err }); return null; });
+        (inactiveResult?.Items || []).forEach(item => inactiveIds.add(item.person_id));
+        inactiveLastKey = inactiveResult?.LastEvaluatedKey;
+      } while (inactiveLastKey);
+
       const acceptableTopGroups = ['__TOP__', 'ALL'];
       for (const cached of Object.values(cacheById)) {
         const pid = cached?.person_id;
         const personGroups = Array.isArray(cached?.groups) ? cached.groups.map(g => `${g}`.toUpperCase()) : [];
-        if (!pid || response[pid]) { continue; }
+        if (!pid || response[pid] || inactiveIds.has(pid)) { continue; }
         if (!personGroups.some(g => acceptableTopGroups.includes(g))) { continue; }
         response[pid] = {
           person_id: pid,
@@ -1833,6 +2001,165 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
     }
 
     return response;
+  }
+
+  // ---- Events section (left list) -------------------------------------------------------
+  // Fully independent of groupsManagedObject/selectedGroup* state and actions - see repo memory
+  // notes/events-in-groupcontrol-notes.md for the design discussion behind this split.
+  // Date-oriented, not event-oriented: every event record's occExists array (materialized
+  // occurrence dates, "yyyymmdd" strings) is flattened into one list across all events, then
+  // organized as Past/Upcoming -> adaptive Year/Month date groups -> individual occurrences.
+
+  const toggleEventsExpanded = (key) => {
+    setEventsExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) { next.delete(key); } else { next.add(key); }
+      return next;
+    });
+  };
+
+  // Single query for every event record's occExists - no per-event round trips needed, unlike
+  // the old occurrenceDateBuilder-based approach this replaced.
+  async function loadEventOccurrences() {
+    updateReactData({ eventsLoading: true }, true);
+    let qQ = {
+      TableName: 'Calendar',
+      IndexName: 'record_type-index',
+      KeyConditionExpression: 'client = :c and record_type = :e',
+      ExpressionAttributeValues: { ':c': state.session.client_id, ':e': 'event' }
+    };
+    const flatOccurrences = [];
+    let qR;
+    do {
+      qR = await dbClient.query(qQ).promise().catch((error) => { cl(`Error reading Calendar event list: ${error}`); });
+      if (recordExists(qR)) {
+        for (const rec of qR.Items) {
+          const description = rec.eventData?.event_data?.description || rec.event_id;
+          const uniqueDates = [...new Set(rec.occExists || [])]; // de-dupe, per user's note that occExists can contain repeats
+          for (const occurrence_date of uniqueDates) {
+            flatOccurrences.push({ event_id: rec.event_id, description, occurrence_date });
+          }
+        }
+      }
+      qQ.ExclusiveStartKey = qR?.LastEvaluatedKey;
+    } while (qR?.LastEvaluatedKey);
+    flatOccurrences.sort((a, b) => (a.occurrence_date > b.occurrence_date ? 1 : -1));
+    updateReactData({ eventOccurrences: flatOccurrences, eventsLoading: false }, true);
+  }
+
+  // Depth 0 groups by year, depth 1 by month; below GROUP_THRESHOLD entries (or once we're two
+  // levels deep) occurrences are listed directly rather than subdivided further.
+  const EVENTS_GROUP_THRESHOLD = 12;
+  const EVENTS_MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+  function formatEventsGroupLabel(groupKey, depth) {
+    if (depth === 0) { return groupKey; }
+    const monthIndex = parseInt(groupKey.slice(4, 6), 10) - 1;
+    return `${EVENTS_MONTH_NAMES[monthIndex] || groupKey.slice(4, 6)} ${groupKey.slice(0, 4)}`;
+  }
+
+  function renderEventDateNode(entries, depth, keyPrefix) {
+    if ((depth >= 2) || (entries.length <= EVENTS_GROUP_THRESHOLD)) {
+      return entries.map((entry) => {
+        const isSelected = (reactData.selectedEventOccurrence?.event_id === entry.event_id && reactData.selectedEventOccurrence?.occurrence_date === entry.occurrence_date)
+          || (reactData.intersectingEventKey === `${entry.event_id}_${entry.occurrence_date}`);
+        return (
+          <Typography
+            key={`event_occ_${keyPrefix}_${entry.event_id}_${entry.occurrence_date}`}
+            onClick={() => { selectEventOccurrence(entry.event_id, entry.occurrence_date, entry.description); }}
+            style={AVATextStyle({
+              size: 1.0,
+              overflow: 'visible',
+              userSelect: 'none',
+              cursor: 'pointer',
+              color: isSelected ? '#c62828' : null,
+              weight: isSelected ? 'bold' : null,
+              margin: { left: (depth + 2) * 1.5, top: 0.25, bottom: 0.25 },
+            })}
+          >
+            {`${makeDate(entry.occurrence_date).absolute} \u2013 ${entry.description}`}
+          </Typography>
+        );
+      });
+    }
+    const keyLen = (depth === 0) ? 4 : 6;
+    const groupsMap = new Map();
+    for (const entry of entries) {
+      const groupKey = entry.occurrence_date.slice(0, keyLen);
+      if (!groupsMap.has(groupKey)) { groupsMap.set(groupKey, []); }
+      groupsMap.get(groupKey).push(entry);
+    }
+    return Array.from(groupsMap.entries()).map(([groupKey, groupEntries]) => {
+      const nodeKey = `${keyPrefix}::${groupKey}`;
+      const isExpanded = eventsExpanded.has(nodeKey);
+      return (
+        <React.Fragment key={`event_group_${nodeKey}`}>
+          <Box
+            display='flex' flexDirection='row'
+            justifyContent='flex-start' alignItems='center'
+            style={{ marginLeft: `${(depth + 2) * 1.5}rem`, cursor: 'pointer' }}
+            onClick={() => { toggleEventsExpanded(nodeKey); }}
+          >
+            <Typography style={AVATextStyle({ size: 1.05, overflow: 'visible', userSelect: 'none', margin: { top: 0.3, bottom: 0.3, right: 0.8 } })}>
+              {`${formatEventsGroupLabel(groupKey, depth)} (${groupEntries.length})`}
+            </Typography>
+            {isExpanded ? <ExpandLessIcon style={{ fontSize: '0.9rem' }} /> : <ExpandMoreIcon style={{ fontSize: '0.9rem' }} />}
+          </Box>
+          {isExpanded && renderEventDateNode(groupEntries, depth + 1, nodeKey)}
+        </React.Fragment>
+      );
+    });
+  }
+
+  // Resolves one occurrence's attendee list and reshapes slotData (owner/display_name) into the
+  // {person_id, name:{first,last}, display_name} shape the right-side rendering expects - kept as
+  // a local wrapper here rather than a change to AVACalendars.occurrenceData itself.
+  async function selectEventOccurrence(event_id, occurrence_date, fallbackDescription) {
+    updateReactData({
+      selectedEventOccurrence: { event_id, occurrence_date, description: fallbackDescription },
+      selectedEventAttendees: [],
+      loadingEventAttendees: true,
+      // Selecting an occurrence is mutually exclusive with a group selection (shared right panel).
+      selectedGroupRec: false,
+      selectedGroup_id: null,
+      selectedGroupIds: [],
+      selectedGroupMembersPerGroup: {},
+      selectedGroupMembers: false,
+      sortedGroupMembers: [],
+      intersectionMode: false,
+      intersectingEventKey: false,
+      selectedPersonRowIds: [],
+    }, true);
+    const occ = await occurrenceData({ client_id: state.session.client_id, event_id, occurrence_id: occurrence_date }).catch(() => null);
+    // Participant-style signups key each slot by the attendee's own person_id (the slot name IS
+    // the person); owner there is just the family account that booked it, and can differ from who's
+    // actually attending - using owner for those would break group-membership matching (see repo notes).
+    const isParticipantSignup = !['time', 'seats'].includes(occ?.signup_type);
+    const attendees = Object.entries(occ?.slots || {})
+      .filter(([, slotInfo]) => !!slotInfo?.owner)
+      .map(([slot_id, slotInfo]) => {
+        const parts = (slotInfo.display_name || '').trim().split(' ');
+        const isGuestSlot = slot_id.toLowerCase().startsWith('guest:');
+        const attendeePersonId = (isParticipantSignup && !isGuestSlot) ? slot_id : slotInfo.owner;
+        return {
+          person_id: attendeePersonId,
+          slot_id,
+          display_name: slotInfo.display_name || '',
+          name: { first: parts[0] || '', last: parts.slice(1).join(' ') }
+        };
+      })
+      .sort((a, b) => (a.display_name > b.display_name ? 1 : -1));
+    updateReactData({
+      selectedEventOccurrence: {
+        event_id,
+        occurrence_date,
+        description: occ?.description || fallbackDescription,
+        time: occ?.time,
+        location: occ?.location
+      },
+      selectedEventAttendees: attendees,
+      loadingEventAttendees: false
+    }, true);
   }
 
   async function initialize() {
@@ -2094,7 +2421,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
           <Box display='flex' flexDirection={isSmallScreen() ? 'column' : 'row'} style={{ flexGrow: 1, height: '100px' }}>
 
             {/* LEFT SIDE */}
-            {(!isSmallScreen() || !reactData.selectedGroupRec) &&
+            {(!isSmallScreen() || !(reactData.selectedGroupRec || reactData.selectedEventOccurrence)) &&
               <Box display='flex' style={{ width: isSmallScreen() ? '95%' : '44.5%', overflow: 'auto' }}
                 flexDirection='column'
                 justifyContent='flex-start'
@@ -2165,21 +2492,45 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                                 const subtree = [listEntry, ...getDescendants(listEntry)];
                                 const allSelected = subtree.every(id => currentIds.includes(id));
                                 let newIds, newMembersPerGroup, intersectionMode = false;
+                                // Preserved by default across a chained ctrl-click; explicitly cleared by the shift/plain branches below.
+                                let intersectingEventKey = reactData.intersectingEventKey || false;
+                                // Ctrl-click narrows the existing display rather than starting over, so the family/caregiver
+                                // toggle (and its already-loaded extraPeople) should survive it instead of being reset below.
+                                let keepExtrasToggle = false;
+                                let narrowedExtraPeople = reactData.extraPeople;
                                 if (event.ctrlKey || event.metaKey) {
                                   intersectionMode = true;
                                   // Ctrl/Cmd+click: intersection — narrow current display to members also in this group's subtree
                                   // PeopleGroups hierarchy: querying the root covers all descendants — no need to loop subtree
                                   const intersectPerGroup = {};
                                   intersectPerGroup[listEntry] = await selectMembers(listEntry, { live: true });
-                                  const intersectPersonIds = new Set(Object.keys(intersectPerGroup[listEntry] || {}));
-                                  // Filter each currently-selected group's member list to the intersection
-                                  const currentPerGroup = reactData.selectedGroupMembersPerGroup || {};
-                                  newMembersPerGroup = {};
-                                  for (const id of currentIds) {
+                                  if (currentIds.length === 0 && reactData.selectedEventOccurrence) {
+                                    // No group was previously selected — the current right-side list is an event's
+                                    // attendees, so intersect this group's members against that attendee list instead.
+                                    const eventAttendeeIds = new Set((reactData.selectedEventAttendees || []).map((a) => a.person_id));
                                     const filtered = Object.fromEntries(
-                                      Object.entries(currentPerGroup[id] || {}).filter(([pid]) => intersectPersonIds.has(pid))
+                                      Object.entries(intersectPerGroup[listEntry] || {}).filter(([pid]) => eventAttendeeIds.has(pid))
                                     );
-                                    if (Object.keys(filtered).length > 0) newMembersPerGroup[id] = filtered;
+                                    newMembersPerGroup = {};
+                                    if (Object.keys(filtered).length > 0) newMembersPerGroup[listEntry] = filtered;
+                                    intersectingEventKey = `${reactData.selectedEventOccurrence.event_id}_${reactData.selectedEventOccurrence.occurrence_date}`;
+                                  } else {
+                                    const intersectPersonIds = new Set(Object.keys(intersectPerGroup[listEntry] || {}));
+                                    // Filter each currently-selected group's member list to the intersection
+                                    const currentPerGroup = reactData.selectedGroupMembersPerGroup || {};
+                                    newMembersPerGroup = {};
+                                    for (const id of currentIds) {
+                                      const filtered = Object.fromEntries(
+                                        Object.entries(currentPerGroup[id] || {}).filter(([pid]) => intersectPersonIds.has(pid))
+                                      );
+                                      if (Object.keys(filtered).length > 0) newMembersPerGroup[id] = filtered;
+                                    }
+                                    // A family member/caregiver can survive an intersection independent of the base person
+                                    // who linked them in - e.g. a caregiver who's directly a member of the ctrl-clicked
+                                    // group, even though the child they belong to isn't. Narrow extraPeople the same way,
+                                    // rather than letting it be wholly re-derived from (and limited to) the new base.
+                                    keepExtrasToggle = true;
+                                    narrowedExtraPeople = (reactData.extraPeople || []).filter(e => intersectPersonIds.has(e.person_id));
                                   }
                                   // Add the Ctrl+clicked subtree to selectedGroupIds so it appears highlighted;
                                   // member filtering is driven by newMembersPerGroup, not newIds
@@ -2187,6 +2538,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                                   // Preserve existing intersectionMode if already active
                                   intersectionMode = true;
                                 } else if (event.shiftKey) {
+                                  intersectingEventKey = false;
                                   // Shift+click: union/toggle — add this subtree to (or remove from) existing selection
                                   if (allSelected) {
                                     // All in subtree selected → deselect all of them
@@ -2210,6 +2562,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                                     newIds = [...currentIds, ...toAdd];
                                   }
                                 } else {
+                                  intersectingEventKey = false;
                                   // Plain click: replace selection with only this subtree
                                   // (toggle off if this subtree is already the entire selection)
                                   const onlyThisSelected = allSelected && currentIds.every(id => subtree.includes(id));
@@ -2239,10 +2592,12 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                                     ? groupsManagedObject[titleSource[0]]
                                     : { group_id: null, group_name: 'Multiple Groups', multi: true };
                                 const newSelectedGroup_id = singleGroup ? titleSource[0] : null;
+                                if (keepExtrasToggle) { skipExtrasRecomputeRef.current = true; }
                                 updateReactData({
                                   selectedGroupIds: newIds,
                                   selectedGroupMembersPerGroup: newMembersPerGroup,
                                   intersectionMode,
+                                  intersectingEventKey,
                                   selectedGroup_id: newSelectedGroup_id,
                                   selectedGroupRec: newSelectedGroupRec,
                                   selectedGroupMembers: Object.keys(newGroupMembers).length > 0 ? newGroupMembers : false,
@@ -2252,8 +2607,12 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                                   selectedPersonFirstName: false,
                                   selectedPersonLastName: false,
                                   selectedPersonRowIds: [],
-                                  showFamilyMembers: false,
-                                  showPrimaryCaregivers: false,
+                                  showFamilyMembers: keepExtrasToggle ? reactData.showFamilyMembers : false,
+                                  showPrimaryCaregivers: keepExtrasToggle ? reactData.showPrimaryCaregivers : false,
+                                  extraPeople: keepExtrasToggle ? narrowedExtraPeople : [],
+                                  // Selecting a group is mutually exclusive with an event occurrence selection.
+                                  selectedEventOccurrence: false,
+                                  selectedEventAttendees: [],
                                 }, true);
                               }}
                               style={AVATextStyle({
@@ -2387,13 +2746,73 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                         }
                       </React.Fragment>
                     ))}
+
+                    {/* EVENTS SECTION - visually appended to the same scrolling list as Groups
+                        above, but backed by entirely separate state/data (see repo memory
+                        notes/events-in-groupcontrol-notes.md). No group-management actions
+                        (add/move/copy/delete/drag) ever apply to these rows. Date-oriented: the
+                        top-level split is Past/Upcoming (across ALL events), then adaptive
+                        Year/Month date groups, then individual occurrences (which may belong to
+                        different events sharing the same date). */}
+                    <Box
+                      display='flex' flexDirection='row'
+                      justifyContent='flex-start' alignItems='center'
+                      key='events_section_header'
+                      style={{ marginTop: '12px', cursor: 'pointer' }}
+                      onClick={async () => {
+                        if (!reactData.eventOccurrences) { await loadEventOccurrences(); }
+                        toggleEventsExpanded('__EVENTS_ROOT__');
+                      }}
+                    >
+                      <EventIcon style={{ fontSize: '1.1rem', marginRight: '0.4rem' }} />
+                      <Typography style={AVATextStyle({ size: 1.2, bold: true, overflow: 'visible', userSelect: 'none' })}>
+                        {'Events'}
+                      </Typography>
+                      {reactData.eventsLoading
+                        ? <CircularProgress size={14} style={{ marginLeft: '8px' }} />
+                        : (eventsExpanded.has('__EVENTS_ROOT__')
+                          ? <ExpandLessIcon style={{ fontSize: '1rem', marginLeft: '0.4rem' }} />
+                          : <ExpandMoreIcon style={{ fontSize: '1rem', marginLeft: '0.4rem' }} />)
+                      }
+                    </Box>
+                    {eventsExpanded.has('__EVENTS_ROOT__') && (
+                      (reactData.eventOccurrences || []).length === 0
+                        ? (!reactData.eventsLoading &&
+                          <Typography key='events_none' style={AVATextStyle({ size: 1, color: 'textSecondary', margin: { left: 1.5 } })}>
+                            {'No events found'}
+                          </Typography>)
+                        : ['upcoming', 'past'].map((sectionName) => {
+                          const sectionEntries = sectionName === 'upcoming' ? upcomingEventOccurrences : pastEventOccurrences;
+                          const isSectionExpanded = eventsExpanded.has(sectionName);
+                          return (
+                            <React.Fragment key={`events_section_${sectionName}`}>
+                              <Box
+                                display='flex' flexDirection='row'
+                                justifyContent='flex-start' alignItems='center'
+                                style={{ marginLeft: '1.5rem', cursor: 'pointer' }}
+                                onClick={() => { toggleEventsExpanded(sectionName); }}
+                              >
+                                <Typography style={AVATextStyle({ size: 1.2, overflow: 'visible', userSelect: 'none', margin: { top: 0.35, bottom: 0.35, right: 0.8 } })}>
+                                  {`${sectionName === 'upcoming' ? 'Upcoming' : 'Past'} (${sectionEntries.length})`}
+                                </Typography>
+                                {isSectionExpanded ? <ExpandLessIcon style={{ fontSize: '1rem' }} /> : <ExpandMoreIcon style={{ fontSize: '1rem' }} />}
+                              </Box>
+                              {isSectionExpanded && (
+                                sectionEntries.length === 0
+                                  ? <Typography style={AVATextStyle({ size: 0.95, color: 'textSecondary', margin: { left: 3 } })}>{'None found'}</Typography>
+                                  : renderEventDateNode(sectionEntries, 0, sectionName)
+                              )}
+                            </React.Fragment>
+                          );
+                        })
+                    )}
                   </Box>
                 </Paper>
               </Box>
             }
 
             {/* RIGHT SIDE */}
-            {reactData.selectedGroupRec &&
+            {reactData.selectedGroupRec && !reactData.selectedEventOccurrence &&
               <Box display='flex' style={{ width: isSmallScreen() ? '95%' : '50%', overflow: 'auto' }} flexDirection='column'
                 justifyContent='flex-start'
                 alignItems='flex-start'
@@ -2508,7 +2927,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                               userSelect: 'none',
                               margin: { top: 0, bottom: 0.8 },
                             }),
-                            opacity: 0.6,
+                            paddingLeft: '24px',
                             borderRadius: '4px',
                             ...personRowSelectedStyle(this_row.person_id),
                           }}
@@ -2521,7 +2940,25 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                         >
                           {this_row.display_name}
                         </Typography>
-                        :
+                        : this_row.isPhantomOwner ?
+                          // narrowed out of the selection by a ctrl-click intersection, but still shown
+                          // (very translucent, non-interactive) as the anchor for a surviving indented extra below
+                          <Typography
+                            key={`g_textphantom-${cX}`}
+                            style={{
+                              ...AVATextStyle({
+                                overflow: 'visible',
+                                size: 1.2,
+                                userSelect: 'none',
+                                margin: { top: 0, bottom: 0.8 },
+                              }),
+                              opacity: 0.3,
+                              borderRadius: '4px',
+                            }}
+                          >
+                            {this_row.display_name}
+                          </Typography>
+                          :
                         <Typography
                           key={`g_textpeople-${cX}`}
                           style={{
@@ -2677,10 +3114,10 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                   <PhotoLibraryIcon
                     classes={{ root: classes.rowButton }}
                     size='medium'
-                    style={{ marginRight: '12px', opacity: (reactData.sortedGroupMembers?.length > 0) ? 1 : 0.4 }}
+                    style={{ marginRight: '12px', opacity: hasExportablePeople ? 1 : 0.4 }}
                     aria-label="open_photo_directory_icon"
                     onClick={() => {
-                      if (reactData.sortedGroupMembers?.length > 0) {
+                      if (hasExportablePeople) {
                         openPhotoDirectory();
                       }
                     }}
@@ -2688,10 +3125,10 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                   <GetAppIcon
                     classes={{ root: classes.rowButton }}
                     size='medium'
-                    style={{ marginRight: reactData.administrative_account ? '12px' : 0, opacity: (reactData.sortedGroupMembers?.length > 0) ? 1 : 0.4 }}
+                    style={{ marginRight: reactData.administrative_account ? '12px' : 0, opacity: hasExportablePeople ? 1 : 0.4 }}
                     aria-label="download_csv_icon"
                     onClick={() => {
-                      if (reactData.sortedGroupMembers?.length > 0) {
+                      if (hasExportablePeople) {
                         openFieldPicker();
                       }
                     }}
@@ -2711,6 +3148,128 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                       edge="start"
                     />
                   }
+                </Box>
+              </Box>
+            }
+
+            {/* RIGHT SIDE - Event occurrence attendees. Fully separate from the group right panel
+                above: no rename-on-click, no drag-to-remove - but Send/Directory/Export icons are
+                shared via getVisibleRawPeopleList(), which reads attendees instead of group members. */}
+            {reactData.selectedEventOccurrence && !reactData.selectedGroupRec &&
+              <Box display='flex' style={{ width: isSmallScreen() ? '95%' : '50%', overflow: 'auto' }} flexDirection='column'
+                justifyContent='flex-start'
+                alignItems='flex-start'
+                borderLeft={isSmallScreen() ? 0 : 2}
+                marginLeft='16px'
+                paddingLeft={'32px'}
+              >
+                <Typography
+                  key={'ev_name'}
+                  style={AVATextStyle({
+                    size: 1.5,
+                    overflow: 'visible',
+                    bold: true,
+                    margin: { top: 1, bottom: 0 },
+                  })}>
+                  {reactData.selectedEventOccurrence.description}
+                </Typography>
+                <Typography
+                  style={AVATextStyle({
+                    size: 1.0,
+                    overflow: 'visible',
+                    color: 'textSecondary',
+                    margin: { top: 0, bottom: 0.3 },
+                  })}>
+                  {`${makeDate(reactData.selectedEventOccurrence.occurrence_date).absolute}${reactData.selectedEventOccurrence.time ? ` \u2022 ${reactData.selectedEventOccurrence.time}` : ''}`}
+                </Typography>
+                <Typography
+                  style={AVATextStyle({
+                    size: 0.9,
+                    margin: { top: 0, bottom: 1.2 },
+                    color: 'textSecondary',
+                    overflow: 'visible'
+                  })}
+                >
+                  {`${reactData.selectedEventAttendees.length} attending`}
+                </Typography>
+                <Paper component={Box} width='100%' elevation={0} overflow='auto' square
+                  style={{ scrollbarWidth: 'thin', flexGrow: 1, display: 'flex' }}
+                >
+                  <Box display='flex' flexDirection='column'
+                    justifyContent='flex-start'
+                    alignItems='flex-start'
+                  >
+                    {reactData.loadingEventAttendees
+                      ? <CircularProgress size={20} style={{ margin: '8px' }} />
+                      : reactData.selectedEventAttendees.length === 0
+                        ? <Typography style={AVATextStyle({ size: 1, color: 'textSecondary' })}>{'No attendees signed up yet'}</Typography>
+                        : eventAttendeeDisplayRows.map((attendee, aX) => (
+                          <Typography
+                            key={`ev_attendee_${attendee.person_id}`}
+                            style={{
+                              ...AVATextStyle({
+                                overflow: 'visible',
+                                size: 1.2,
+                                cursor: 'pointer',
+                                userSelect: 'none',
+                                margin: { top: 0, bottom: 0.8 },
+                              }),
+                              borderRadius: '4px',
+                              ...personRowSelectedStyle(attendee.person_id),
+                            }}
+                            onClick={(e) => { handlePersonRowSelectClick(e, attendee, aX, eventAttendeeDisplayRows); }}
+                          >
+                            {attendee.display_name}
+                          </Typography>
+                        ))
+                    }
+                  </Box>
+                </Paper>
+                <Box
+                  display='flex'
+                  flexDirection='row'
+                  justifyContent='center'
+                  alignItems='center'
+                  style={{ alignSelf: 'center', marginTop: '6px' }}
+                >
+                  <SendIcon
+                    classes={{ root: classes.rowButton }}
+                    size='medium'
+                    style={{ marginRight: '12px', opacity: (reactData.selectedEventAttendees.length > 0) ? 1 : 0.4, cursor: (reactData.selectedEventAttendees.length > 0) ? 'pointer' : 'default' }}
+                    aria-label="send_mail_icon_event"
+                    onClick={() => {
+                      const rowSelection = reactData.selectedPersonRowIds || [];
+                      const sourceAttendees = rowSelection.length > 0
+                        ? reactData.selectedEventAttendees.filter((a) => rowSelection.includes(a.person_id))
+                        : reactData.selectedEventAttendees;
+                      if (sourceAttendees.length === 0) { return; }
+                      const sendMessage = sourceAttendees.map((a) => ({ person_id: a.person_id, person_name: a.display_name }));
+                      updateReactData({ sendMessage }, true);
+                    }}
+                    edge="start"
+                  />
+                  <PhotoLibraryIcon
+                    classes={{ root: classes.rowButton }}
+                    size='medium'
+                    style={{ marginRight: '12px', opacity: (reactData.selectedEventAttendees.length > 0) ? 1 : 0.4 }}
+                    aria-label="open_photo_directory_icon_event"
+                    onClick={() => {
+                      if (reactData.selectedEventAttendees.length > 0) {
+                        openPhotoDirectory();
+                      }
+                    }}
+                  />
+                  <GetAppIcon
+                    classes={{ root: classes.rowButton }}
+                    size='medium'
+                    style={{ opacity: (reactData.selectedEventAttendees.length > 0) ? 1 : 0.4 }}
+                    aria-label="download_csv_icon_event"
+                    onClick={() => {
+                      if (reactData.selectedEventAttendees.length > 0) {
+                        openFieldPicker();
+                      }
+                    }}
+                  />
                 </Box>
               </Box>
             }
@@ -3228,7 +3787,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                 groupMemberList: reactData.photoDirectoryPeople,
                 pClient: pSession.client_id,
                 pGroup: reactData.selectedGroup_id,
-                    pGroupName: reactData.selectedGroupRec?.group_name || reactData.selectedGroup_id,
+                    pGroupName: reactData.selectedEventOccurrence?.description || reactData.selectedGroupRec?.group_name || reactData.selectedGroup_id,
                 hideContactInfo: reactData.no_contact_directory
               }}
               onReset={closeDirectory}
@@ -3411,6 +3970,28 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
             const groupName = groupsManagedObject[deleteGroupConfirmTarget]?.group_name;
             setDeleteGroupConfirmTarget(null);
             await executeDeleteGroup(deleteGroupConfirmTarget, groupName);
+          }}
+        />
+      }
+      {removeConflict &&
+        <AVAConfirm
+          promptText={[
+            'Still a Member of a Sub-Group',
+            `${(removeConflict.draggedFrom.personObj.name?.first || '').trim() || 'This person'} is also still an active member of ${listFromArray(removeConflict.conflictGroupIds.map(g => groupsManagedObject[g]?.group_name || g))}, which ${removeConflict.conflictGroupIds.length > 1 ? 'are' : 'is'} sub-group${removeConflict.conflictGroupIds.length > 1 ? 's' : ''} of ${groupsManagedObject[removeConflict.draggedFrom.personGroup]?.group_name || 'this group'}.`,
+            `${removeConflict.action === 'move' ? 'Moving' : 'Removing'} them from here alone won't fully remove their access to this branch. Remove them from the sub-group${removeConflict.conflictGroupIds.length > 1 ? 's' : ''} first, or tap "Remove From All" to also remove them from the sub-group${removeConflict.conflictGroupIds.length > 1 ? 's' : ''} at the same time.`
+          ]}
+          cancelText={'Cancel'}
+          confirmText={'Remove From All'}
+          onCancel={() => { setRemoveConflict(null); }}
+          onConfirm={async () => {
+            const { draggedFrom, droppedOn, conflictGroupIds, action } = removeConflict;
+            setRemoveConflict(null);
+            if (action === 'move') {
+              await executeMovePerson(draggedFrom, droppedOn, conflictGroupIds);
+            }
+            else {
+              await executeRemovePersonFromGroup(draggedFrom, conflictGroupIds);
+            }
           }}
         />
       }
@@ -3605,7 +4186,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
         </Box>
       }
       <DialogActions className={classes.buttonArea} >
-        {(isSmallScreen() && (reactData.selectedPersonRec || reactData.selectedGroupRec)) &&
+        {(isSmallScreen() && (reactData.selectedPersonRec || reactData.selectedGroupRec || reactData.selectedEventOccurrence)) &&
           <Button
             className={AVAClass.AVAButton}
             style={{ backgroundColor: 'white', color: 'blue' }}
@@ -3621,6 +4202,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                 selectedPersonRec: false,
                 selectedPersonFirstName: false,
                 selectedPersonLastName: false,
+                selectedEventOccurrence: false,
+                selectedEventAttendees: [],
               }, true);
             }}
           >

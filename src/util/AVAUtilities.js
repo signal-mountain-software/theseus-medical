@@ -2379,6 +2379,22 @@ export async function formatSelectEventDisplayValue({ rawValue, client_id, perso
   };
 }
 
+// General-purpose true/false/yes/no (any case, boolean or string) -> 'true'/'false' token,
+// or null if rawValue isn't boolean-like. Shared by FormFillB (yes/no field value matching and
+// default coercion) and PeopleMaintenance/AdministrativeSection (boolean field display/save) so
+// both agree on what counts as "boolean-like" for a field whose persisted DB type may be a real
+// boolean in one record and a 'yes'/'no'/'true'/'false' string in another. Distinct from the
+// DataDictionary true_if/false_if custom-rule pipeline (normalizeBooleanInput/resolveBooleanValue
+// below), which resolves formatted *display* values against per-dictionary-record rules.
+export const booleanLikeToken = (rawValue) => {
+  if (typeof rawValue === 'boolean') { return rawValue ? 'true' : 'false'; }
+  if (typeof rawValue !== 'string') { return null; }
+  const token = rawValue.trim().toLowerCase();
+  if (['true', 'yes', 'y', 't'].includes(token)) { return 'true'; }
+  if (['false', 'no', 'n', 'f'].includes(token)) { return 'false'; }
+  return null;
+};
+
 function normalizeBooleanInput(rawValue, dictionaryRec = {}) {
   const dictionaryValues = (dictionaryRec && typeof dictionaryRec.values === 'object' && !Array.isArray(dictionaryRec.values))
     ? dictionaryRec.values

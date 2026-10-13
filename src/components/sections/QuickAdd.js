@@ -32,6 +32,7 @@
  * - contact_info: Email and phone extracted from form fields
  * - family_groups: Array containing family_id (if multiple family members)
  * - account_type: From selected account configuration
+ * - person_type: Explicit staff, family, core, or guest from account configuration
  * - Additional field values from form input
  * 
  * SessionsV2 Table Record Structure:
@@ -72,6 +73,8 @@ import { getGroupAccess, addMember } from '../../util/AVAGroups';
 import { makeDate } from '../../util/AVADateTime';
 import { AVATextStyle, AVAclasses } from '../../util/AVAStyles';
 import { sendMessages } from '../../util/AVAMessages';
+import { getConfiguredPersonType, resolvePersonType, getPersonTypeLabel } from '../../util/AVAPersonType';
+import AVAConfirm from '../forms/AVAConfirm';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
 import { Auth } from 'aws-amplify';
@@ -119,7 +122,7 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
-export default ({ onClose, options = {} }) => {
+export default ({ onClose, options = {}, new_account_form }) => {
 
   const classes = useStyles();
   const AVAClass = AVAclasses();
@@ -127,6 +130,9 @@ export default ({ onClose, options = {} }) => {
   const isMounted = React.useRef(false);
   const dateValidationTimeouts = React.useRef({});
   const dialogFocusRef = React.useRef(null);
+  const personTypeConfirmationRef = React.useRef(null);
+  const savingRef = React.useRef(false);
+  const [personTypeConfirmation, setPersonTypeConfirmation] = React.useState(null);
 
   const [, , removeCookie] = useCookies(['AVAuser']);
 
@@ -139,6 +145,7 @@ export default ({ onClose, options = {} }) => {
     client_id: state?.session?.client_id || options?.client_id || null,
     selected_account_type: '',
     selected_account_config: null,
+    supplied_account_config: null,
     form_fields: {},
     field_values: {},
     password_confirm: '',   // confirmation entry for *password field
@@ -201,6 +208,9 @@ export default ({ onClose, options = {} }) => {
   React.useEffect(() => {
     async function initialize() {
       let reactUpd = {};
+      const hasSuppliedConfig = new_account_form !== undefined && new_account_form !== null;
+      if (hasSuppliedConfig && !validateAccountConfiguration(new_account_form)) { return; }
+      const suppliedConfig = hasSuppliedConfig ? deepCopy(new_account_form) : null;
 
       // Build list of groups this patient is allowed to access, using the same group access rules.
       const patientId = state?.session?.patient_id || state?.session?.person_id || state?.user?.user_id;
@@ -218,6 +228,16 @@ export default ({ onClose, options = {} }) => {
       }
 
       reactUpd.available_to_groups = availableToGroups;
+      if (suppliedConfig && !isAccountConfigurationAvailable(suppliedConfig, availableToGroups)) {
+        showAlert({
+          severity: 'error',
+          title: 'Account Type Unavailable',
+          message: 'The supplied account configuration is not available to this user under its admin or group restrictions.',
+          autoHide: false
+        });
+        return;
+      }
+      reactUpd.supplied_account_config = suppliedConfig;
 
       // Grab the new_account_form object from session or Customizations table
       // Also load client_style for pre-auth settings — both reads in parallel
@@ -252,37 +272,15 @@ export default ({ onClose, options = {} }) => {
 
       if (newAccountForm) {
         reactUpd.all_account_prompts = deepCopy(newAccountForm);
-        reactUpd.new_account_prompts = deepCopy(newAccountForm).filter(entry => {
-          // If restrict_to_admin is true, only include if user is administrative account
-          if (entry.restrict_to_admin && (!reactData.administrative_account || options.source === 'url_parameter' || options.source === 'login_preauth')) {
-            return false;
-          }
-
-          // If restrict_to_groups exists, it must include at least one group in available_to_groups.
-          if (entry.restrict_to_groups) {
-            const requiredGroups = Array.isArray(entry.restrict_to_groups)
-              ? entry.restrict_to_groups
-              : [entry.restrict_to_groups];
-            const normalizedRequired = requiredGroups
-              .map(groupId => String(groupId || '').trim())
-              .filter(Boolean);
-
-            if (normalizedRequired.length > 0) {
-              const hasMatch = normalizedRequired.some(groupId => availableToGroups.includes(groupId));
-              if (!hasMatch) {
-                return false;
-              }
-            }
-          }
-
-          return true;
-        });
+        reactUpd.new_account_prompts = deepCopy(newAccountForm)
+          .filter(entry => isAccountConfigurationAvailable(entry, availableToGroups));
       }
-
-      // If options.family_id is provided, load the existing FamilyGroups record
-      if (options?.family_id) {
-        loadExistingFamily(options.family_id, reactUpd);
-        return; // Exit early; loadExistingFamily will update state
+      if (suppliedConfig) {
+        reactUpd.all_account_prompts = [
+          suppliedConfig,
+          ...(reactUpd.all_account_prompts || []).filter(entry => entry.account_type !== suppliedConfig.account_type)
+        ];
+        reactUpd.new_account_prompts = [suppliedConfig];
       }
 
       // Determine initial stage based on how QuickAdd was invoked
@@ -312,7 +310,14 @@ export default ({ onClose, options = {} }) => {
         reactUpd.stage = 'select_account_type';
       }
 
-      updateReactData(reactUpd, true);
+      if (options?.family_id) {
+        // Preserve verification for supplied configurations, even when linking a family.
+        if (!suppliedConfig) { reactUpd.stage = 'select_account_type'; }
+        if (!await loadExistingFamily(options.family_id, reactUpd)) { return; }
+        if (!suppliedConfig) { return; }
+      } else {
+        updateReactData(reactUpd, true);
+      }
 
       // Apply the already-validated code immediately, bypassing the name-verification stage above.
       if (invokedViaLoginPreauth && options.preauth_code) {
@@ -327,6 +332,10 @@ export default ({ onClose, options = {} }) => {
 
     return () => {
       isMounted.current = false;
+      if (personTypeConfirmationRef.current) {
+        personTypeConfirmationRef.current.reject(new Error('Person type confirmation interrupted; account was not saved.'));
+        personTypeConfirmationRef.current = null;
+      }
       // Clear all date validation timeouts on unmount using captured ref
       Object.values(timeoutsRef).forEach(timeout => {
         if (timeout) clearTimeout(timeout);
@@ -339,6 +348,27 @@ export default ({ onClose, options = {} }) => {
       dialogFocusRef.current.focus();
     }
   }, []);
+
+  React.useEffect(() => {
+    if (reactData.stage === 'select_account_type' && reactData.current_member_index === 0 && reactData.supplied_account_config) {
+      handleAccountTypeChange({ target: { value: reactData.supplied_account_config.account_type } });
+    }
+  }, [reactData.stage, reactData.current_member_index, reactData.supplied_account_config]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const isAccountConfigurationAvailable = (entry, availableGroups) => {
+    if (entry.restrict_to_admin && (!reactData.administrative_account || options.source === 'url_parameter' || options.source === 'login_preauth')) {
+      return false;
+    }
+    if (entry.restrict_to_groups) {
+      const requiredGroups = [entry.restrict_to_groups].flat()
+        .map(groupId => String(groupId || '').trim())
+        .filter(Boolean);
+      if (requiredGroups.length > 0 && !requiredGroups.some(groupId => availableGroups.includes(groupId))) {
+        return false;
+      }
+    }
+    return true;
+  };
 
   /**
    * Load an existing FamilyGroups record when adding members to an existing family
@@ -360,7 +390,7 @@ export default ({ onClose, options = {} }) => {
         console.log('Loaded existing FamilyGroups record:', result);
         reactUpd.existing_family_rec = result;
         reactUpd.family_id = familyId;
-        reactUpd.stage = 'select_account_type';
+        reactUpd.stage = reactUpd.stage || 'select_account_type';
 
         showAlert({
           severity: 'info',
@@ -376,9 +406,11 @@ export default ({ onClose, options = {} }) => {
           message: `Could not find family group with ID: ${familyId}`,
           autoHide: false
         });
+        return false;
       }
 
       updateReactData(reactUpd, true);
+      return true;
     } catch (error) {
       console.error('Error loading existing FamilyGroups record:', error);
       showAlert({
@@ -387,20 +419,12 @@ export default ({ onClose, options = {} }) => {
         message: `Failed to load family group: ${error.message}`,
         autoHide: false
       });
+      return false;
     }
   };
 
   const gatherFormFields = async (selectedConfig) => {
-    if (!selectedConfig?.field_list || !Array.isArray(selectedConfig.field_list)) {
-      console.log('No field_list found in selected configuration');
-      showAlert({
-        severity: 'error',
-        title: 'Configuration Error',
-        message: 'No field list found in the selected account type configuration.',
-        autoHide: false
-      });
-      return;
-    }
+    if (!validateAccountConfiguration(selectedConfig)) { return; }
 
     setReactData(prev => ({ ...prev, loading_fields: true }));
 
@@ -572,6 +596,10 @@ export default ({ onClose, options = {} }) => {
   };
 
   const handleChangeAccountType = () => {
+    if (reactData.supplied_account_config && reactData.current_member_index === 0) {
+      proceedWithExit();
+      return;
+    }
     setReactData(prev => ({
       ...prev,
       selected_account_type: '',
@@ -796,6 +824,48 @@ export default ({ onClose, options = {} }) => {
     }));
   };
 
+  const validatePersonTypeConfiguration = (accountConfig) => {
+    try {
+      getConfiguredPersonType(accountConfig);
+      return true;
+    } catch (error) {
+      console.error('QuickAdd person_type configuration error:', error);
+      showAlert({
+        severity: 'error',
+        title: 'Account Configuration Error',
+        message: error.message,
+        autoHide: false
+      });
+      return false;
+    }
+  };
+
+  const validateAccountConfiguration = (accountConfig) => {
+    if (!accountConfig || typeof accountConfig !== 'object' || Array.isArray(accountConfig)
+      || typeof accountConfig.account_type !== 'string' || !accountConfig.account_type.trim()
+      || !Array.isArray(accountConfig.field_list)) {
+      const message = 'An account configuration must be a single object with a non-empty account_type and a field_list array.';
+      console.error('QuickAdd account configuration error:', message);
+      showAlert({ severity: 'error', title: 'Account Configuration Error', message, autoHide: false });
+      return false;
+    }
+    return validatePersonTypeConfiguration(accountConfig);
+  };
+
+  const confirmPersonTypeChange = (personName, currentType, configuredType) => {
+    return new Promise((resolve, reject) => {
+      personTypeConfirmationRef.current = { resolve, reject };
+      setPersonTypeConfirmation({ personName, currentType, configuredType });
+    });
+  };
+
+  const finishPersonTypeConfirmation = (changeType) => {
+    const pending = personTypeConfirmationRef.current;
+    personTypeConfirmationRef.current = null;
+    setPersonTypeConfirmation(null);
+    if (pending) { pending.resolve(changeType); }
+  };
+
   // Returns true when a field is required.
   // Sole authority is the config-level required array so that required status
   // is correct on every pass regardless of what a Form_Fields DB record says.
@@ -805,6 +875,7 @@ export default ({ onClose, options = {} }) => {
   };
 
   const saveCurrentFamilyMember = async () => {
+    if (!validatePersonTypeConfiguration(reactData.selected_account_config)) { return; }
     // Validate required fields before anything else
     const requiredErrors = {};
     Object.entries(reactData.form_fields || {}).forEach(([fieldName, fieldData]) => {
@@ -1154,6 +1225,15 @@ export default ({ onClose, options = {} }) => {
   const applyPreAuthResult = async (preAuthRec) => {
     const preauthData = preAuthRec.preauth_data || {};
     const accountType = preauthData.account_type || '';
+    if (reactData.supplied_account_config && accountType !== reactData.supplied_account_config.account_type) {
+      showAlert({
+        severity: 'error',
+        title: 'Authorization Error',
+        message: 'This authorization code does not match the supplied account type. Please contact support.',
+        autoHide: false
+      });
+      return;
+    }
     // Search unfiltered prompts so admin-restricted types still work
     const allPrompts = reactData.all_account_prompts || reactData.new_account_prompts || [];
     const selectedConfig = allPrompts.find(p => p.account_type === accountType) || null;
@@ -1865,6 +1945,7 @@ export default ({ onClose, options = {} }) => {
    */
   const savePeopleRecord = async (member) => {
     try {
+      const configuredPersonType = getConfiguredPersonType(member.account_config);
       const normalizeNameForStorage = (value) => {
         return titleCase(String(value || '').trim());
       };
@@ -1888,6 +1969,15 @@ export default ({ onClose, options = {} }) => {
         if (!existingRecord) {
           throw new Error(`People record not found for ${member.proposed_user_id}`);
         }
+        const personType = await resolvePersonType(
+          member.account_config,
+          existingRecord.person_type,
+          (currentType, nextType) => confirmPersonTypeChange(
+            existingRecord.display_name || `${existingRecord.name?.first || ''} ${existingRecord.name?.last || ''}`.trim() || existingRecord.person_id,
+            currentType,
+            nextType
+          )
+        );
 
         // Apply form field values via saveAs paths
         const fv = member.field_values || {};
@@ -1947,6 +2037,7 @@ export default ({ onClose, options = {} }) => {
           }
         });
 
+        existingRecord.person_type = personType;
         existingRecord.last_update = new Date().toISOString();
         console.log('Updating existing People record:', existingRecord);
         await putDb({ TableName: 'People', Item: existingRecord });
@@ -2196,6 +2287,8 @@ export default ({ onClose, options = {} }) => {
         }
       });
 
+      // Apply after dynamic fields so saveAs and preauthorization cannot bypass classification.
+      peopleRecord.person_type = configuredPersonType;
       peopleRecord.created_on = new Date().toISOString();  // Expected output: "2011-10-05T14:48:00.000Z"
       peopleRecord.last_update = new Date().toISOString();  // Expected output: "2011-10-05T14:48:00.000Z"
 
@@ -3832,6 +3925,11 @@ export default ({ onClose, options = {} }) => {
               }}
               size='small'
               onClick={async () => {
+                if (savingRef.current) { return; }
+                for (const member of reactData.family_members) {
+                  if (!validatePersonTypeConfiguration(member.account_config)) { return; }
+                }
+                savingRef.current = true;
                 try {
                   // Show loading state
                   showAlert({
@@ -3887,6 +3985,7 @@ export default ({ onClose, options = {} }) => {
                     } catch (error) {
                       console.error('Failed to save member:', member, error);
                       failedMembers.push(`${getFamilyMemberName(member)}: ${error.message}`);
+                      if (!isMounted.current) { return; }
                     }
                   }
 
@@ -3992,6 +4091,8 @@ export default ({ onClose, options = {} }) => {
                       `Failed to save family member data: ${error.message}`,
                     autoHide: false
                   });
+                } finally {
+                  savingRef.current = false;
                 }
               }}
             >
@@ -4045,6 +4146,20 @@ export default ({ onClose, options = {} }) => {
             </Box>
           </Box>
         </Dialog>
+      }
+
+      {personTypeConfirmation &&
+        <AVAConfirm
+          promptText={[
+            'Confirm Person Type',
+            `${personTypeConfirmation.personName} is currently classified as ${getPersonTypeLabel(personTypeConfirmation.currentType) || `an unrecognized person type (${JSON.stringify(personTypeConfirmation.currentType)})`}.`,
+            `This account configuration specifies ${getPersonTypeLabel(personTypeConfirmation.configuredType)}. Keep the current classification or change it?`
+          ]}
+          cancelText={`Keep ${getPersonTypeLabel(personTypeConfirmation.currentType) || 'Current Value'}`}
+          confirmText={`Change to ${getPersonTypeLabel(personTypeConfirmation.configuredType)}`}
+          onCancel={() => finishPersonTypeConfirmation(false)}
+          onConfirm={() => finishPersonTypeConfirmation(true)}
+        />
       }
 
       {/* Alert/Snackbar for error and success messages */}

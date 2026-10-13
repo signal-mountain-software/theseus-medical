@@ -511,6 +511,31 @@ export default ({ currentValues, ogValues, errorList, setError, reactData, updat
         defaultValue={currentValues.peopleRec?.address?.address2 || ''}
         helperText={'Address Line 2'}
       />
+      <TextField style={{ width: '550px', maxWidth: '100%' }}
+        id='apartment_suite'
+        key={`profileSection__apartment_suite__${currentValues.peopleRec.address?.apartment_suite || 0}`}
+        autoComplete='off'
+        onBlur={async (event) => {
+          const enteredAptSuite = event.target.value.trim();
+          currentValues.peopleRec.address.apartment_suite = enteredAptSuite;
+          let updateObj = {
+            updateList:
+              [{
+                tableName: 'peopleRec',
+                fieldName: 'address.apartment_suite',
+                newData: enteredAptSuite
+              },
+              {
+                tableName: 'peopleRec',
+                fieldName: 'location',
+                newData: makeLocation()
+              }]
+          };
+          await updateField(updateObj);
+        }}
+        defaultValue={currentValues.peopleRec?.address?.apartment_suite || ''}
+        helperText={'Apartment/Suite'}
+      />
       <Box display='flex' alignItems='center'
         justifyContent='flex-start' flexDirection='row'>
         <TextField style={{ width: '200px' }}

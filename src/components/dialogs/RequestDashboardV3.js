@@ -444,9 +444,10 @@ export default function RequestDashboardV3({ factName, request = {}, options = {
     const _addr = requestorRec?.address || {};
     const _addrStreet = _addr.address ? _addr.address.split('~')[0] : '';
     const _addrStreet2 = _addr.address2 || '';
+    const _addrAptSuite = _addr.apartment_suite || '';
     const _addrStateZip = [_addr.state, (_addr.zip_code || _addr.zip)].filter(Boolean).join(' ');
     const _addrCityLine = [_addr.city, _addrStateZip].filter(Boolean).join(', ');
-    raw.workData.requestor_address = [_addrStreet, _addrStreet2, _addrCityLine].filter(Boolean).join('; ');
+    raw.workData.requestor_address = [_addrStreet, _addrStreet2, _addrAptSuite, _addrCityLine].filter(Boolean).join('; ');
     raw.workData.requestor_image = await getImage(raw.requestor);
 
     const req = raw.current_request ?? raw.original_request;

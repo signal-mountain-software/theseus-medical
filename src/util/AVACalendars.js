@@ -667,6 +667,39 @@ export async function getCalendarEntries(body, statusUpdate) {
   });
 }
 
+// Lists every event master record (not occurrences/slots) for a client, via the
+// record_type-index GSI - used by pickers (e.g. FormBuilder's select_event authoring UI)
+// that need to let an author choose from existing events by description, since event_id
+// itself is an opaque generated slug.
+export async function getEventMasterList(body) {
+  const client = body.client || body.client_id;
+  let qQ = {
+    TableName: 'Calendar',
+    IndexName: 'record_type-index',
+    KeyConditionExpression: 'client = :c and record_type = :e',
+    ExpressionAttributeValues: { ':c': client, ':e': 'event' }
+  };
+  let events = [];
+  let qR;
+  do {
+    qR = await dbClient.query(qQ).promise().catch((error) => {
+      cl(`Error reading Calendar event list: ${error}`);
+    });
+    if (recordExists(qR)) {
+      events.push(...(qR.Items || []).map((rec) => ({
+        event_id: rec.event_id,
+        description: rec.eventData?.event_data?.description || rec.event_id,
+        type: rec.eventData?.event_data?.type,
+        start_Date: rec.eventData?.start_Date,
+        end_date: rec.eventData?.end_date,
+      })));
+    }
+    qQ.ExclusiveStartKey = qR?.LastEvaluatedKey;
+  } while (qR?.LastEvaluatedKey);
+
+  return events.sort((a, b) => (a.description || '').localeCompare(b.description || ''));
+}
+
 export async function updateCalendarEntry(body) {
 
   // body is a single, or an array of, service request records
@@ -2695,6 +2728,7 @@ export async function occurrenceData(body) {
         if (rec.eventData.sign_up.type === 'time') { returnObj.type = 'time'; }
         else { returnObj.type = 'seats'; }
       }
+      if (!returnObj.signup_type && rec.eventData.sign_up) { returnObj.signup_type = rec.eventData.sign_up.type; }
       if (!returnObj.time) {
         if (rec.eventData.event_data.time) {
           returnObj.time = rec.eventData.event_data.time.from;
@@ -2740,6 +2774,7 @@ export async function occurrenceData(body) {
         if (rec.occData.sign_up) {
           if (rec.occData.sign_up.type === 'time') { returnObj.type = 'time'; }
           else { returnObj.type = 'seats'; }
+          if (!returnObj.signup_type) { returnObj.signup_type = rec.occData.sign_up.type; }
         }
         if ('slotPattern' in rec.occData.event_data) {
           for (const sID in returnObj.slots) {

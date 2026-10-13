@@ -58,6 +58,8 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
   const optionsRef = React.useRef(options);
   const searchInputRef = React.useRef(null);
   const administrative_account = (['admin', 'master'].includes(state.user.account_class));
+  const withSpecialValues = options.withSpecialValues || false;
+  const specialValues = withSpecialValues ? (options.specialValueList || reactData.special_values || ['*all', '*none']) : [];
 
   // Virtual scrolling state
   const [maxPeopleToRender, setMaxPeopleToRender] = React.useState(100);
@@ -432,8 +434,8 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
     return (
       (options.showAll && (isEmpty(reactData.linkedPersonFilter) || reactData.linkedPersonFilter?.raw?.length < 2))
       ||
-      (options.withSpecialValues
-        && (reactData.special_values.some(this_special => { return (this_special.person_id === this_person.person_id); }))
+      (withSpecialValues
+        && (specialValues.some(this_special => { return (this_special.person_id === this_person.person_id); }))
       )
       ||
       (
@@ -574,7 +576,7 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
           const scrolledToBottom = element.scrollHeight - element.scrollTop <= element.clientHeight + 200;
 
           if (scrolledToBottom && reactData.accessList) {
-            const fullPeopleList = (options.withSpecialValues ? reactData.special_values || [] : []).concat(reactData.accessList);
+            const fullPeopleList = withSpecialValues ? specialValues.concat(reactData.accessList) : reactData.accessList;
             const filteredCount = fullPeopleList.filter(person => OKtoShow(person)).length;
 
             if (maxPeopleToRender < filteredCount) {
@@ -894,7 +896,7 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
 
         {reactData.accessList &&
           !options.hidePeople &&
-          ((options.withSpecialValues ? reactData.special_values : []).concat(reactData.accessList).length > 0) &&
+          ((withSpecialValues ? specialValues.concat(reactData.accessList) : reactData.accessList).length > 0) &&
           <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
             <Typography
               style={{ fontWeight: 'bold', paddingTop: '2px', marginTop: '6.5px', marginBottom: '4px', textWrapStyle: 'balance' }}
@@ -906,7 +908,7 @@ export default ({ reactData, updateReactData, onClose, options = {} }) => {
             >
               {(() => {
                 // Pre-filter the people list, then apply virtual scrolling
-                const fullPeopleList = (options.withSpecialValues ? reactData.special_values || [] : []).concat(reactData.accessList);
+                const fullPeopleList = withSpecialValues ? specialValues.concat(reactData.accessList) : reactData.accessList;
                 const filteredPeople = fullPeopleList.filter(person => OKtoShow(person));
                 const totalFiltered = filteredPeople.length;
                 const peopleToShow = filteredPeople.slice(0, maxPeopleToRender);
