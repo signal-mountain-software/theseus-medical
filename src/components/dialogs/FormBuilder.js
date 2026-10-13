@@ -239,6 +239,23 @@ const describeConditionAudience = (conditionValues) => {
     return parts.join(', ');
 };
 
+// Every form implicitly has one more "stage" beyond its last real section: the whole form
+// being complete. FormFillB's initializeFromFormDefinition always normalizes exactly this into
+// formRec.stages (stripping out and re-appending it last - see that function's comments) so
+// on_complete_message/on_complete_notify/on_complete_groups can be attached to "the form
+// finished" itself, not just to one section's stage. This mirrors that same stage_name here so
+// the editor can model it with the identical per-stage rule-icon machinery used everywhere else.
+const COMPLETE_STAGE_NAME = 'complete';
+
+// Returns stages with a COMPLETE_STAGE_NAME entry guaranteed present - preserving one that
+// already exists (and whatever on_complete_* properties it carries) rather than ever touching
+// it, only synthesizing a blank one if none is found yet (e.g. a form saved before this existed).
+const ensureCompleteStage = (stages) => (
+    stages.some((stage) => stage.stage_name === COMPLETE_STAGE_NAME)
+        ? stages
+        : [...stages, { stage_name: COMPLETE_STAGE_NAME }]
+);
+
 const blankForm = (client_id) => {
     const initialSection = blankSection();
     const stage_name = makeSectionStageName(initialSection.section_name, []);
@@ -250,7 +267,7 @@ const blankForm = (client_id) => {
         category: '',
         active: true,
         sections: [initialSection],
-        stages: [{ stage_name }],
+        stages: ensureCompleteStage([{ stage_name }]),
     };
 };
 
@@ -319,6 +336,14 @@ export default ({ onClose, directForm }) => {
     // Which value's message/notify/groups rule popup is open, if any - see the "Per-value stage
     // rules" block below for classifyFieldStageRules/buildFieldStageRuleOutput.
     const [ruleEditorTarget, setRuleEditorTarget] = React.useState(null); // { sectionIdx, fieldIdx, value, kind }
+    // The rule editor's working copy, seeded (see both icons' onClick below) from the existing
+    // rule - or a blank defaultEditForKind(kind) - the moment the dialog opens. Every edit made
+    // while the dialog is open only updates this draft; nothing is written back into
+    // editingForm's stage array until the Save button (see the Rule Editor dialog body) is
+    // clicked. This is what lets Exit (the button, backdrop click, or Escape) and "Remove Rule"
+    // have the unambiguous meaning their names imply, instead of every keystroke already having
+    // half-committed a change you might then tap away from.
+    const [ruleEditorDraft, setRuleEditorDraft] = React.useState(null);
     // Transient UI-only toggle for the open rule editor's content source - deliberately NOT part
     // of the persisted edit (template_id/text must never both be set, including transiently as ''
     // - see the Rule Editor dialog body for why this stays separate from currentEdit).
@@ -591,7 +616,7 @@ export default ({ onClose, directForm }) => {
             category: cloned.category || '',
             active: (cloned.active !== undefined) ? cloned.active : true,
             sections: resolvedSections,
-            stages,
+            stages: ensureCompleteStage(stages),
         };
         updateReactData({
             view: 'edit',
@@ -941,6 +966,25 @@ export default ({ onClose, directForm }) => {
         isRecognizedRecipientValue(entry) || entry === '*all' || entry === '*admin' || entry === '*support'
     );
 
+    // Strips classifyFieldStageRules/classifyUnconditionalStageRules' bookkeeping-only keys
+    // (the original array `index`, and the `value` a field-scoped match fired on) off a
+    // classified rule, leaving just the editable descriptor serializeStageRule expects back.
+    const stripHelperKeys = (e) => {
+        const { index, value: _v, ...rest } = e;
+        return rest;
+    };
+
+    // The blank editable descriptor for a brand-new (not-yet-existing) rule of this kind - used
+    // both to seed the rule editor's draft when opening on a value/section with no existing rule,
+    // and as a fallback shape if the draft is somehow unset.
+    const defaultEditForKind = (kind) => (
+        (kind === 'on_complete_groups')
+            ? { add: [], remove: [] }
+            : (kind === 'on_complete_message')
+                ? { template_id: null, text: '', subject: '', recipientList: ['pertains_to'] }
+                : { template_id: null, text: '', title: '', available_to: ['pertains_to'], options: {} }
+    );
+
     // A "simple" showIf is exactly one test, a plain {field, values} test (not currentUser_audience/
     // memberOf/pertainsTo_memberOf), for the field FormBuilder is rendering icons for, matching
     // exactly one of that field's known values. Two or more tests (effectively an OR condition),
@@ -987,8 +1031,17 @@ export default ({ onClose, directForm }) => {
     );
     const classifyUnconditionalGroupsRule = (block) => classifyGroupsRuleCore(block, parseUnconditionalGate(block));
 
-    const classifyMessageRuleCore = (block, gateResult) => {
-        if (!gateResult || !hasOnlyRecognizedKeys(block, 'on_complete_message') || !hasRecognizedTemplateOrText(block)) { return null; }
+    // `requireContent` (default true) gates the non-blank template_id/text requirement. It's
+    // turned off only when buildFieldStageRuleOutput/buildUnconditionalStageRuleOutput need to
+    // find "the single existing block FormBuilder itself wrote for this slot" so they can
+    // replace it in place - otherwise, every keystroke typed into an optional field (e.g.
+    // Subject/Title) before any Text/template was entered left its predecessor behind as an
+    // orphaned, permanently-unrecognized block instead of being replaced by it. Everything
+    // read-only (icon "configured" state, locked counts, the editor's prefilled values) keeps
+    // using the default strict (content-required) behavior.
+    const classifyMessageRuleCore = (block, gateResult, { requireContent = true } = {}) => {
+        if (!gateResult || !hasOnlyRecognizedKeys(block, 'on_complete_message')) { return null; }
+        if (requireContent && !hasRecognizedTemplateOrText(block)) { return null; }
         if (block.subject !== undefined && typeof block.subject !== 'string') { return null; }
         if (block.recipientList !== undefined && (!Array.isArray(block.recipientList) || !block.recipientList.every(isRecognizedRecipientValue))) { return null; }
         return {
@@ -999,16 +1052,17 @@ export default ({ onClose, directForm }) => {
             recipientList: block.recipientList || ['pertains_to'],
         };
     };
-    const classifyMessageRule = (block, field_name, validValues) => (
-        classifyMessageRuleCore(block, parseSimpleFieldShowIf(block, field_name, validValues))
+    const classifyMessageRule = (block, field_name, validValues, opts) => (
+        classifyMessageRuleCore(block, parseSimpleFieldShowIf(block, field_name, validValues), opts)
     );
-    const classifyUnconditionalMessageRule = (block) => classifyMessageRuleCore(block, parseUnconditionalGate(block));
+    const classifyUnconditionalMessageRule = (block, opts) => classifyMessageRuleCore(block, parseUnconditionalGate(block), opts);
 
     // An explicit notification_id is deliberately NOT part of the recognized key set -
     // FormBuilder's popup never sets one, so its presence signals a hand-authored choice (e.g. a
     // custom dedup key) FormBuilder shouldn't silently take over.
-    const classifyNotifyRuleCore = (block, gateResult) => {
-        if (!gateResult || !hasOnlyRecognizedKeys(block, 'on_complete_notify') || !hasRecognizedTemplateOrText(block)) { return null; }
+    const classifyNotifyRuleCore = (block, gateResult, { requireContent = true } = {}) => {
+        if (!gateResult || !hasOnlyRecognizedKeys(block, 'on_complete_notify')) { return null; }
+        if (requireContent && !hasRecognizedTemplateOrText(block)) { return null; }
         if (block.title !== undefined && typeof block.title !== 'string') { return null; }
         if (block.available_to !== undefined && (!Array.isArray(block.available_to) || !block.available_to.every(isRecognizedAvailableToValue))) { return null; }
         if (block.options !== undefined) {
@@ -1026,10 +1080,10 @@ export default ({ onClose, directForm }) => {
             options: block.options || {},
         };
     };
-    const classifyNotifyRule = (block, field_name, validValues) => (
-        classifyNotifyRuleCore(block, parseSimpleFieldShowIf(block, field_name, validValues))
+    const classifyNotifyRule = (block, field_name, validValues, opts) => (
+        classifyNotifyRuleCore(block, parseSimpleFieldShowIf(block, field_name, validValues), opts)
     );
-    const classifyUnconditionalNotifyRule = (block) => classifyNotifyRuleCore(block, parseUnconditionalGate(block));
+    const classifyUnconditionalNotifyRule = (block, opts) => classifyNotifyRuleCore(block, parseUnconditionalGate(block), opts);
 
     const STAGE_RULE_CLASSIFIERS = {
         on_complete_groups: classifyGroupsRule,
@@ -1133,7 +1187,13 @@ export default ({ onClose, directForm }) => {
         const recognizedIndices = new Set();
         instructionList.forEach((block, index) => {
             const showIfTests = Array.isArray(block.showIf) ? block.showIf : [];
-            if (showIfTests.some((t) => t?.field === field_name) && classifier(block, field_name, validValues)) {
+            // requireContent:false - a block FormBuilder itself wrote for this exact
+            // (field_name, value) slot still belongs to it even before any text/template has
+            // been filled in (e.g. typing a notification's Title before its Text/template).
+            // Matching only the strict (content-required) classifier here left each such
+            // in-progress block behind as a permanent orphan instead of replacing it on the
+            // next keystroke - see classifyNotifyRuleCore/classifyMessageRuleCore.
+            if (showIfTests.some((t) => t?.field === field_name) && classifier(block, field_name, validValues, { requireContent: false })) {
                 recognizedIndices.add(index);
             }
         });
@@ -1155,7 +1215,9 @@ export default ({ onClose, directForm }) => {
         const classifier = STAGE_RULE_UNCONDITIONAL_CLASSIFIERS[kind];
         let recognizedIndex = -1;
         instructionList.forEach((block, index) => {
-            if ((recognizedIndex === -1) && !block.showIf && !block.ignoreIf && classifier(block)) { recognizedIndex = index; }
+            // requireContent:false - see buildFieldStageRuleOutput's identical comment; same
+            // orphaning bug applies to the section-level unconditional rule.
+            if ((recognizedIndex === -1) && !block.showIf && !block.ignoreIf && classifier(block, { requireContent: false })) { recognizedIndex = index; }
         });
         const preserved = instructionList.filter((_, index) => index !== recognizedIndex);
         const finalList = edit ? [...preserved, serializeStageRule(kind, null, null, edit)] : preserved;
@@ -1447,6 +1509,7 @@ export default ({ onClose, directForm }) => {
                                                             onClick={() => {
                                                                 setRuleContentMode(existingForIcon?.template_id ? 'template' : 'text');
                                                                 setRuleEditorTarget({ sectionIdx, fieldIdx: null, value: null, kind });
+                                                                setRuleEditorDraft(existingForIcon ? stripHelperKeys(existingForIcon) : defaultEditForKind(kind));
                                                                 if (kind !== 'on_complete_groups') { loadMessageTemplatesIfNeeded(); }
                                                             }}
                                                         >
@@ -1728,6 +1791,7 @@ export default ({ onClose, directForm }) => {
                                                                             onClick={() => {
                                                                                 setRuleContentMode(existingForIcon?.template_id ? 'template' : 'text');
                                                                                 setRuleEditorTarget({ sectionIdx, fieldIdx, value, kind });
+                                                                                setRuleEditorDraft(existingForIcon ? stripHelperKeys(existingForIcon) : defaultEditForKind(kind));
                                                                                 if (kind !== 'on_complete_groups') { loadMessageTemplatesIfNeeded(); }
                                                                             }}
                                                                         >
@@ -2020,6 +2084,50 @@ export default ({ onClose, directForm }) => {
                             style={{ marginTop: '-36px', alignSelf: 'flex-start' }}
                         >                            {'Add Section'}
                         </Button>
+
+                        {(() => {
+                            const completeStageDef = (editingForm.stages || []).find((s) => s.stage_name === COMPLETE_STAGE_NAME) || { stage_name: COMPLETE_STAGE_NAME };
+                            const unconditionalRuleState = classifyUnconditionalStageRules(completeStageDef);
+                            const totalLocked = STAGE_RULE_ICON_DEFS.reduce((sum, { kind }) => sum + (unconditionalRuleState[kind]?.lockedCount || 0), 0);
+                            return (
+                                <Paper variant='outlined' style={{ padding: '12px', marginTop: '12px' }}>
+                                    <Box display='flex' flexDirection='row' alignItems='center' style={{ gap: '8px' }}>
+                                        <Typography style={{ flexGrow: 1 }}>
+                                            {'When the entire form is completed...'}
+                                        </Typography>
+                                        {STAGE_RULE_ICON_DEFS.map(({ kind, Icon, label }) => {
+                                            const existingForIcon = unconditionalRuleState[kind]?.rule;
+                                            const configured = !!existingForIcon;
+                                            return (
+                                                <IconButton
+                                                    key={kind}
+                                                    size='small'
+                                                    title={`${configured ? 'Edit' : 'Add'} a ${label.toLowerCase()} rule for when the entire form is completed (every section cleared)`}
+                                                    style={{ color: configured ? '#1976d2' : '#bbb' }}
+                                                    onClick={() => {
+                                                        setRuleContentMode(existingForIcon?.template_id ? 'template' : 'text');
+                                                        setRuleEditorTarget({ sectionIdx: null, fieldIdx: null, value: null, kind, stage_name: COMPLETE_STAGE_NAME });
+                                                        setRuleEditorDraft(existingForIcon ? stripHelperKeys(existingForIcon) : defaultEditForKind(kind));
+                                                        if (kind !== 'on_complete_groups') { loadMessageTemplatesIfNeeded(); }
+                                                    }}
+                                                >
+                                                    <Icon fontSize='small' />
+                                                </IconButton>
+                                            );
+                                        })}
+                                    </Box>
+                                    {totalLocked > 0 &&
+                                        <Typography
+                                            title={`${totalLocked} existing rule(s) on the form's "complete" stage use a shape FormBuilder doesn't model - edit them directly in the Forms record if they need to change.`}
+                                            style={AVATextStyle({ size: 0.75, color: 'error' })}
+                                        >
+                                            <WarningIcon fontSize='inherit' style={{ verticalAlign: 'middle', marginRight: '2px' }} />
+                                            {'Existing rule requires IT edit'}
+                                        </Typography>
+                                    }
+                                </Paper>
+                            );
+                        })()}
                     </Box>
                 </DialogContent>
                 <Divider />
@@ -2314,28 +2422,30 @@ export default ({ onClose, directForm }) => {
                 );
             })()}
             {ruleEditorTarget && (() => {
-                const { sectionIdx, fieldIdx, value, kind } = ruleEditorTarget;
-                const isUnconditional = (fieldIdx === null || fieldIdx === undefined);
-                const section = reactData.editingForm?.sections[sectionIdx];
-                const field = isUnconditional ? null : section?.fields[fieldIdx];
+                const { sectionIdx, fieldIdx, value, kind, stage_name } = ruleEditorTarget;
+                // The form-level "whole form completed" rule (see the card rendered after "Add
+                // Section" above) isn't tied to any section - it carries an explicit stage_name
+                // instead, so the stage is looked up directly rather than via a section's
+                // belongs_to_stage.
+                const isFormLevel = !!stage_name;
+                const isUnconditional = isFormLevel || (fieldIdx === null || fieldIdx === undefined);
+                const section = isFormLevel ? null : reactData.editingForm?.sections[sectionIdx];
+                const field = (isUnconditional || isFormLevel) ? null : section?.fields[fieldIdx];
                 const stages = reactData.editingForm?.stages || [];
-                const stageDef = stages.find((s) => s.stage_name === section?.belongs_to_stage);
-                if (!section || !stageDef || (!isUnconditional && !field)) { return null; }
+                const stageDef = isFormLevel
+                    ? stages.find((s) => s.stage_name === stage_name)
+                    : stages.find((s) => s.stage_name === section?.belongs_to_stage);
+                if (!stageDef || (!isFormLevel && !section) || (!isUnconditional && !field)) { return null; }
                 const validValues = isUnconditional ? [] : field.selectionList.filter((v) => (v || '').trim());
                 const classified = isUnconditional
                     ? classifyUnconditionalStageRules(stageDef)
                     : classifyFieldStageRules({ stageDef, field_name: field.field_name, validValues });
-                const stripHelperKeys = (e) => {
-                    const { index, value: _v, ...rest } = e;
-                    return rest;
-                };
                 const existingRaw = isUnconditional ? (classified[kind]?.rule || null) : (classified[kind]?.byValue?.[value] || null);
-                const defaultEdit = (kind === 'on_complete_groups')
-                    ? { add: [], remove: [] }
-                    : (kind === 'on_complete_message')
-                        ? { template_id: null, text: '', subject: '', recipientList: ['pertains_to'] }
-                        : { template_id: null, text: '', title: '', available_to: ['pertains_to'], options: {} };
-                const currentEdit = existingRaw ? stripHelperKeys(existingRaw) : defaultEdit;
+                // The dialog's working copy - seeded once into ruleEditorDraft when the icon that
+                // opened it was clicked (see both onClick handlers above) and never re-derived
+                // from the live array while open, so nothing here reflects a half-typed value
+                // until Save explicitly writes it back.
+                const currentEdit = ruleEditorDraft || defaultEditForKind(kind);
 
                 const applyRuleEdit = (edit) => {
                     if (isUnconditional) {
@@ -2375,12 +2485,25 @@ export default ({ onClose, directForm }) => {
                     }
                 };
 
+                // Updates only the local draft (ruleEditorDraft) - nothing is written back into
+                // editingForm's stage array until saveRule runs. warnIfMultiSelectRisk is still
+                // safe to run live here since it's a read-only advisory check against OTHER
+                // already-saved values' rules, not a write of its own.
                 const patchEdit = (patch) => {
-                    applyRuleEdit(Object.assign({}, currentEdit, patch));
+                    setRuleEditorDraft(Object.assign({}, currentEdit, patch));
                     warnIfMultiSelectRisk();
                 };
 
-                const removeRule = () => { applyRuleEdit(null); setRuleEditorTarget(null); };
+                // Closes the dialog without writing anything - the draft is simply discarded, so
+                // whatever rule existed (or didn't) before this dialog opened is left exactly as
+                // it was. Used by the Exit button and by backdrop-click/Escape (the Dialog's
+                // onClose below), so every way of leaving without an explicit Save behaves
+                // identically.
+                const exitRuleEditor = () => { setRuleEditorTarget(null); setRuleEditorDraft(null); };
+
+                const saveRule = () => { applyRuleEdit(currentEdit); exitRuleEditor(); };
+
+                const removeRule = () => { applyRuleEdit(null); exitRuleEditor(); };
 
                 const kindLabel = STAGE_RULE_ICON_DEFS.find((d) => d.kind === kind)?.label || '';
                 const recipientKey = (kind === 'on_complete_message') ? 'recipientList' : 'available_to';
@@ -2389,14 +2512,16 @@ export default ({ onClose, directForm }) => {
 
                 return (
                     <React.Fragment>
-                        <Dialog open={true} onClose={() => setRuleEditorTarget(null)} maxWidth='sm' fullWidth>
-                            <DialogTitle>{`${kindLabel} Rule`}</DialogTitle>
+                        <Dialog open={true} onClose={exitRuleEditor} maxWidth='sm' fullWidth>
+                            <DialogTitle>{isFormLevel ? `Form Complete: ${kindLabel} Rule` : `${kindLabel} Rule`}</DialogTitle>
                             <DialogContent>
                                 <Box display='flex' flexDirection='column' style={{ gap: '16px' }}>
                                     <Typography style={AVATextStyle({ size: 0.85, color: 'textSecondary' })}>
-                                        {isUnconditional
-                                            ? 'Applies every time data in this section is changed, regardless of any field value.'
-                                            : `When "${(field.prompt || field.field_name).toString().replace(/<[^>]+>/g, '')}" is "${value}"...`}
+                                        {isFormLevel
+                                            ? 'Applies once, when every section of this form has been completed (fires only on the save that finishes the last stage - not on later resaves of an already-complete document).'
+                                            : isUnconditional
+                                                ? 'Applies every time data in this section is changed, regardless of any field value.'
+                                                : `When "${(field.prompt || field.field_name).toString().replace(/<[^>]+>/g, '')}" is "${value}"...`}
                                     </Typography>
 
                                     {(kind === 'on_complete_groups') &&
@@ -2599,7 +2724,8 @@ export default ({ onClose, directForm }) => {
                                 {existingRaw &&
                                     <Button style={{ color: 'red' }} onClick={removeRule}>{'Remove Rule'}</Button>
                                 }
-                                <Button onClick={() => setRuleEditorTarget(null)}>{'Done'}</Button>
+                                <Button onClick={exitRuleEditor}>{'Exit'}</Button>
+                                <Button variant='contained' color='primary' onClick={saveRule}>{'Save'}</Button>
                             </DialogActions>
                         </Dialog>
                         {reactData.showRuleGroupsSearch &&

@@ -1956,19 +1956,14 @@ export default ({ request = {}, onClose }) => {
       10
     );
 
-    let padLength = Number.isFinite(configuredPadLength) && configuredPadLength > 0
+    // Only pad when a field explicitly opts in via pad_length/displayDigits (e.g. a 3-digit
+    // badge/room number). There's no columnar display anywhere numeric fields need to line up,
+    // so we no longer invent a pad length from min_value/max_value's digit count - that just
+    // made ordinary answers like "2 adults" render as "02", including in prompt-text
+    // substitutions (reconcilePrompt's %%value%%) and printed output.
+    const padLength = Number.isFinite(configuredPadLength) && configuredPadLength > 0
       ? configuredPadLength
       : null;
-
-    if (!padLength) {
-      const maxDigits = Number.isFinite(maxValue) && maxValue >= 0
-        ? String(Math.trunc(maxValue)).length
-        : null;
-      const minDigits = Number.isFinite(minValue) && minValue >= 0
-        ? String(Math.trunc(minValue)).length
-        : null;
-      padLength = Math.max(maxDigits || 0, minDigits || 0) || null;
-    }
 
     return {
       minValue,
@@ -3268,13 +3263,27 @@ export default ({ request = {}, onClose }) => {
     const isDisabled = fieldRec.options?.viewOnly || reactData.viewOnlyMode || reactData.docRec?.formLocked;
     const guestNames = (Array.isArray(fieldRec.guestNames) && fieldRec.guestNames.length) ? fieldRec.guestNames : [''];
 
-    const commitGuestNames = (names) => {
+    // Commits an edited/removed guest name list and (like every other text-like field in this
+    // form - see renderTextLikeField's onBlur) only runs on blur, never on every keystroke.
+    // This component is declared inline (a new function identity every render), so a forced
+    // redisplay remounts this whole subtree and drops the input's focus; doing that per-
+    // keystroke dropped every character typed after the row-adding keystroke. Committing on
+    // blur means the remount only ever happens once the field no longer needs focus.
+    // `focusIndex`, when given, moves focus to that row's input once the redisplay lands
+    // (used for the Enter-to-advance shortcut below).
+    const commitGuestNames = (names, { focusIndex = null } = {}) => {
       const next = [...names];
       if ((next.length === 0) || (next[next.length - 1] || '').trim() !== '') {
         next.push('');
       }
       reactData.fields[props.prop].guestNames = next;
-      updateReactData({ formUpdates: ++reactData.formUpdates, fields: reactData.fields }, true);
+      updateReactData({ formUpdates: ++reactData.formUpdates }, true);
+      if (focusIndex !== null) {
+        setTimeout(() => {
+          const textInput = document.getElementById(`${props.prop}_guest_${focusIndex}`);
+          if (textInput) { textInput.focus(); }
+        }, 0);
+      }
     };
 
     return (
@@ -3290,15 +3299,20 @@ export default ({ request = {}, onClose }) => {
               placeholder='Guest name'
               variant='standard'
               style={{ width: '260px' }}
-              onChange={(event) => {
+              onBlur={(event) => {
                 const nextNames = [...guestNames];
                 nextNames[gIndex] = event.target.value;
-                const cursorPos = event.target.selectionStart;
                 commitGuestNames(nextNames);
-                setTimeout(() => {
-                  const textInput = document.getElementById(`${props.prop}_guest_${gIndex}`);
-                  if (textInput) { textInput.focus(); textInput.setSelectionRange(cursorPos, cursorPos); }
-                }, 150);
+              }}
+              onKeyDown={(event) => {
+                // Enter commits this row immediately and jumps to the next one (creating it
+                // first if this was the last row), so you don't have to tab/click away to
+                // start the next guest's name.
+                if (event.key !== 'Enter') { return; }
+                event.preventDefault();
+                const nextNames = [...guestNames];
+                nextNames[gIndex] = event.target.value;
+                commitGuestNames(nextNames, { focusIndex: gIndex + 1 });
               }}
             />
             {(guestNames.length > 1) &&
@@ -4246,6 +4260,22 @@ export default ({ request = {}, onClose }) => {
           changedStageIndices.push(stage_we_finished);
         }
       }
+      // The synthetic 'complete' stage (or a form-author-defined one with its own on_complete_*
+      // properties - see initializeFromFormDefinition) is appended after every real stage, so
+      // when reactData.current_formStage is 'complete', this_stageIndex points AT it - the loop
+      // above deliberately stops one short of this_stageIndex (required for every other/real
+      // current_formStage, which is always the first still-incomplete stage and must stay
+      // excluded until it's actually done), which otherwise left this stage's own on_complete_*
+      // permanently unreachable. Include it exactly like any other stage: eligible the save the
+      // form first reaches 'complete', or (on a resave of an already-complete document) only if
+      // a showIf/ignoreIf-gated instruction's outcome genuinely changed - never on every resave.
+      if (reactData.current_formStage === 'complete') {
+        const completeStageDef = reactData.formRec.stages[this_stageIndex];
+        const wasAlreadyComplete = (reactData.previous_formStage === 'complete');
+        if (!wasAlreadyComplete || stageHasMaterialChange(completeStageDef, baselineFieldValues, field_values)) {
+          changedStageIndices.push(this_stageIndex);
+        }
+      }
 
       if (changedStageIndices.length > 0) {
         cl(`Form ${document_id}: stages with completed/changed on_complete_* instructions this save: ${changedStageIndices.map(i => reactData.formRec.stages[i].stage_name).join(', ')}`);
@@ -4526,8 +4556,13 @@ export default ({ request = {}, onClose }) => {
           TableName: 'MessageTemplates'
         });
         if (templateRec) {
-          final_messageText = await resolveVariables(templateRec.message_text);
-          final_html = templateRec.html_text ? await resolveVariables(templateRec.html_text) : final_messageText;
+          // MessageTemplates records use plain_text (string) and template_body (HTML - a string
+          // or an array of strings, same join convention as MessageTemplateManager/MessageForm) -
+          // message_text/html_text don't exist on a template record (those belong to a delivered
+          // PostOffice message, a different record type).
+          const rawHtmlBody = Array.isArray(templateRec.template_body) ? templateRec.template_body.join('') : (templateRec.template_body || '');
+          final_messageText = await resolveVariables(templateRec.plain_text || '');
+          final_html = rawHtmlBody ? await resolveVariables(rawHtmlBody) : final_messageText;
         }
       }
       else if (this_instruction.text) {
@@ -4558,7 +4593,6 @@ export default ({ request = {}, onClose }) => {
           }
         }
       }
-      final_html = final_messageText;
       final_messageText = resolveMessageTokens(final_messageText);
       final_html = resolveMessageTokens(final_html);
       await sendMessages({
