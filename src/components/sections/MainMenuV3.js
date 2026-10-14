@@ -1,6 +1,6 @@
 import React from 'react';
 import { Auth } from '@aws-amplify/auth';
-import { recordExists, getObject, cl, switchActiveAccount, dbClient, lambda, getMarqueeMessage, deepCopy } from '../../util/AVAUtilities';
+import { recordExists, getObject, cl, switchActiveAccount, dbClient, lambda, getMarqueeMessage, deepCopy, makeArray } from '../../util/AVAUtilities';
 import { makeDate, makeTime } from '../../util/AVADateTime';
 import { getImage } from '../../util/AVAPeople';
 import { AVATextStyle, AVAclasses, AVADefaults, hexToRgb, isDark } from '../../util/AVAStyles';
@@ -714,7 +714,7 @@ export default ({ start_at }) => {
               };
             }
             else {
-              reactUpd.renderFunctionCall = startAtItem.call || false;
+              reactUpd.renderFunctionCall = await resolveCallParamTokens(startAtItem.call || false);
             }
           }
           else if (startAtItem.menu_itemType === 'menu') {
@@ -1035,7 +1035,9 @@ export default ({ start_at }) => {
         })();
       }
       else {
-        updateReactData({ renderFunctionCall: deferredItem.call || false }, true);
+        (async () => {
+          updateReactData({ renderFunctionCall: await resolveCallParamTokens(deferredItem.call || false) }, true);
+        })();
       }
     }
     else if (deferredItem.menu_itemType === 'menu') {
@@ -1075,6 +1077,152 @@ export default ({ start_at }) => {
       isSubjectAdmin: ['master', 'admin'].includes(subjectAccountClass),
       isSubjectSupport: ['master', 'support', 'admin'].includes(subjectAccountClass)
     };
+  };
+
+  // Resolves every member of a family (FamilyGroups' primary_contact + other_members) into
+  // { person_id, person_type, role, person_name, groups } entries.
+  //
+  // primary_contact ({ id, name }) structurally implies person_type: 'family' and role:
+  // 'primary' - that's guaranteed by the schema, not something that needs to be looked up.
+  // other_members ({ id, name, role }) entries carry no person_type at all, though - it's a
+  // very recently added People attribute that hasn't been backfilled everywhere (including
+  // FamilyGroups, which never had anywhere to store it). So for each member we read their actual
+  // People record - needed for "other" members' person_type (never known from FamilyGroups
+  // alone) and for every member's current groups (needed by callers like the <form:...> menu
+  // token resolver below to check group-based form access). If a member's People record doesn't
+  // have person_type set either (common for pre-existing accounts), we return 'unknown' rather
+  // than null/undefined - an overt "we don't actually know" marker, distinct from a field that's
+  // legitimately absent, since callers need to be able to tell those two cases apart.
+  const getFamilyMemberIds = async ({ client_id = state.session.client_id, family_id }) => {
+    if (!family_id) { return []; }
+    const fgRec = await dbClient
+      .get({
+        Key: { client_id, composite_key: family_id },
+        TableName: 'FamilyGroups'
+      })
+      .promise()
+      .catch(error => {
+        cl(`getFamilyMemberIds: bad get on FamilyGroups for ${client_id}/${family_id}. Error is: ${error}`);
+      });
+    if (!recordExists(fgRec)) { return []; }
+
+    const members = [];
+    if (fgRec.Item.primary_contact?.id) {
+      members.push({
+        person_id: fgRec.Item.primary_contact.id,
+        person_name: fgRec.Item.primary_contact.name || '',
+        role: 'primary',
+        person_type: 'family'   // structural guarantee of this schema - never looked up
+      });
+    }
+    for (const member of (fgRec.Item.other_members || [])) {
+      if (!member?.id) { continue; }
+      members.push({
+        person_id: member.id,
+        person_name: member.name || '',
+        role: member.role || '',
+        person_type: null   // resolved below - one People lookup per member
+      });
+    }
+
+    // One People lookup per member (including primary_contact, now that we also need groups).
+    await Promise.all(members.map(async (member) => {
+      const personRec = await dbClient
+        .get({
+          Key: { person_id: member.person_id },
+          TableName: 'People'
+        })
+        .promise()
+        .catch(error => {
+          cl(`getFamilyMemberIds: bad get on People for ${member.person_id}. Error is: ${error}`);
+        });
+      const resolvedRec = recordExists(personRec) ? personRec.Item : null;
+      if (member.person_type === null) {
+        member.person_type = resolvedRec?.person_type || 'unknown';
+      }
+      member.groups = makeArray(resolvedRec?.groups);
+    }));
+
+    return members;
+  };
+
+  // Resolves any '<form:form_id>' tokens inside a menu item's call.params to a specific
+  // person_id, BEFORE that call is committed to reactData.renderFunctionCall.
+  //
+  // This can't be handled by renderFunction's own replaceTokens (used for every other <...>
+  // token, e.g. <patient_id>/<sessionRec>) because that runs synchronously during render, and
+  // picking the right family member here requires DB work (which groups can access the target
+  // form, and which family member belongs to one of them) that replaceTokens has no way to
+  // await. So instead this runs once, at the moment a menu tap/deep-link/start_at activation is
+  // about to open the call - see its three call sites below.
+  //
+  // Resolution order: the first family member (primary_contact, then other_members, in
+  // FamilyGroups' own order) who belongs to a group that's allowed to access the target form -
+  // "allowed to access" meaning a Groups record whose own `forms` array lists that form_id (the
+  // same reverse-mapping FormManagement.js uses to show "which groups require this form").
+  // Falls back to the first non-primary family member if no group-based match is found.
+  const resolveCallParamTokens = async (callInstructions) => {
+    if (!callInstructions?.params) { return callInstructions; }
+
+    const formTokenPattern = /^<form:(.+)>$/;
+    const groupsForFormCache = {};   // form_id -> Set<group_id>, computed at most once per form_id
+    let familyMembersCache = null;   // computed at most once regardless of how many tokens match
+
+    const getGroupsAllowedForForm = async (form_id) => {
+      if (groupsForFormCache[form_id]) { return groupsForFormCache[form_id]; }
+      const allGroups = await dbClient
+        .query({
+          KeyConditionExpression: 'client_id = :c',
+          TableName: 'Groups',
+          ExpressionAttributeValues: { ':c': state.session.client_id }
+        })
+        .promise()
+        .catch(error => {
+          cl(`resolveCallParamTokens: bad query on Groups. Error is: ${error}`);
+        });
+      const allowedGroupIds = new Set(
+        (recordExists(allGroups) ? allGroups.Items : [])
+          .filter((g) => makeArray(g.forms).includes(form_id))
+          .map((g) => g.group_id)
+      );
+      groupsForFormCache[form_id] = allowedGroupIds;
+      return allowedGroupIds;
+    };
+
+    const getFamilyMembers = async () => {
+      if (familyMembersCache) { return familyMembersCache; }
+      const family_id = state.patient?.family_groups?.[0] || state.patient?.family_id;
+      familyMembersCache = await getFamilyMemberIds({ family_id });
+      return familyMembersCache;
+    };
+
+    const resolveFormToken = async (form_id) => {
+      const [allowedGroupIds, familyMembers] = await Promise.all([getGroupsAllowedForForm(form_id), getFamilyMembers()]);
+      const groupMatch = familyMembers.find((member) => member.groups.some((g) => allowedGroupIds.has(g)));
+      if (groupMatch) { return groupMatch.person_id; }
+      const fallbackMatch = familyMembers.find((member) => member.role !== 'primary');
+      return fallbackMatch ? fallbackMatch.person_id : '';
+    };
+
+    const walk = async (sourceValue) => {
+      if (typeof sourceValue === 'string') {
+        const match = sourceValue.match(formTokenPattern);
+        return match ? await resolveFormToken(match[1]) : sourceValue;
+      }
+      if (Array.isArray(sourceValue)) {
+        return await Promise.all(sourceValue.map(walk));
+      }
+      if (sourceValue && typeof sourceValue === 'object') {
+        const result = {};
+        for (const key of Object.keys(sourceValue)) {
+          result[key] = await walk(sourceValue[key]);
+        }
+        return result;
+      }
+      return sourceValue;
+    };
+
+    return Object.assign({}, callInstructions, { params: await walk(callInstructions.params) });
   };
 
   const authorizedToMenuItem = (available_to, options = {}) => {
@@ -3927,7 +4075,7 @@ export default ({ start_at }) => {
             }
             else {
               updateReactData({
-                renderFunctionCall: this_item.call || false
+                renderFunctionCall: await resolveCallParamTokens(this_item.call || false)
               }, true);
             }
           }
