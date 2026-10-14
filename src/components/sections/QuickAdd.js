@@ -68,7 +68,7 @@ import React from 'react';
 import useSession from '../../hooks/useSession';
 import { useCookies } from 'react-cookie';
 
-import { deepCopy, titleCase, getDb, putDb, isEmpty, uuid, recordExists, dbClient } from '../../util/AVAUtilities';
+import { deepCopy, titleCase, getDb, putDb, isEmpty, uuid, recordExists, dbClient, isObject, makeArray } from '../../util/AVAUtilities';
 import { getGroupAccess, addMember } from '../../util/AVAGroups';
 import { makeDate } from '../../util/AVADateTime';
 import { AVATextStyle, AVAclasses } from '../../util/AVAStyles';
@@ -264,7 +264,12 @@ export default ({ onClose, options = {}, new_account_form }) => {
       if (clientStyle?.preAuth) {
         const preAuth = clientStyle.preAuth;
         reactUpd.require_pre_auth = preAuth.require_pre_auth === true;
-        reactUpd.preauth_match_on = preAuth.preauth_match_on || null;
+        // Default to 'code' (not null) to match ClientProfileSection's admin UI, whose match-mode
+        // radio group also defaults its displayed/selected value to 'code' when unset - an admin
+        // who enables "Pre-Authorization Required" without ever touching that already-"selected"
+        // radio previously ended up with preauth_match_on genuinely absent, silently falling
+        // through to the name-based PreAuthorization lookup instead of the intended code-based one.
+        reactUpd.preauth_match_on = preAuth.preauth_match_on || 'code';
         if (preAuth.preauth_code_prompt) {
           reactUpd.preauth_code_prompt = preAuth.preauth_code_prompt;
         }
@@ -772,6 +777,27 @@ export default ({ onClose, options = {}, new_account_form }) => {
     }, 500);
   };
 
+  // 'select'/'dropdown' field.value.selection.selectionList entries can be either plain strings
+  // or { value, label }-style objects (FormFillB's own normalizeSelectionList - which this
+  // mirrors - handles the same ambiguity; QuickAdd didn't, which crashed with "Objects are not
+  // valid as a React child" the instant an object-shaped option got rendered directly).
+  const normalizeSelectionList = (selectionList) => {
+    return makeArray(selectionList).map((this_option) => {
+      if (isObject(this_option)) {
+        const optionValue = this_option.value ?? this_option.id ?? this_option.key ?? this_option.display ?? this_option.label;
+        const optionDisplay = this_option.display ?? this_option.label ?? this_option.value ?? this_option.id ?? this_option.key;
+        return Object.assign({}, this_option, {
+          value: optionValue,
+          display: optionDisplay
+        });
+      }
+      return {
+        value: this_option,
+        display: this_option
+      };
+    });
+  };
+
   const handleSelectChange = (fieldName, selectedOption, select_max) => {
     // For select fields, toggle the option in the array
     const currentValue = reactData.field_values[fieldName] || [];
@@ -954,7 +980,11 @@ export default ({ onClose, options = {}, new_account_form }) => {
     };
 
     const proceedWithSave = async () => {
-      // For existing-account updates, reuse the known person_id — no new ID needed
+      // For existing-account updates, reuse the known person_id — no new ID needed. Also
+      // deliberately skip auto_next_account_type here: that chain exists to force creation of a
+      // brand-new, required companion account (e.g. family -> core) alongside a brand-new
+      // account, not to retroactively demand one just because an existing account's account_type
+      // happens to declare it. An existing match is assumed to already be a complete account.
       if (reactData.updating_existing_person_id) {
         familyMember.proposed_user_id = reactData.updating_existing_person_id;
         familyMember.is_existing_account = true;
@@ -2015,7 +2045,11 @@ export default ({ onClose, options = {}, new_account_form }) => {
           existingRecord.display_name = `${existingRecord.name.first || ''} ${existingRecord.name.last || ''}`.trim();
         }
 
-        // Merge preauth groups into existing groups array
+        // Merge in groups this update should grant: the account_type's own default_groups (this
+        // was the gap - default_groups was already applied for brand-new accounts below, but
+        // silently skipped here, so an existing-account pre-auth match never got "the groups
+        // associated with the account_type"), any groups explicitly checked on the fill_fields
+        // screen, and any explicit preauth_data.groups.
         const rawPreauthGroups = member.preauth_extra_fields?._preauth_groups;
         let preauthGroups = [];
         if (Array.isArray(rawPreauthGroups)) {
@@ -2023,9 +2057,12 @@ export default ({ onClose, options = {}, new_account_form }) => {
         } else if (typeof rawPreauthGroups === 'string' && rawPreauthGroups.trim()) {
           preauthGroups = rawPreauthGroups.split(',').map(g => g.trim()).filter(Boolean);
         }
-        if (preauthGroups.length > 0) {
+        const defaultGroups = (member.account_config?.default_groups || []).map(g => String(g).trim()).filter(Boolean);
+        const selectedGroups = (member.group_selection_values || []).map(g => String(g).trim()).filter(Boolean);
+        const groupsToGrant = [...new Set([...defaultGroups, ...selectedGroups, ...preauthGroups])];
+        if (groupsToGrant.length > 0) {
           const existing = Array.isArray(existingRecord.groups) ? existingRecord.groups : [];
-          existingRecord.groups = [...new Set([...existing, ...preauthGroups])];
+          existingRecord.groups = [...new Set([...existing, ...groupsToGrant])];
         }
 
         // Apply any extra preauth fields (non-group keys not in field_list)
@@ -2042,8 +2079,8 @@ export default ({ onClose, options = {}, new_account_form }) => {
         console.log('Updating existing People record:', existingRecord);
         await putDb({ TableName: 'People', Item: existingRecord });
 
-        if (preauthGroups.length > 0) {
-          await addMember(existingRecord.person_id, reactData.client_id, preauthGroups)
+        if (groupsToGrant.length > 0) {
+          await addMember(existingRecord.person_id, reactData.client_id, groupsToGrant)
             .catch(err => console.error('addMember error during QuickAdd update:', err));
         }
 
@@ -3369,7 +3406,7 @@ export default ({ onClose, options = {}, new_account_form }) => {
                   if (fieldType.startsWith('select')) {
                     const fieldLabel = fieldData.prompt?.value || titleCase(fieldName.replace(/_/g, ' '));
                     const isRequired = reactData.selected_account_config?.required?.includes(fieldName) || false;
-                    const selectOptions = fieldData.value?.selection?.selectionList || [];
+                    const selectOptions = normalizeSelectionList(fieldData.value?.selection?.selectionList || []);
                     const select_max = fieldData.value?.selection?.max || 999;
                     let select_min = fieldData.value?.selection?.min || 0;
                     if (isRequired && select_min === 0) {
@@ -3440,12 +3477,12 @@ export default ({ onClose, options = {}, new_account_form }) => {
                                 key={`${fieldName}_${index}`}
                                 control={
                                   <Checkbox
-                                    checked={currentValue.includes(option)}
-                                    onChange={() => handleSelectChange(fieldName, option, select_max)}
+                                    checked={currentValue.includes(option.value)}
+                                    onChange={() => handleSelectChange(fieldName, option.value, select_max)}
                                     size="small"
                                   />
                                 }
-                                label={<Typography variant="body2">{option}</Typography>}
+                                label={<Typography variant="body2">{option.display}</Typography>}
                               />
                             ))}
                           </Box>
@@ -3464,7 +3501,7 @@ export default ({ onClose, options = {}, new_account_form }) => {
 
                   // Dropdown field — single-select (or multi when selection.max > 1)
                   if (fieldType.startsWith('drop')) {
-                    const dropOptions = fieldData.value?.selection?.selectionList || [];
+                    const dropOptions = normalizeSelectionList(fieldData.value?.selection?.selectionList || []);
                     const dropMax = fieldData.value?.selection?.max || 1;
                     const isMulti = dropMax > 1;
                     const currentValue = isMulti
@@ -3489,7 +3526,7 @@ export default ({ onClose, options = {}, new_account_form }) => {
                           >
                             {!isMulti && <MenuItem value=""><em>None</em></MenuItem>}
                             {dropOptions.map((option, idx) => (
-                              <MenuItem key={`${fieldName}_${idx}`} value={option}>{option}</MenuItem>
+                              <MenuItem key={`${fieldName}_${idx}`} value={option.value}>{option.display}</MenuItem>
                             ))}
                           </MuiSelect>
                           {dropValidationError && (
