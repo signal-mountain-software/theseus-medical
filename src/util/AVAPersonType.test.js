@@ -1,4 +1,11 @@
-import { getConfiguredPersonType, getPersonTypeLabel, resolvePersonType } from './AVAPersonType';
+import {
+  getConfiguredPersonType,
+  getPersonTypeLabel,
+  resolvePersonType,
+  getDisplayPersonType,
+  personTypeMatches,
+  filterByPersonType
+} from './AVAPersonType';
 
 describe('getConfiguredPersonType', () => {
   it.each(['staff', 'family', 'core', 'guest'])('accepts explicit %s configuration', person_type => {
@@ -22,6 +29,63 @@ describe('getConfiguredPersonType', () => {
     expect(getPersonTypeLabel('admin')).toBe('Internal Administrator');
     expect(() => getConfiguredPersonType({ account_type: 'support', person_type: 'admin' }))
       .toThrow('reserved for database administrators');
+  });
+
+  it('recognizes inactive for display but rejects it as an app-assigned type', () => {
+    expect(getPersonTypeLabel('inactive')).toBe('Inactive');
+    expect(() => getConfiguredPersonType({ account_type: 'support', person_type: 'inactive' }))
+      .toThrow('computed from inactive_account');
+  });
+});
+
+describe('getDisplayPersonType', () => {
+  it.each(['staff', 'family', 'core', 'guest', 'admin'])('passes through %s when the account is active', person_type => {
+    expect(getDisplayPersonType({ person_type })).toBe(person_type);
+  });
+
+  it.each(['staff', 'family', 'core', 'guest', 'admin'])('overrides %s to inactive when inactive_account is true', person_type => {
+    expect(getDisplayPersonType({ person_type, inactive_account: true })).toBe('inactive');
+  });
+
+  it('leaves an active account with no person_type as undefined', () => {
+    expect(getDisplayPersonType({})).toBeUndefined();
+  });
+});
+
+describe('personTypeMatches / filterByPersonType', () => {
+  const people = [
+    { person_id: 'a', person_type: 'core' },
+    { person_id: 'b', person_type: 'core', inactive_account: true },
+    { person_id: 'c', person_type: 'family' },
+    { person_id: 'd', person_type: 'family', inactive_account: true }
+  ];
+
+  it('matches active people against their stored type', () => {
+    expect(personTypeMatches(people[0], 'core')).toBe(true);
+    expect(personTypeMatches(people[2], 'family')).toBe(true);
+  });
+
+  it('excludes inactive accounts from their original type by default', () => {
+    expect(personTypeMatches(people[1], 'core')).toBe(false);
+    expect(personTypeMatches(people[1], 'inactive')).toBe(true);
+  });
+
+  it('matches against the stored type regardless of inactive_account when includeInactive is set', () => {
+    expect(personTypeMatches(people[1], 'core', { includeInactive: true })).toBe(true);
+    expect(personTypeMatches(people[1], 'inactive', { includeInactive: true })).toBe(false);
+  });
+
+  it('filterByPersonType excludes inactive accounts by default', () => {
+    expect(filterByPersonType(people, 'core').map(p => p.person_id)).toEqual(['a']);
+    expect(filterByPersonType(people, 'inactive').map(p => p.person_id)).toEqual(['b', 'd']);
+  });
+
+  it('filterByPersonType includes inactive accounts under their original type when asked', () => {
+    expect(filterByPersonType(people, 'core', { includeInactive: true }).map(p => p.person_id)).toEqual(['a', 'b']);
+  });
+
+  it('filterByPersonType tolerates a nullish list', () => {
+    expect(filterByPersonType(null, 'core')).toEqual([]);
   });
 });
 
