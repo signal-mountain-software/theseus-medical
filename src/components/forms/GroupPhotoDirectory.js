@@ -748,7 +748,7 @@ export default function GroupPhotoDirectory({ options = {}, onReset = () => { } 
                                 addressValue = '';
                             }
                             else if (addressStyle === 'apartment_suite') {
-                                addressValue = (person.address?.apartment_suite || '').trim();
+                                addressValue = (person.address?.apartment_suite || person.location || person.address?.address || '').trim();
                             }
                             else if (addressStyle === 'short') {
                                 const city = person.address?.city;
