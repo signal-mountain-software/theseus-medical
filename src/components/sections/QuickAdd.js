@@ -428,6 +428,17 @@ export default ({ onClose, options = {}, new_account_form }) => {
     }
   };
 
+  // DataDictionaryV3 has no dedicated QuickAdd renderer of its own — map its 'type' onto the
+  // handful of value.type values QuickAdd actually knows how to prompt for. Anything without a
+  // dedicated renderer (boolean, address, name, datetime, etc.) safely falls back to plain text.
+  const mapDictionaryTypeToFieldType = (ddType) => {
+    const normalizedDdType = (ddType || '').toString().trim().toLowerCase();
+    if (normalizedDdType === 'date') { return 'date'; }
+    if (normalizedDdType === 'phone') { return 'phone'; }
+    if (['email', 'e-mail', 'e_mail'].includes(normalizedDdType)) { return 'email'; }
+    return 'text';
+  };
+
   const gatherFormFields = async (selectedConfig) => {
     if (!validateAccountConfiguration(selectedConfig)) { return; }
 
@@ -457,11 +468,47 @@ export default ({ onClose, options = {}, new_account_form }) => {
 
         if (formFieldRec) {
           fieldData[fieldName] = formFieldRec;
-        } else {
-          console.warn(`Field '${fieldName}' not found in Form_Fields table`);
-          fieldData[fieldName] = null;
-          errorCount++;
+          continue;
         }
+
+        // Not authored as a standalone Form_Fields record — fall back to DataDictionaryV3 so
+        // QuickAdd can still prompt for it. QuickAdd only ever creates brand-new People (and
+        // SessionsV2) records, so there's no existing record to pull a "default value" from
+        // here — we're only inferring how to prompt for the field (type/label) and, when the
+        // dictionary field's own source is People, where to save the entered value (its path[0]).
+        const dictionaryRec = await getDb({
+          Key: {
+            client_id: reactData.client_id,
+            field_key: fieldName
+          },
+          TableName: "DataDictionaryV3"
+        });
+
+        if (dictionaryRec) {
+          const pathList = Array.isArray(dictionaryRec.path)
+            ? dictionaryRec.path
+            : ((typeof dictionaryRec.path === 'string' && dictionaryRec.path.trim()) ? [dictionaryRec.path] : []);
+          const firstPath = pathList[0];
+          const sourceLower = (dictionaryRec.source || '').toString().trim().toLowerCase();
+          const isPeopleSource = sourceLower.startsWith('person') || sourceLower.startsWith('people');
+
+          fieldData[fieldName] = {
+            field_name: fieldName,
+            prompt: { value: dictionaryRec.full_prompt || dictionaryRec.description || fieldName },
+            value: {
+              type: mapDictionaryTypeToFieldType(dictionaryRec.type),
+              // Only People-sourced dictionary fields have a sensible save location on the new
+              // record being created; anything else (session/family/document/etc.) is still
+              // prompted for, but lands as a flat top-level attribute, same as any saveAs-less field.
+              ...(isPeopleSource && firstPath ? { saveAs: `people.${firstPath}` } : {})
+            }
+          };
+          continue;
+        }
+
+        console.warn(`Field '${fieldName}' not found in Form_Fields or DataDictionaryV3 tables`);
+        fieldData[fieldName] = null;
+        errorCount++;
       } catch (error) {
         console.error(`Error fetching field '${fieldName}':`, error);
         fieldData[fieldName] = null;
