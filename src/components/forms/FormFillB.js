@@ -4168,35 +4168,64 @@ export default ({ request = {}, onClose }) => {
     // Coerces a single group-instruction object or array of them, gates each on an optional
     // showIf/ignoreIf (evaluated exactly like section show_if/ignore_if), and collects add/remove group_ids.
     // fieldValueOverrides (optional) evaluates the gate against an explicit value map instead of
-    // live state - see stageHasMaterialChange below.
-    const resolveGroupInstructions = (groupInstructionsRaw, fieldValueOverrides) => {
+    // live state - see stageHasMaterialChange below. logLabel (optional) identifies this call in
+    // the console for debugging (e.g. "stage 'Intake' (live)" / "stage 'Intake' (baseline)") -
+    // this function is only ever used to diff an outcome, never to actually commit anything, so
+    // its logging is scoped to explaining that diff.
+    const resolveGroupInstructions = (groupInstructionsRaw, fieldValueOverrides, logLabel) => {
       const instructionList = [groupInstructionsRaw].flat().filter(Boolean);
       const removals = [];
       const additions = [];
-      for (const this_instruction of instructionList) {
+      instructionList.forEach((this_instruction, idx) => {
         const showIgnoreTest = this_instruction.showIf
           ? { show_if: this_instruction.showIf }
           : (this_instruction.ignoreIf ? { ignore_if: this_instruction.ignoreIf } : {});
-        if (!okToShowSection(showIgnoreTest, fieldValueOverrides)) { continue; }
+        const gatePassed = okToShowSection(showIgnoreTest, fieldValueOverrides);
+        if (logLabel) {
+          cl(`[on_complete_groups] ${logLabel} instruction #${idx}: gate ${gatePassed ? 'PASSED' : 'FAILED'}` +
+            (this_instruction.showIf ? ` (showIf=${JSON.stringify(this_instruction.showIf)})` : '') +
+            (this_instruction.ignoreIf ? ` (ignoreIf=${JSON.stringify(this_instruction.ignoreIf)})` : '') +
+            (gatePassed ? ` -> add=${JSON.stringify(this_instruction.add || [])}, remove=${JSON.stringify(this_instruction.remove || [])}` : ' -> contributes nothing'));
+        }
+        if (!gatePassed) { return; }
         if (this_instruction.remove) { removals.push(...[this_instruction.remove].flat()); }
         if (this_instruction.add) { additions.push(...[this_instruction.add].flat()); }
-      }
+      });
       return { removals, additions };
     };
 
     // group_id -> 'add' | 'remove', built by walking stages/instructions in order and overwriting
     // each mentioned group_id - this is the "last mention wins" conflict resolution described above.
+    // stageLabel (optional) identifies which stage's on_complete_groups/on_entry_groups is being
+    // applied, for debugging.
     const groupDispositions = new Map();
-    const applyGroupInstructionsToDispositions = (groupInstructionsRaw) => {
+    const applyGroupInstructionsToDispositions = (groupInstructionsRaw, stageLabel) => {
       const instructionList = [groupInstructionsRaw].flat().filter(Boolean);
-      for (const this_instruction of instructionList) {
+      instructionList.forEach((this_instruction, idx) => {
         const showIgnoreTest = this_instruction.showIf
           ? { show_if: this_instruction.showIf }
           : (this_instruction.ignoreIf ? { ignore_if: this_instruction.ignoreIf } : {});
-        if (!okToShowSection(showIgnoreTest)) { continue; }
-        for (const this_group of [this_instruction.remove].flat().filter(Boolean)) { groupDispositions.set(this_group, 'remove'); }
-        for (const this_group of [this_instruction.add].flat().filter(Boolean)) { groupDispositions.set(this_group, 'add'); }
-      }
+        const gatePassed = okToShowSection(showIgnoreTest);
+        if (stageLabel) {
+          cl(`[on_complete_groups] ${stageLabel} instruction #${idx}: gate ${gatePassed ? 'PASSED' : 'FAILED'}` +
+            (this_instruction.showIf ? ` (showIf=${JSON.stringify(this_instruction.showIf)})` : '') +
+            (this_instruction.ignoreIf ? ` (ignoreIf=${JSON.stringify(this_instruction.ignoreIf)})` : '') +
+            (gatePassed ? ` -> add=${JSON.stringify(this_instruction.add || [])}, remove=${JSON.stringify(this_instruction.remove || [])}` : ' -> contributes nothing'));
+        }
+        if (!gatePassed) { return; }
+        for (const this_group of [this_instruction.remove].flat().filter(Boolean)) {
+          if (stageLabel && groupDispositions.has(this_group) && groupDispositions.get(this_group) !== 'remove') {
+            cl(`[on_complete_groups] ${stageLabel}: group "${this_group}" disposition overwritten - was "${groupDispositions.get(this_group)}", now "remove" (last mention wins)`);
+          }
+          groupDispositions.set(this_group, 'remove');
+        }
+        for (const this_group of [this_instruction.add].flat().filter(Boolean)) {
+          if (stageLabel && groupDispositions.has(this_group) && groupDispositions.get(this_group) !== 'add') {
+            cl(`[on_complete_groups] ${stageLabel}: group "${this_group}" disposition overwritten - was "${groupDispositions.get(this_group)}", now "add" (last mention wins)`);
+          }
+          groupDispositions.set(this_group, 'add');
+        }
+      });
     };
 
     // True if evaluating this stage's on_complete_groups/on_complete_message/on_complete_tasks
@@ -4205,8 +4234,9 @@ export default ({ request = {}, onClose }) => {
     // (liveFieldValues). This is what lets an already-finished stage (one the document moved past
     // in a prior, already-closed save) be reconsidered when a user edits a field it depends on -
     // see changedStageIndices below - without re-firing on every repeat save when nothing relevant
-    // has actually changed.
-    const stageHasMaterialChange = (stageDef, baselineFieldValues, liveFieldValues) => {
+    // has actually changed. stageLabel (optional) identifies the stage in the console for
+    // debugging.
+    const stageHasMaterialChange = (stageDef, baselineFieldValues, liveFieldValues, stageLabel) => {
       const sameSet = (a, b) => {
         const normalize = (arr) => [...new Set(arr)].sort().join('\u0001');
         return normalize(a) === normalize(b);
@@ -4220,11 +4250,15 @@ export default ({ request = {}, onClose }) => {
         return livePassing.length !== basePassing.length || livePassing.some((instr, i) => instr !== basePassing[i]);
       };
       if (stageDef.on_complete_groups) {
-        const liveResult = resolveGroupInstructions(stageDef.on_complete_groups);
-        const baseResult = resolveGroupInstructions(stageDef.on_complete_groups, baselineFieldValues);
-        if (!sameSet(liveResult.additions, baseResult.additions) || !sameSet(liveResult.removals, baseResult.removals)) {
-          return true;
+        const liveResult = resolveGroupInstructions(stageDef.on_complete_groups, undefined, stageLabel ? `${stageLabel} (live)` : undefined);
+        const baseResult = resolveGroupInstructions(stageDef.on_complete_groups, baselineFieldValues, stageLabel ? `${stageLabel} (baseline)` : undefined);
+        const groupsChanged = !sameSet(liveResult.additions, baseResult.additions) || !sameSet(liveResult.removals, baseResult.removals);
+        if (stageLabel) {
+          cl(`[on_complete_groups] ${stageLabel}: groups outcome ${groupsChanged ? 'CHANGED' : 'unchanged'} vs baseline` +
+            ` (live: add=${JSON.stringify(liveResult.additions)} remove=${JSON.stringify(liveResult.removals)};` +
+            ` baseline: add=${JSON.stringify(baseResult.additions)} remove=${JSON.stringify(baseResult.removals)})`);
         }
+        if (groupsChanged) { return true; }
       }
       if (stageDef.on_complete_message && instructionSetOutcomeChanged(stageDef.on_complete_message)) {
         return true;
@@ -4248,6 +4282,8 @@ export default ({ request = {}, onClose }) => {
       // never been saved) - the baseline that already-finished stages are diffed against.
       const baselineFieldValues = reactData.docRec?.field_values || {};
 
+      cl(`[on_complete_groups] Form ${document_id}: current_formStage="${reactData.current_formStage}" (index ${this_stageIndex}), previous_formStage="${reactData.previous_formStage}" (index ${previous_stageIndex})`);
+
       // Stages eligible to have their on_complete_* instructions (re)applied this save: stages
       // newly crossed since the last save (original forward-only behavior), OR already-finished
       // stages (index < previous_stageIndex) whose conditions now resolve differently than they
@@ -4255,8 +4291,12 @@ export default ({ request = {}, onClose }) => {
       const changedStageIndices = [];
       for (let stage_we_finished = 0; stage_we_finished < this_stageIndex; stage_we_finished++) {
         const stageDef = reactData.formRec.stages[stage_we_finished];
+        const stageLabel = `stage #${stage_we_finished} "${stageDef.stage_name}"`;
         const newlyCrossed = stage_we_finished >= previous_stageIndex;
-        if (newlyCrossed || stageHasMaterialChange(stageDef, baselineFieldValues, field_values)) {
+        const materiallyChanged = !newlyCrossed && stageHasMaterialChange(stageDef, baselineFieldValues, field_values, stageLabel);
+        const eligible = newlyCrossed || materiallyChanged;
+        cl(`[on_complete_groups] ${stageLabel}: newlyCrossed=${newlyCrossed}, materiallyChanged=${materiallyChanged} -> ${eligible ? 'ELIGIBLE this save' : 'skipped (nothing changed)'}`);
+        if (eligible) {
           changedStageIndices.push(stage_we_finished);
         }
       }
@@ -4272,13 +4312,20 @@ export default ({ request = {}, onClose }) => {
       if (reactData.current_formStage === 'complete') {
         const completeStageDef = reactData.formRec.stages[this_stageIndex];
         const wasAlreadyComplete = (reactData.previous_formStage === 'complete');
-        if (!wasAlreadyComplete || stageHasMaterialChange(completeStageDef, baselineFieldValues, field_values)) {
+        const completeStageLabel = `stage #${this_stageIndex} "${completeStageDef.stage_name}" (complete)`;
+        const materiallyChanged = wasAlreadyComplete && stageHasMaterialChange(completeStageDef, baselineFieldValues, field_values, completeStageLabel);
+        const eligible = !wasAlreadyComplete || materiallyChanged;
+        cl(`[on_complete_groups] ${completeStageLabel}: wasAlreadyComplete=${wasAlreadyComplete}, materiallyChanged=${materiallyChanged} -> ${eligible ? 'ELIGIBLE this save' : 'skipped (nothing changed)'}`);
+        if (eligible) {
           changedStageIndices.push(this_stageIndex);
         }
       }
 
       if (changedStageIndices.length > 0) {
         cl(`Form ${document_id}: stages with completed/changed on_complete_* instructions this save: ${changedStageIndices.map(i => reactData.formRec.stages[i].stage_name).join(', ')}`);
+      }
+      else {
+        cl(`[on_complete_groups] Form ${document_id}: no stages eligible this save - on_complete_groups/message/notify/tasks will not fire.`);
       }
 
       // Only the highest (most-advanced) changed stage's on_complete_message is sent - see the
@@ -4293,7 +4340,8 @@ export default ({ request = {}, onClose }) => {
           await send_stageNotify(stageDef.on_complete_notify, stageDef.stage_name); // post stage complete notification
         }
         if (stageDef.on_complete_groups) {
-          applyGroupInstructionsToDispositions(stageDef.on_complete_groups);
+          cl(`[on_complete_groups] Applying stage #${stage_we_finished} "${stageDef.stage_name}" on_complete_groups:`);
+          applyGroupInstructionsToDispositions(stageDef.on_complete_groups, `stage #${stage_we_finished} "${stageDef.stage_name}" on_complete_groups`);
         }
         if (stageDef.on_complete_tasks) {
           await createTasksFromTemplates(stageDef.on_complete_tasks);
@@ -4313,7 +4361,9 @@ export default ({ request = {}, onClose }) => {
       // precedence over any conflicting leftover disposition from a stage just exited.
       let groupInstructions_onStageEntry = reactData.formRec.stages[this_stageIndex].on_entry_groups;
       if (groupInstructions_onStageEntry) {
-        applyGroupInstructionsToDispositions(groupInstructions_onStageEntry);
+        const entryStageLabel = `stage #${this_stageIndex} "${reactData.formRec.stages[this_stageIndex].stage_name}" on_entry_groups`;
+        cl(`[on_complete_groups] Applying ${entryStageLabel}:`);
+        applyGroupInstructionsToDispositions(groupInstructions_onStageEntry, entryStageLabel);
       }
       // lock the form?
       if (reactData.formRec.stages[this_stageIndex].on_entry_lock) { formLocked = true; }
@@ -4327,7 +4377,13 @@ export default ({ request = {}, onClose }) => {
     for (const [group_id, disposition] of groupDispositions) {
       (disposition === 'remove' ? pendingGroupRemovals : pendingGroupAdditions).push(group_id);
     }
-
+    if (groupDispositions.size > 0) {
+      cl(`[on_complete_groups] Final resolved dispositions for ${reactData.pertains_to}: ${JSON.stringify(Object.fromEntries(groupDispositions))}`);
+      cl(`[on_complete_groups] Will call addMember with: ${JSON.stringify(pendingGroupAdditions)}, removeMember with: ${JSON.stringify(pendingGroupRemovals)}`);
+    }
+    else {
+      cl(`[on_complete_groups] No group dispositions resolved this save - addMember/removeMember will not be called.`);
+    }
 
 
     let response = { goodPut: true };
@@ -4352,8 +4408,14 @@ export default ({ request = {}, onClose }) => {
     // Apply stage-transition group changes via addMember/removeMember.
     // These run after the saveAs People put so addMember reads the freshest record.
     // addMember/removeMember handle hierarchy, PeopleGroups, and onAdd/onRemove rule firing.
-    if (pendingGroupRemovals.length > 0) { await removeMember(reactData.pertains_to, state.session.client_id, pendingGroupRemovals); }
-    if (pendingGroupAdditions.length > 0) { await addMember(reactData.pertains_to, state.session.client_id, pendingGroupAdditions); }
+    if (pendingGroupRemovals.length > 0) {
+      await removeMember(reactData.pertains_to, state.session.client_id, pendingGroupRemovals);
+      cl(`[on_complete_groups] removeMember completed for ${reactData.pertains_to}: ${JSON.stringify(pendingGroupRemovals)}`);
+    }
+    if (pendingGroupAdditions.length > 0) {
+      await addMember(reactData.pertains_to, state.session.client_id, pendingGroupAdditions);
+      cl(`[on_complete_groups] addMember completed for ${reactData.pertains_to}: ${JSON.stringify(pendingGroupAdditions)}`);
+    }
     if (peopleUpdated || pendingGroupRemovals.length > 0 || pendingGroupAdditions.length > 0) {
       syncPersonToSessionCaches({
         state,
@@ -4539,6 +4601,30 @@ export default ({ request = {}, onClose }) => {
     });
   };
 
+  // Resolves reactData.pertains_to's primary caregiver - the primary_contact on their
+  // FamilyGroups record, the same relationship GroupControl.js/tesMailman.mjs call "Primary
+  // Caregiver" elsewhere in this app - for use as a 'primary_caregiver' special value alongside
+  // the existing 'user'/'pertains_to' values in on_complete_message's recipientList and
+  // send_stageNotify's available_to. Reuses an already-loaded familyRec when one happens to be
+  // cached for this person (see the family_id/familyRec lazy-load pattern above); otherwise looks
+  // it up fresh rather than assume some other code path already populated it by this point.
+  const resolvePrimaryCaregiverId = async () => {
+    if (reactData.familyRec?.primary_contact?.id) {
+      return reactData.familyRec.primary_contact.id;
+    }
+    const personRec = reactData.peopleRec?.[reactData.pertains_to];
+    const familyId = reactData.family_id || personRec?.family_groups?.[0];
+    if (!familyId) { return null; }
+    const familyRec = await getDb({
+      Key: {
+        client_id: state.session.client_id,
+        composite_key: familyId
+      },
+      TableName: "FamilyGroups"
+    });
+    return familyRec?.primary_contact?.id || null;
+  };
+
   async function send_stageMessage(messageInstructions) {
     // showIf/ignoreIf gating already applied by resolveMessageInstructions - only passing
     // instructions reach this point.
@@ -4573,12 +4659,17 @@ export default ({ request = {}, onClose }) => {
       if (this_instruction.recipientList) {
         if (Array.isArray(this_instruction.recipientList)) {
           // person:<id> / group:<id> (same scheme as section audience), plus 'user' (the
-          // logged-in operator) and 'pertains_to' (this form's subject) as special values.
+          // logged-in operator), 'pertains_to' (this form's subject), and 'primary_caregiver'
+          // (this form's subject's primary caregiver, if any) as special values.
           for (const entry of this_instruction.recipientList) {
             if (entry.startsWith('person:')) { recipientList.push(entry.slice(7)); }
             else if (entry.startsWith('group:')) { recipientList.push(`GRP//${entry.slice(6)}`); }
             else if (entry === 'user') { recipientList.push(state.session.user_id); }
             else if (entry === 'pertains_to') { recipientList.push(reactData.pertains_to); }
+            else if (entry === 'primary_caregiver') {
+              const caregiverId = await resolvePrimaryCaregiverId();
+              if (caregiverId) { recipientList.push(caregiverId); }
+            }
           }
         }
         else {
@@ -4641,16 +4732,25 @@ export default ({ request = {}, onClose }) => {
         ? resolveMessageTokens(await resolveVariables(this_instruction.title))
         : undefined;
 
-      // 'pertains_to'/'user' are resolved to person:<id> here - same special values as
-      // on_complete_message's recipientList - before reaching the Notifications engine's
-      // available_to scheme (person:<id>/group:<id>/*all/*admin/*support pass straight through).
+      // 'pertains_to'/'user'/'primary_caregiver' are resolved to person:<id> here - same special
+      // values as on_complete_message's recipientList - before reaching the Notifications
+      // engine's available_to scheme (person:<id>/group:<id>/*all/*admin/*support pass straight
+      // through). primary_caregiver is resolved once upfront (rather than inside the .map()
+      // below, which is synchronous) only if it's actually present in the list.
       let available_to;
       if (this_instruction.available_to) {
-        available_to = [this_instruction.available_to].flat().map(entry => {
-          if (entry === 'pertains_to') { return `person:${reactData.pertains_to}`; }
-          if (entry === 'user') { return `person:${state.session.user_id}`; }
-          return entry;
-        });
+        const availableToList = [this_instruction.available_to].flat();
+        const primaryCaregiverId = availableToList.includes('primary_caregiver')
+          ? await resolvePrimaryCaregiverId()
+          : null;
+        available_to = availableToList
+          .map(entry => {
+            if (entry === 'pertains_to') { return `person:${reactData.pertains_to}`; }
+            if (entry === 'user') { return `person:${state.session.user_id}`; }
+            if (entry === 'primary_caregiver') { return primaryCaregiverId ? `person:${primaryCaregiverId}` : null; }
+            return entry;
+          })
+          .filter(Boolean);
       }
       else {
         available_to = [`person:${state.session.user_id}`];
