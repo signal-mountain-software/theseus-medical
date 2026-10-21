@@ -1310,7 +1310,11 @@ export default ({ start_at }) => {
           if (parent && !parent.hidden) { this_item.color = parent.color; }
           else { this_item.color = stringToColor(this_item.menu_id); }
         }
-        if (state.session.client_style?.suppress_card_image) { this_item.icon = null; }
+        // icon_thumb must be suppressed right alongside icon - cardImageUrl (in renderMenuCardCell/
+        // activateMenuItem) falls back to icon_thumb whenever icon is null, so nulling icon alone
+        // left a backfilled/legacy icon_thumb (see backfillMenuThumbs below) still rendering,
+        // defeating suppression for any item that had already been visited once before.
+        if (state.session.client_style?.suppress_card_image) { this_item.icon = null; this_item.icon_thumb = null; }
         else if (!this_item.icon) { this_item.icon = resolvedSessionClientLogo; }
         const targetParentId = parent?.menu_id || null;
         const alreadyLoaded = reactData.menu_hierarchy[menu_level].some((existingCell) => {
@@ -1829,7 +1833,7 @@ export default ({ start_at }) => {
           if (parent && !parent.hidden) { this_item.color = parent.color; }
           else { this_item.color = stringToColor(this_item.menu_id); }
         }
-        if (state.session.client_style?.suppress_card_image) { this_item.icon = null; }
+        if (state.session.client_style?.suppress_card_image) { this_item.icon = null; this_item.icon_thumb = null; }
         else if (!this_item.icon) { this_item.icon = resolvedSessionClientLogo; }
         const targetParentId = parent?.menu_id || null;
         const loadedKey = `${this_item.menu_id}~${targetParentId}`;
@@ -1938,8 +1942,10 @@ export default ({ start_at }) => {
           menu_itemType: 'menu',
           children: [...normalizedFavorites, ...templateExtras],
           color: template?.color || stringToColor('__v3_favorites__'),
-          icon_thumb: template?.icon_thumb || null,
-          icon: template?.icon || template?.icon_thumb || resolvedSessionClientLogo
+          // This synthetic card is built straight from the template, bypassing the normal
+          // getMenuItem/batchGetMenuItems suppress check entirely - apply it here too.
+          icon_thumb: state.session.client_style?.suppress_card_image ? null : (template?.icon_thumb || null),
+          icon: state.session.client_style?.suppress_card_image ? null : (template?.icon || template?.icon_thumb || resolvedSessionClientLogo)
         }
       });
     }
