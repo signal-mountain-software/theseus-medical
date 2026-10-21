@@ -2600,6 +2600,9 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
             onClose={async (selections) => {
               setSelectNewSlotOwner(false);
               updateReactData({ newSlotOwnerQuickSearch: false }, false);
+              // snapshot avoids referencing the outer pEventCode prop (reassigned elsewhere in this
+              // component) from within functions declared inside this loop
+              const stableEventCode = pEventCode;
               for (const chosen of (selections || [])) {
                 if (!chosen || !chosen.person_id) { continue; }
                 let pID = chosen.person_id;
@@ -2676,7 +2679,7 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                         {
                           text: `Yes, sign me up for all future occurrences`,
                           function: (async () => {
-                            let eventID = pEventCode.split('#')[0];
+                            let eventID = stableEventCode.split('#')[0];
                             let todayYMD = makeDate(new Date()).numeric;
                             let failures = 0;
                             for (let next_event of reactData.other_occurrences) {

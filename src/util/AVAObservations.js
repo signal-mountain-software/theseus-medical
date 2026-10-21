@@ -169,6 +169,54 @@ export async function getObservations(pClient, pKey, options = {}) {
   return [valueList, returnQual];
 };
 
+// Looks up a single dining-menu category (default 'entree') for a given day, mirroring the
+// default selections MenuFormB.js falls back to when the user hasn't explicitly picked
+// anything: Dining Room and Meal default to whichever option is listed first in this client's
+// dining_structure, and Menu defaults to "Daily Specials" (today's date-specific items) unless
+// this client's own menus config lists something else first - see selectedArea()/
+// selectedMealType()/selectedMenu() in MenuFormB.js.
+//
+// Note: MenuFormB.js's handleNewObservation() has an unconditional override (labeled "OVERRIDE
+// FOR AVT ONLY" but applied to every client) that writes composite_key as just
+// `<client_id>~<category>_<date>` - dropping meal and dining-room entirely. So for current data,
+// a given day's entree list is the same regardless of meal (breakfast/lunch/dinner) or room; this
+// helper reflects that by not filtering on either.
+export async function getMenuCategoryForDate(pClient, pSession, options = {}) {
+  const category = options.category || 'entree';
+  const targetDate = makeDate(options.date || 'today');
+  if (targetDate.error) {
+    return { error: true, message: targetDate.relative, items: [] };
+  }
+
+  const menus = pSession?.dining_structure?.menus || {
+    special: { value: '%date%' },
+    everyday: { value: 'always' }
+  };
+  const defaultMenuKey = Object.keys(menus)[0];
+  const useAlways = menus[defaultMenuKey]?.value === 'always';
+
+  const [records] = await getObservations(pClient, '', useAlways
+    ? { always: true, sort: true, return: 'records' }
+    : { date: targetDate.date, sort: true, return: 'records' }
+  );
+
+  // New-style records carry their category directly in observation_type; composite_key still
+  // encodes <category>_<date> (or older <category>_<date>_<meal>_<room> variants) as a fallback
+  // for any records written before observation_type existed - see OKtoShow() in MenuFormB.js.
+  const categoryItems = (records || []).filter(rec => {
+    if (rec.observation_type) { return rec.observation_type === category; }
+    const [, cKey] = (rec.composite_key || '').split('~');
+    return (cKey || '').split('_')[0] === category;
+  });
+
+  return {
+    error: false,
+    date: targetDate,
+    category,
+    items: categoryItems.map(rec => rec.observation_code).filter(Boolean)
+  };
+}
+
 export async function makeObservationList(pObs, pSession, variables = {}, options = { clean: true }) {
   let returnList = [];
   let returnQObj = {};

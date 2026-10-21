@@ -640,7 +640,7 @@ export function makeDate(pInput, optionIn = {}) {
         if (pStringLower === 'tomorrow') {
             return addDays(currentDate, 1);
         }
-        else if (pStringLower === 'today') {
+        else if ((pStringLower === 'today') || (pStringLower === 'tonight')) {
             return currentDate;
         }
         else if (pStringLower === 'yesterday') {

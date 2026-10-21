@@ -214,6 +214,7 @@ const STAGE_RULE_ICON_DEFS = [
 const describeRecipientValue = (entry, groupNameLookup) => {
     if (!entry) { return 'Not set'; }
     if (entry === 'pertains_to') { return 'The person this form is about'; }
+    if (entry === 'primary_caregiver') { return 'The Primary Caregiver for the Person this form is about'; }
     if (entry === 'user') { return 'The logged-in staff member'; }
     if (entry.startsWith('group:')) { return `Group: ${groupNameLookup?.(entry.slice(6)) || entry.slice(6)}`; }
     if (entry.startsWith('person:')) { return `Person: ${entry.slice(7)}`; }
@@ -954,11 +955,11 @@ export default ({ onClose, directForm }) => {
     // options object carrying any other key (or a nested object value) isn't recognized.
     const STAGE_RULE_RECOGNIZED_NOTIFY_OPTION_KEYS = ['priority', 'dismissible', 'persist_until_dismissed', 'play_sound', 'action_url', 'resolution'];
 
-    // 'pertains_to'/'user' are FormFillB special values (resolved to person:<id> at send time);
-    // person:<id>/group:<id> are the normal explicit forms - shared by on_complete_message's
-    // recipientList and on_complete_notify's available_to.
+    // 'pertains_to'/'user'/'primary_caregiver' are FormFillB special values (resolved to
+    // person:<id> at send time); person:<id>/group:<id> are the normal explicit forms - shared by
+    // on_complete_message's recipientList and on_complete_notify's available_to.
     const isRecognizedRecipientValue = (entry) => (
-        entry === 'pertains_to' || entry === 'user' || (typeof entry === 'string' && (entry.startsWith('person:') || entry.startsWith('group:')))
+        entry === 'pertains_to' || entry === 'user' || entry === 'primary_caregiver' || (typeof entry === 'string' && (entry.startsWith('person:') || entry.startsWith('group:')))
     );
     // available_to additionally accepts the broadcast/class values - recipientList has no
     // equivalent (on_complete_message has no "everybody"/"all admins" concept today).
@@ -2677,6 +2678,7 @@ export default ({ onClose, directForm }) => {
                                                     }}
                                                 >
                                                     <MenuItem value='pertains_to'>{'The person this form is about'}</MenuItem>
+                                                    <MenuItem value='primary_caregiver'>{'The Primary Caregiver for the Person this form is about'}</MenuItem>
                                                     <MenuItem value='user'>{'The person that is completing the form'}</MenuItem>
                                                     <MenuItem value='specific'>{isSpecificRecipient ? describeRecipientValue(currentRecipient, (gid) => state.groups?.groupNames?.[gid]) : 'A specific group or person...'}</MenuItem>
                                                 </Select>

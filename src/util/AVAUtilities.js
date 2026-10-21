@@ -47,6 +47,12 @@ export const s3 = new AWS.S3({
   secretAccessKey: sak()[1]
 });
 
+export const polly = new AWS.Polly({
+  region: "us-east-1",
+  accessKeyId: sak()[0],
+  secretAccessKey: sak()[1]
+});
+
 const MediaConvert = require('aws-sdk/clients/mediaconvert');
 export const mediaconvert = new MediaConvert({
   accessKeyId: sak()[0],

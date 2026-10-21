@@ -1,11 +1,12 @@
 import React from 'react';
 import { Auth } from '@aws-amplify/auth';
-import { recordExists, getObject, cl, switchActiveAccount, dbClient, lambda, getMarqueeMessage, deepCopy, makeArray } from '../../util/AVAUtilities';
+import { recordExists, getObject, cl, switchActiveAccount, dbClient, lambda, polly, listFromArray, getMarqueeMessage, deepCopy, makeArray } from '../../util/AVAUtilities';
 import { makeDate, makeTime } from '../../util/AVADateTime';
 import { getImage } from '../../util/AVAPeople';
 import { AVATextStyle, AVAclasses, AVADefaults, hexToRgb, isDark } from '../../util/AVAStyles';
 import { clearPushSubscriptionFromDB, initPushNotifications, unsubscribeFromPush, isPushSupported, isPushOptedIn, syncAlertDeliveryMethod } from '../../util/AVAPushNotifications';
 import { getActivityDetail } from '../../util/AVAActivityLoaderV3';
+import { getMenuCategoryForDate } from '../../util/AVAObservations';
 import { loadAndQueueNotifications, markNotificationShown, resolveNotification, priorityToSeverity, getNotificationDisplayOptions, INITIAL_NOTIFICATION_CHECK_TIME, playNotificationSound, unlockNotificationSound } from '../../util/AVANotifications';
 import QuickAdd from './QuickAdd';
 
@@ -82,6 +83,7 @@ import ErrorOutlineIcon from '@material-ui/icons/ErrorOutline';
 import WarningRoundedIcon from '@material-ui/icons/WarningRounded';
 import InfoOutlinedIcon from '@material-ui/icons/InfoOutlined';
 import CheckCircleOutlineIcon from '@material-ui/icons/CheckCircleOutline';
+import MicIcon from '@material-ui/icons/Mic';
 
 import Tooltip from '@material-ui/core/Tooltip';
 import QuickSearch from './QuickSearch';
@@ -187,6 +189,14 @@ const useStyles = makeStyles(theme => ({
     fontSize: theme.typography.fontSize * 0.85,
     lineHeight: 1.25,
   },
+  voiceListening: {
+    animation: '$voicePulse 1.2s ease-in-out infinite',
+  },
+  '@keyframes voicePulse': {
+    '0%': { opacity: 1 },
+    '50%': { opacity: 0.35 },
+    '100%': { opacity: 1 },
+  },
 }));
 
 export default ({ start_at }) => {
@@ -265,6 +275,7 @@ export default ({ start_at }) => {
     editDescriptionMenuId: null,
     editDescriptionShort: '',
     editDescriptionLong: '',
+    editDescriptionShorthand: '',
     editDescriptionAvailableTo: [],
     editDescriptionColor: null,
     editDescriptionParent: null,
@@ -298,7 +309,10 @@ export default ({ start_at }) => {
     notificationSoundNeeded: false,
     lastNotificationCheckTime: INITIAL_NOTIFICATION_CHECK_TIME,
     testMode: ["T", "L"].includes(window.location.href.split('//')[1].slice(0, 1).toUpperCase()),
-    levelPages: {}    // tracks current page (0-indexed) per level for paginated display
+    levelPages: {},   // tracks current page (0-indexed) per level for paginated display
+    voiceListening: false,
+    lastVoiceCommand: '',
+    voiceLookupPersonId: null
   });
 
   const useTileUI = ((reactData.uiTilesOverride === null) || (reactData.uiTilesOverride === undefined))
@@ -2527,12 +2541,12 @@ export default ({ start_at }) => {
   };
 
   const handleSaveDescription = async () => {
-    const { editDescriptionMenuId, editDescriptionShort, editDescriptionLong, editDescriptionAvailableTo, editDescriptionColor, editDescriptionItemType, editDescriptionTargets, editDescriptionHasUrl, editDescriptionUrl } = reactData;
+    const { editDescriptionMenuId, editDescriptionShort, editDescriptionLong, editDescriptionShorthand, editDescriptionAvailableTo, editDescriptionColor, editDescriptionItemType, editDescriptionTargets, editDescriptionHasUrl, editDescriptionUrl } = reactData;
     let saveWorked = true;
     const colorExpr = editDescriptionColor ? ', color = :c' : ' REMOVE color';
     const urlExpr = editDescriptionHasUrl ? ', #u = :u' : '';
     const exprValues = {
-      ':d': { short: editDescriptionShort, long: editDescriptionLong },
+      ':d': { short: editDescriptionShort, long: editDescriptionLong, shorthand: editDescriptionShorthand },
       ':a': editDescriptionAvailableTo || []
     };
     if (editDescriptionColor) { exprValues[':c'] = editDescriptionColor; }
@@ -2587,7 +2601,7 @@ export default ({ start_at }) => {
         if (!level) { continue; }
         for (const cell of level) {
           if (cell.menu_id === editDescriptionMenuId && cell.menuItemRec) {
-            cell.menuItemRec.description = { short: editDescriptionShort, long: editDescriptionLong };
+            cell.menuItemRec.description = { short: editDescriptionShort, long: editDescriptionLong, shorthand: editDescriptionShorthand };
             cell.menuItemRec.available_to = editDescriptionAvailableTo || [];
             cell.available_to = editDescriptionAvailableTo || [];
             if (editDescriptionColor) { cell.menuItemRec.color = editDescriptionColor; }
@@ -2609,6 +2623,7 @@ export default ({ start_at }) => {
       editDescriptionMenuId: null,
       editDescriptionShort: '',
       editDescriptionLong: '',
+      editDescriptionShorthand: '',
       editDescriptionAvailableTo: [],
       editDescriptionColor: null,
       editDescriptionParent: null,
@@ -3730,6 +3745,873 @@ export default ({ start_at }) => {
     return false;
   };
 
+  // Last-resort fallback for the voice "open <menu item>" intent: expands EVERY collapsed
+  // 'menu'-type (folder) node across the whole authorized tree, one level at a time, by reusing
+  // batchGetMenuItems - the same lazy-loading fetch a real tap on a folder triggers - for every
+  // folder encountered, whether or not it's currently visible on screen. Only ever invoked when a
+  // search against the already-visible/expanded menu comes up with zero matches: voice-activating
+  // menu items is meant to save a user the trouble of tapping through to something already
+  // exposed, not to replace normal navigation, so most searches should resolve against what's
+  // already loaded, with this full-tree walk reserved for the rare "it's collapsed somewhere I
+  // haven't opened yet" case. Deliberately exhaustive rather than clever about resuming
+  // partially-loaded/paginated parents - correctness over speed, since the whole point here is to
+  // guarantee a real answer (found or not) rather than optimize a path that's already the
+  // slow/uncommon one.
+  const expandEntireMenuTree = async () => {
+    const MAX_DEPTH = 25; // safety net against a malformed/cyclic tree, not a realistic limit
+    let currentLevel = 0;
+    while (currentLevel < MAX_DEPTH) {
+      const cellsAtLevel = reactData.menu_hierarchy[currentLevel] || [];
+      const menuParents = cellsAtLevel.filter((cell) => (
+        (cell.menuItemRec?.menu_itemType === 'menu') && ((cell.menuItemRec.children || []).length > 0)
+      ));
+      if (menuParents.length === 0) { break; }
+      // Snapshot into a const before the loop-declared closures below reference it - currentLevel
+      // is reassigned at the bottom of this same loop, and while the Promise.all here is always
+      // fully awaited before that happens (so there's no real ordering bug), a plain `let` read
+      // from inside a function declared in a loop is unsafe enough in general that it's flagged
+      // regardless.
+      const nextLevel = currentLevel + 1;
+      await Promise.all(menuParents.map((cell) => (
+        batchGetMenuItems(cell.menuItemRec.children || [], nextLevel, cell.menuItemRec)
+      )));
+      currentLevel++;
+    }
+  };
+
+  // Activates a menu item exactly as tapping its card would: expands/collapses a submenu level
+  // ('menu' type), dispatches its function call ('function' type), or opens its live-link/
+  // slideshow viewer (embedded link types). Factored out of the card's own onClick (in
+  // renderMenuCardCell, below) so the voice "open <menu item>" intent can trigger the identical
+  // behavior a tap would, instead of duplicating this logic. Recomputes the handful of derived
+  // values (normalizedMenuType/isTelLink/hasLinkThumbnail) that renderMenuCardCell normally
+  // computes once per card, since this can now also be called from outside that render path.
+  const activateMenuItem = async (this_item, this_cell, level_index) => {
+    const normalizedMenuType = this_item.menu_type || this_item.menu_itemType;
+    const isLinkCard = ['link', 'live_link', 'slide_show'].includes(normalizedMenuType);
+    const isTelLink = isLinkCard && String(getPrimaryLinkUrl(this_item.url) || '').trim().toLowerCase().startsWith('tel:');
+    const cardImageUrl = (isLinkCard && !isTelLink)
+      ? getLinkThumbnailUrl(getPrimaryLinkUrl(this_item.url), this_item.icon || this_item.icon_thumb)
+      : (this_item.icon || this_item.icon_thumb);
+    const hasLinkThumbnail = (isLinkCard && !isTelLink) && !!(cardImageUrl && cardImageUrl !== this_item.icon);
+
+    if (this_item.menu_itemType === 'menu') {
+      if (useTileUI) {
+        for (let levelToClear = level_index + 1; levelToClear < reactData.menu_hierarchy.length; levelToClear++) {
+          reactData.menu_hierarchy[levelToClear] = [];
+        }
+        // Ensure the next level slot always exists, even if no children load (e.g. empty addable menu)
+        if (!reactData.menu_hierarchy[level_index + 1]) {
+          reactData.menu_hierarchy[level_index + 1] = [];
+        }
+        reactData.level_active_parent[level_index + 1] = this_item.menu_id;
+        // Reset to first page when opening a new menu level
+        reactData.levelPages = Object.assign({}, reactData.levelPages, { [level_index + 1]: 0 });
+        delete lazyFetchCursorRef.current[`${level_index + 1}~${this_item.menu_id}`];
+        await loadChildrenPage(this_item, level_index + 1, 0);
+      }
+      else {
+        const nextLevelCells = reactData.menu_hierarchy[level_index + 1] || [];
+        const hasLoadedChildren = nextLevelCells.some((cell) => {
+          return cell.parent === this_item.menu_id;
+        });
+
+        if (hasLoadedChildren) {
+          const collapsedIds = new Set([this_item.menu_id]);
+          for (let levelToTrim = level_index + 1; levelToTrim < reactData.menu_hierarchy.length; levelToTrim++) {
+            const levelCells = reactData.menu_hierarchy[levelToTrim] || [];
+            const remainingCells = [];
+
+            for (const levelCell of levelCells) {
+              if (collapsedIds.has(levelCell.parent)) {
+                collapsedIds.add(levelCell.menu_id);
+              }
+              else {
+                remainingCells.push(levelCell);
+              }
+            }
+
+            reactData.menu_hierarchy[levelToTrim] = remainingCells;
+          }
+        }
+        else {
+          // Reset to first page when opening a menu
+          reactData.levelPages = Object.assign({}, reactData.levelPages, { [level_index + 1]: 0 });
+          // Note: accessible (non-tile) mode has no pagination UI for nested submenus
+          // (renderAccessibleSubMenu renders everything it's given), so it must keep loading
+          // the full children list up front rather than paging lazily like tile mode does.
+          await batchGetMenuItems(this_item.children, level_index + 1, this_item);
+        }
+      }
+
+      updateReactData({
+        menu_hierarchy: reactData.menu_hierarchy,
+        level_active_parent: reactData.level_active_parent,
+        levelPages: reactData.levelPages
+      }, true);
+      void persistOpenMenusFromHierarchy(reactData.menu_hierarchy);
+    }
+    else if (this_item.menu_itemType === 'function') {
+      void activityLog(this_item.menu_id, this_item.description?.long);
+      if (this_item.activity) {
+        const activityDetail = await getActivityDetail({ activity_code: this_item.activity }, state);
+        updateReactData({
+          renderFunctionCall: {
+            target: 'MultiObservationFormD',
+            params: {
+              fact: { ...activityDetail.activityRec, activity_key: this_item.activity },
+              factName: activityDetail.activityRec?.name || '',
+              options: {
+                listValues: activityDetail.rows,
+                qualifiers: activityDetail.qualifiers
+              },
+              defaults: activityDetail.activityRec?.default_object || {}
+            }
+          }
+        }, true);
+      }
+      else {
+        updateReactData({
+          renderFunctionCall: await resolveCallParamTokens(this_item.call || false)
+        }, true);
+      }
+    }
+    else if (!isTelLink && (normalizedMenuType === 'live_link' || normalizedMenuType === 'slide_show' || (useTileUI && hasLinkThumbnail && normalizedMenuType === 'link'))) {
+      const itemTitle = this_item.description?.short || this_item.menu_id;
+      if (normalizedMenuType === 'slide_show') {
+        const slideUrls = normalizeSlideShowUrls(this_item.url)
+          .map(slideSrc => buildLiveLinkEmbedUrl(slideSrc))
+          .filter(Boolean);
+        if (slideUrls.length === 0) {
+          updateReactData({
+            alert: {
+              severity: 'warning',
+              title: 'Missing URL',
+              message: 'This Slide Show does not have any slide images configured.'
+            }
+          }, true);
+          return;
+        }
+        const slideSiblings = slideUrls.map(url => ({
+          url,
+          title: itemTitle
+        }));
+        updateReactData({
+          showLiveLink: true,
+          liveLinkUrl: slideSiblings[0].url,
+          liveLinkTitle: slideSiblings[0].title,
+          liveLinkSiblings: slideSiblings,
+          liveLinkCurrentIndex: 0,
+          liveLinkIsSlideshow: true,
+          liveLinkPaused: false,
+          liveLinkManualNavToken: 0,
+          liveLinkCacheBust: Date.now()
+        }, true);
+        return;
+      }
+      const frameUrl = buildLiveLinkEmbedUrl(this_item.url);
+      if (!frameUrl) {
+        updateReactData({
+          alert: {
+            severity: 'warning',
+            title: 'Missing URL',
+            message: 'This Live Link does not have a URL configured.'
+          }
+        }, true);
+        return;
+      }
+      const urlSiblings = (reactData.menu_hierarchy[level_index] || [])
+        .filter(cell => {
+          const sibItem = cell.menuItemRec;
+          if (!sibItem || !sibItem.url) { return false; }
+          if (cell.parent !== this_cell.parent) { return false; }
+          const sibType = sibItem.menu_type || sibItem.menu_itemType;
+          const sibIsTel = String(sibItem.url || '').trim().toLowerCase().startsWith('tel:');
+          if (sibIsTel) { return false; }
+          const sibCardImageUrl = getLinkThumbnailUrl(sibItem.url, sibItem.icon || sibItem.icon_thumb);
+          const sibHasLinkThumbnail = !!(sibCardImageUrl && sibCardImageUrl !== sibItem.icon);
+          return (sibType === 'live_link' || (useTileUI && sibHasLinkThumbnail && sibType === 'link'));
+        })
+        .map(cell => ({
+          url: buildLiveLinkEmbedUrl(cell.menuItemRec.url),
+          title: cell.menuItemRec.description?.short || cell.menuItemRec.menu_id
+        }));
+      const currentSiblingIndex = urlSiblings.findIndex(s => s.url === frameUrl);
+      updateReactData({
+        showLiveLink: true,
+        liveLinkUrl: frameUrl,
+        liveLinkTitle: itemTitle,
+        liveLinkSiblings: urlSiblings,
+        liveLinkCurrentIndex: currentSiblingIndex,
+        liveLinkIsSlideshow: false,
+        liveLinkPaused: false,
+        liveLinkManualNavToken: 0,
+        liveLinkCacheBust: Date.now()
+      }, true);
+    }
+    else if (!isTelLink && normalizedMenuType === 'link' && this_item.url) {
+      // Plain (non-thumbnail, or accessible-mode) link cards aren't rendered as an embedded
+      // viewer - they're a literal <a target="_blank"> around the label text (see the "link"
+      // branch of renderMenuCardCell's menuLabel rendering below), which is what a real tap
+      // normally triggers. That anchor is a sibling of this card's own onClick, not reachable
+      // through it, so "activating" one of these by voice needs to explicitly open the same URL
+      // the same way - same cache-busting query param, same new-tab/noopener/noreferrer behavior
+      // - since there's no actual tap-on-the-link-text equivalent for a spoken command.
+      const linkUrl = this_item.url + (!this_item.url?.includes('?') ? `?a=${new Date().getTime()}` : '');
+      window.open(linkUrl, '_blank', 'noopener,noreferrer');
+    }
+  };
+
+  // Speech-to-text capture for the header mic button. Deliberately uses the browser's built-in
+  // Web Speech API (SpeechRecognition) rather than recording raw audio - it hands back finished
+  // transcript text directly, with no separate transcription step/service needed, which is all
+  // this first pass needs: get a clean string out of a spoken command. Not supported in every
+  // browser (notably Firefox and some Safari versions), so the mic button is disabled with an
+  // explanatory tooltip when voiceCommandSupported is false.
+  const SpeechRecognitionImpl = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const voiceCommandSupported = !!SpeechRecognitionImpl;
+  const voiceRecognitionRef = React.useRef(null);
+  // The browser's own end-of-speech detection (what fires when continuous=false) treats any
+  // brief pause as "done talking," often well under a second - too quick for a full command.
+  // Running in continuous mode instead and enforcing this timeout ourselves (reset on every
+  // new word recognized) gives an actually-adjustable "how long a pause means they're done".
+  const VOICE_SILENCE_TIMEOUT_MS = 3000;
+  const voiceSilenceTimerRef = React.useRef(null);
+  const voiceTranscriptRef = React.useRef('');
+  const voicePlaybackRef = React.useRef(null);
+
+  // Hand-off point for whatever interprets the spoken command next. Deliberately NOT an LLM -
+  // a small table of regex-based "structured intents", each extracting its own slots and
+  // resolving to one specific, deterministic action. Falls through to a "didn't understand"
+  // message if nothing matches. Each intent below is self-contained; add more the same way
+  // without touching the others.
+
+  // "what's for dinner [today|tomorrow|friday]?" OR "what's [tonight|today|wednesday|tomorrow]'s
+  // [dinner|meal|entree]?" - both orderings resolve identically. The meal word itself is
+  // accepted for natural phrasing but intentionally ignored: MenuFormB.js's own write path
+  // (handleNewObservation's "OVERRIDE FOR AVT ONLY" block) drops meal/room from every new
+  // observation's composite_key, so a given day's entree list is the same regardless of meal.
+  const resolveDiningMenuIntent = (normalizedCommand) => {
+    const forwardMatch = normalizedCommand.match(/^what'?s (?:for )?(?:breakfast|lunch|dinner|meal|entree)(?: (?:on |for )?(.+))?\??$/);
+    if (forwardMatch) {
+      return { day: (forwardMatch[1] || 'today').trim() };
+    }
+    const possessiveMatch = normalizedCommand.match(/^what'?s (.+?)'s (?:breakfast|lunch|dinner|meal|entree)\??$/);
+    if (possessiveMatch) {
+      return { day: possessiveMatch[1].trim() };
+    }
+    return null;
+  };
+
+  // "look up john" / "call john" / "look up john's address" / "view john smith's phone number" /
+  // "what's mary's apartment number" - the requested noun (whatever it is - address/phone/
+  // apartment number/birthday/anything) is accepted for natural phrasing but never acted on
+  // itself: the result is just opening PeopleMaintenance for the matched person, which already
+  // shows every field, so there's no reason to restrict (or maintain) a fixed list of recognized
+  // nouns - literally anything after "<name>'s " is accepted and ignored.
+  //
+  // "look up"/"call" are split out from the others and given a fully OPTIONAL trailing noun:
+  // neither is a trigger word shared with any other intent, so "look up Sharon Addison" / "call
+  // Sharon Addison" (no noun at all) can safely resolve straight to a person lookup instead of
+  // requiring "...'s phone number"/etc. just to be recognized. "call" deliberately opens
+  // PeopleMaintenance rather than placing an actual call or being treated like the send-message
+  // intent below - voice never dials anyone directly (see activateMenuItem's tel: exclusion
+  // elsewhere); someone can tap the phone number themselves once the record is open.
+  //
+  // "show me"/"what's"/"what is"/"view", by contrast, ARE shared with other intents (open-menu-
+  // item/dining respectively), so a trailing "'s <noun>" stays required for those - it's the only
+  // thing that disambiguates "show me john's phone number" (person) from "show me the weather"
+  // (menu item). The noun itself is still unrestricted, just its presence (signaled by the
+  // possessive) is what's required.
+  const resolvePersonFieldIntent = (normalizedCommand) => {
+    const lookupMatch = normalizedCommand.match(/^(?:look ?up|call) (.+?)(?:'s (?:.+))?\??$/);
+    if (lookupMatch) { return { name: lookupMatch[1].trim() }; }
+    const fieldMatch = normalizedCommand.match(/^(?:show me|what'?s|what is|view) (.+?)'s (?:.+)\??$/);
+    if (fieldMatch) { return { name: fieldMatch[1].trim() }; }
+    return null;
+  };
+
+  // Builds on QuickSearch.js's OKtoShow name-matching convention (substring match against the
+  // person's name) but checks each spoken word independently against first+last+search_data
+  // combined, order-independent - needed because spoken full names come in "First Last" order
+  // ("John Smith") while QuickSearch's own single-order `${last} ${first}` check wouldn't match
+  // that as a whole-string substring. Including search_data (the same free-text field every
+  // other search in this app already blends in alongside name - see AVAGroups.js/GroupForm.js/
+  // GroupControl.js) means staff can resolve phonetic mismatches (e.g. "Rief" pronounced "Reef")
+  // or nicknames ("Bobby" for "Robert") just by adding the alternate spelling to that person's
+  // Search Data field in TechInfoSection.js, without any code change per name.
+  const findPeopleByName = (spokenName) => {
+    const needle = (spokenName || '').trim().toLowerCase();
+    if (!needle) { return []; }
+    const tokens = needle.split(/\s+/).filter(Boolean);
+    const people = state.accessList?.[state.session?.client_id]?.list || [];
+    const candidates = [];
+    for (const p of people) {
+      const first = (p.name?.first || p.first || '').toLowerCase();
+      const last = (p.name?.last || p.last || '').toLowerCase();
+      const searchData = (p.search_data || '').toLowerCase();
+      const full = `${first} ${last} ${searchData}`;
+      if (!tokens.every((token) => full.includes(token))) { continue; }
+      // Prefer an exact full-name match over a merely-partial one (e.g. two "Addison"s where
+      // only one is actually "Sharon Addison") - same precedence as findMenuItemsByDescription.
+      const isExactMatch = ([`${first} ${last}`.trim(), `${last} ${first}`.trim()]).includes(needle);
+      candidates.push({ person: p, isExactMatch });
+    }
+    const exactCandidates = candidates.filter((c) => c.isExactMatch);
+    return (exactCandidates.length > 0 ? exactCandidates : candidates).map((c) => c.person);
+  };
+
+  // "[send a message to|contact|message|write] [to] <person>" - the trailing "to" is optional
+  // either way, since it reads naturally both with the "send a message to" phrase (which already
+  // includes it) and without (e.g. "message to john" / "write to john" / "contact john").
+  const resolveSendMessageIntent = (normalizedCommand) => {
+    const match = normalizedCommand.match(/^(?:send (?:a )?message to|contact|message|write)(?: to)? (.+?)\??$/);
+    if (!match) { return null; }
+    return { name: match[1].trim() };
+  };
+
+  // Builds the same call shape a "Message" menu item's own this_item.call carries (target:
+  // 'MessageForm', params.options.recipients: [...]) so dispatching it (via
+  // resolveCallParamTokens + renderFunctionCall, exactly like activateMenuItem's 'function'
+  // branch does for a real menu item) opens MessageForm pre-addressed to the matched person.
+  const buildMessageFormCall = (person) => {
+    const firstName = person.name?.first || person.first || '';
+    const lastName = person.name?.last || person.last || '';
+    return {
+      target: 'MessageForm',
+      params: {
+        options: {
+          newMessage: true,
+          recipients: [{
+            person_firstName: firstName,
+            person_id: person.person_id,
+            person_lastName: lastName,
+            person_name: `${firstName} ${lastName}`.trim()
+          }]
+        }
+      }
+    };
+  };
+
+  // "[open|start|begin|enter|launch|go to|show me|view|pull up|bring up|order] [a|an|the] <menu
+  // item description>" - a catch-all tried only after the more specific dining/person intents
+  // fail to match. Resolved exactly as if the user had tapped that card - see activateMenuItem.
+  const resolveOpenMenuItemIntent = (normalizedCommand) => {
+    const match = normalizedCommand.match(/^(?:open|start|begin|enter|launch|go to|show me|view|pull up|bring up|access|order) (?:(?:an?|the) )?(.+?)\??$/);
+    if (!match) { return null; }
+    return { description: match[1].trim() };
+  };
+
+  // Flattens the currently-rendered menu_hierarchy (one array per level) into matchable
+  // candidates, keeping each cell's level_index since activateMenuItem needs it. Only considers
+  // items that are actually visible/authorized right now - the same set a real tap could reach.
+  // Matches like findPeopleByName above: substring overlap checked in both directions, so a
+  // short spoken word like "weather" matches a longer card title ("Today's Weather Report"), and
+  // a slightly over-described phrase still matches a short card title. Normalizes punctuation on
+  // both sides before comparing - menu item titles are free-text and often contain characters
+  // that are never actually present (or not present consistently) in a spoken transcript:
+  //  - "&" is spoken as the word "and", so it's replaced with that word, not dropped - "Groups &
+  //    Accounts" needs to become "groups and accounts", not "groups  accounts".
+  //  - apostrophes are deleted outright (not replaced with a space) since speech-to-text is
+  //    inconsistent about including them for possessives ("resident's" vs "residents") - deleting
+  //    collapses both spellings to the same "residents", whereas a space would wrongly split one
+  //    of them into two words.
+  //  - "/", "-", and other separators/punctuation have no spoken equivalent at all and have
+  //    surrounding whitespace only sometimes, so they're replaced with a space rather than
+  //    deleted - "View/Manage" has none, and deleting the character with nothing to replace it
+  //    would wrongly merge the two words on either side.
+  const stripPunctuationForMatch = (s) => (s || '')
+    .toLowerCase()
+    .replace(/&/g, ' and ')
+    .replace(/['’]/g, '')
+    .replace(/[/\\.,!?;:()[\]{}"_-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  // Matches against description.short, .long, AND .shorthand - a third, voice-only field (not
+  // rendered anywhere on screen) for the common, much shorter way someone would actually say a
+  // card's name out loud ("the directory") rather than its full displayed title ("Resident,
+  // Brothers, and Staff Directory"). Whichever of the three a candidate matches, the
+  // *displayed*/spoken-back label always stays whichever of short/long is actually on screen
+  // right now (see displayLabel below) - shorthand only ever feeds matching, never display.
+  //
+  // Candidates that match a field EXACTLY (not just as a substring) are preferred over ones that
+  // only partially match: if any candidate is an exact hit, partial-only candidates are dropped
+  // entirely rather than being offered alongside it, so a precise, deliberately-authored
+  // shorthand ("directory") doesn't still trigger an unnecessary disambiguation prompt against
+  // some unrelated card whose long description merely happens to contain that word.
+  //
+  // 'menu'-type (folder) items are never matched at all - in practice a spoken description is
+  // never actually a request to open a folder, it's a request for whatever's inside one, and
+  // folder names routinely collide with a child's similar-sounding name (a "Directory" folder
+  // containing a "Directory" form), which used to force unnecessary disambiguation prompts for
+  // the overwhelmingly common case of wanting the actual content, not the folder around it.
+  const findMenuItemsByDescription = (spokenDescription) => {
+    const needle = stripPunctuationForMatch(spokenDescription);
+    if (!needle) { return []; }
+    const candidates = [];
+    reactData.menu_hierarchy.forEach((cellsAtLevel, levelIndex) => {
+      (cellsAtLevel || []).forEach((cell) => {
+        const item = cell.menuItemRec;
+        if (!item || item.hidden) { return; }
+        if (item.menu_itemType === 'menu') { return; }
+        if (item.available_to && !authorizedToMenuItem(item.available_to)) { return; }
+        const shortLabel = (item.description?.short || '').trim();
+        const longLabel = (item.description?.long || '').trim();
+        const shorthandLabel = (item.description?.shorthand || '').trim();
+        if (!shortLabel && !longLabel && !shorthandLabel) { return; }
+        // Match against whichever description the user might have said, regardless of mode -
+        // but display whichever one renderMenuCardCell actually shows on screen right now (short
+        // in tile mode, long otherwise - same precedence as the real card label just above), so
+        // a disambiguation list/confirmation never names something the user can't also see.
+        const displayLabel = (useTileUI ? (shortLabel || longLabel) : (longLabel || shortLabel)) || item.menu_id;
+        let isPartialMatch = false;
+        let isExactMatch = false;
+        [shortLabel, longLabel, shorthandLabel].forEach((candidateLabel) => {
+          if (!candidateLabel) { return; }
+          const normalizedLabel = stripPunctuationForMatch(candidateLabel);
+          if (normalizedLabel === needle) {
+            isExactMatch = true;
+            isPartialMatch = true;
+          }
+          else if (normalizedLabel.includes(needle) || needle.includes(normalizedLabel)) {
+            isPartialMatch = true;
+          }
+        });
+        if (isPartialMatch) {
+          candidates.push({ item, cell, levelIndex, label: displayLabel, isExactMatch });
+        }
+      });
+    });
+    const exactCandidates = candidates.filter((c) => c.isExactMatch);
+    return exactCandidates.length > 0 ? exactCandidates : candidates;
+  };
+
+  // Reads a response aloud. Tries the current patient's actual preferred Polly voice first (the
+  // same voice identity already used for phone calls - see PersonalizationSection.js's
+  // preferred_voice/voicesTable) via a direct client-side AWS Polly call, mirroring the existing
+  // s3/mediaconvert client pattern in AVAUtilities.js - no new Lambda needed. Falls back to the
+  // browser's built-in speech synthesis (an approximate, not-exact-voice-match) if Polly is
+  // unavailable/denied/offline, so a backend hiccup never leaves a voice command silently
+  // unanswered. Deliberately does not attempt language translation - preferred_voice only picks
+  // an English voice identity today, so translating the response text itself would be a separate,
+  // larger feature.
+  const speakVoiceResponse = async (text) => {
+    if (!text) { return; }
+
+    // Stop anything already playing/queued before starting the next response.
+    if (voicePlaybackRef.current) {
+      voicePlaybackRef.current.pause();
+      voicePlaybackRef.current = null;
+    }
+    if (window.speechSynthesis) { window.speechSynthesis.cancel(); }
+
+    const speakWithBrowserVoice = () => {
+      if (!window.speechSynthesis) { return; }
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 0.95;
+      window.speechSynthesis.speak(utterance);
+    };
+
+    const preferredVoiceId = (state.patient?.preferred_voice || 'Polly.Joanna').replace(/^Polly\./, '');
+    try {
+      const result = await polly.synthesizeSpeech({
+        Text: text,
+        VoiceId: preferredVoiceId,
+        OutputFormat: 'mp3'
+      }).promise();
+      const audioBlob = (result.AudioStream instanceof Blob) ? result.AudioStream : new Blob([result.AudioStream], { type: 'audio/mpeg' });
+      const audioUrl = URL.createObjectURL(audioBlob);
+      const audioEl = new Audio(audioUrl);
+      voicePlaybackRef.current = audioEl;
+      audioEl.onended = () => { URL.revokeObjectURL(audioUrl); };
+      await audioEl.play();
+    }
+    catch (err) {
+      console.warn('Polly synthesis unavailable, falling back to browser speech synthesis:', err);
+      speakWithBrowserVoice();
+    }
+  };
+
+  // Short synthesized confirmation tone for a successful voice action (menu item opened, person
+  // found) - deliberately a plain Web Audio API beep, not the existing ava_alert.mp3/
+  // playNotificationSound() used elsewhere in this file, since that sound already has its own
+  // established meaning here (an alert ahead of a function timing out) and reusing it for
+  // "success" would be confusing. No new audio asset needed either way.
+  const playVoiceSuccessTone = () => {
+    try {
+      const AudioContextImpl = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContextImpl) { return; }
+      const audioCtx = new AudioContextImpl();
+      const oscillator = audioCtx.createOscillator();
+      const gainNode = audioCtx.createGain();
+      oscillator.type = 'sine';
+      oscillator.frequency.value = 880;
+      gainNode.gain.setValueAtTime(0.2, audioCtx.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.3);
+      oscillator.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+      oscillator.start();
+      oscillator.stop(audioCtx.currentTime + 0.3);
+      oscillator.onended = () => { audioCtx.close(); };
+    }
+    catch (err) {
+      console.warn('Unable to play voice success tone:', err);
+    }
+  };
+
+  // Every voice-command response goes through here. audioMode controls what (if anything) gets
+  // read aloud:
+  //  - 'speak' (default): reads alertPayload.message aloud - it must be a plain string.
+  //  - 'disambiguate': alertPayload.message is a JSX tap-to-select list (can't be read aloud as
+  //    text), so speaks a fixed "Which of these did you mean?" prompt instead.
+  //  - 'success': a menu item opened or a person was found - the resulting visible change (a
+  //    dialog opening, a menu expanding) is itself the confirmation, so no speech at all; just a
+  //    short tone, since narrating "Opened X"/"Found X" on every single hit gets old fast.
+  const respondToVoiceCommand = (command, alertPayload, { audioMode = 'speak', extraData = {} } = {}) => {
+    updateReactData(Object.assign({ lastVoiceCommand: command, alert: alertPayload }, extraData), true);
+    if (audioMode === 'success') {
+      playVoiceSuccessTone();
+    }
+    else if (audioMode === 'disambiguate') {
+      speakVoiceResponse('Which of these did you mean?');
+    }
+    else if (typeof alertPayload.message === 'string') {
+      speakVoiceResponse(alertPayload.message);
+    }
+  };
+
+  const handleVoiceCommand = async (transcript) => {
+    const command = (transcript || '').trim();
+    if (!command) { return; }
+    console.log('Voice command captured:', command);
+    // Strip trailing sentence punctuation (including "?", so it doesn't get greedily captured
+    // into the day/name slot groups below), collapse whitespace, and drop common conversational
+    // lead-ins/sign-offs ("please", "let's", "can i", "i'd like to", "i need to") - very natural
+    // things to say to an assistant, and otherwise break every pattern below since none of them
+    // expect them. Looped since more than one can stack ("Can I please..."). Apostrophes are kept
+    // intact since possessives ("john's") are load-bearing for the person-lookup intent below.
+    let normalized = command.toLowerCase().replace(/[.,!?]+$/g, '').replace(/\s+/g, ' ').trim();
+    let strippedFiller = true;
+    while (strippedFiller) {
+      const beforeStrip = normalized;
+      normalized = normalized
+        .replace(/^(?:please|let's|can i|i'd like to|i need to)\s+/, '')
+        .replace(/\s+please$/, '');
+      strippedFiller = (normalized !== beforeStrip);
+    }
+
+    const diningSlots = resolveDiningMenuIntent(normalized);
+    if (diningSlots) {
+      const result = await getMenuCategoryForDate(state.session.client_id, state.session, {
+        date: diningSlots.day,
+        category: 'entree'
+      });
+      if (result.error) {
+        respondToVoiceCommand(command, { severity: 'warning', title: 'Voice Command', message: result.message });
+        return;
+      }
+      const dayLabel = result.date.relative || result.date.absolute;
+      const message = result.items.length
+        ? `${dayLabel}'s entrée: ${listFromArray(result.items, { or: true })}.`
+        : `Nothing has been posted for ${dayLabel}'s entrée yet.`;
+      respondToVoiceCommand(command, { severity: 'info', title: 'Dining Menu', message });
+      return;
+    }
+
+    const personSlots = resolvePersonFieldIntent(normalized);
+    if (personSlots) {
+      const matches = findPeopleByName(personSlots.name);
+      if (matches.length === 0) {
+        respondToVoiceCommand(command, {
+          severity: 'warning',
+          title: 'Voice Command',
+          message: `Didn't find anyone named "${personSlots.name}".`
+        });
+      }
+      else if (matches.length === 1) {
+        const matchedName = `${matches[0].name?.first || matches[0].first || ''} ${matches[0].name?.last || matches[0].last || ''}`.trim();
+        respondToVoiceCommand(
+          command,
+          { severity: 'info', title: 'Voice Command', message: `Found ${matchedName}.` },
+          { audioMode: 'success', extraData: { voiceLookupPersonId: matches[0].person_id } }
+        );
+      }
+      else if (matches.length > 8) {
+        respondToVoiceCommand(command, {
+          severity: 'warning',
+          title: 'Voice Command',
+          message: `Found ${matches.length} people matching "${personSlots.name}" - try saying a full name.`
+        });
+      }
+      else {
+        respondToVoiceCommand(command, {
+          severity: 'warning',
+          title: 'Multiple Matches',
+          message: (
+            <Box display='flex' flexDirection='column'>
+              <Typography variant='caption'>{`Found ${matches.length} people matching "${personSlots.name}":`}</Typography>
+              {matches.map((m) => (
+                <Typography
+                  key={m.person_id}
+                  style={{ cursor: 'pointer', textDecoration: 'underline', marginTop: 4 }}
+                  onClick={() => {
+                    updateReactData({ alert: false, voiceLookupPersonId: m.person_id }, true);
+                  }}
+                >
+                  {`${m.name?.first || m.first || ''} ${m.name?.last || m.last || ''}`.trim()}
+                </Typography>
+              ))}
+            </Box>
+          )
+        }, { audioMode: 'disambiguate' });
+      }
+      return;
+    }
+
+    const messageSlots = resolveSendMessageIntent(normalized);
+    if (messageSlots) {
+      const matches = findPeopleByName(messageSlots.name);
+      if (matches.length === 0) {
+        respondToVoiceCommand(command, {
+          severity: 'warning',
+          title: 'Voice Command',
+          message: `Didn't find anyone named "${messageSlots.name}".`
+        });
+      }
+      else if (matches.length === 1) {
+        const matchedName = `${matches[0].name?.first || matches[0].first || ''} ${matches[0].name?.last || matches[0].last || ''}`.trim();
+        const resolvedCall = await resolveCallParamTokens(buildMessageFormCall(matches[0]));
+        respondToVoiceCommand(
+          command,
+          { severity: 'info', title: 'Voice Command', message: `Messaging ${matchedName}.` },
+          { audioMode: 'success', extraData: { renderFunctionCall: resolvedCall } }
+        );
+      }
+      else if (matches.length > 8) {
+        respondToVoiceCommand(command, {
+          severity: 'warning',
+          title: 'Voice Command',
+          message: `Found ${matches.length} people matching "${messageSlots.name}" - try saying a full name.`
+        });
+      }
+      else {
+        respondToVoiceCommand(command, {
+          severity: 'warning',
+          title: 'Multiple Matches',
+          message: (
+            <Box display='flex' flexDirection='column'>
+              <Typography variant='caption'>{`Found ${matches.length} people matching "${messageSlots.name}":`}</Typography>
+              {matches.map((m) => (
+                <Typography
+                  key={m.person_id}
+                  style={{ cursor: 'pointer', textDecoration: 'underline', marginTop: 4 }}
+                  onClick={async () => {
+                    const resolvedCall = await resolveCallParamTokens(buildMessageFormCall(m));
+                    updateReactData({ alert: false, renderFunctionCall: resolvedCall }, true);
+                  }}
+                >
+                  {`${m.name?.first || m.first || ''} ${m.name?.last || m.last || ''}`.trim()}
+                </Typography>
+              ))}
+            </Box>
+          )
+        }, { audioMode: 'disambiguate' });
+      }
+      return;
+    }
+
+    const openSlots = resolveOpenMenuItemIntent(normalized);
+    if (openSlots) {
+      let matches = findMenuItemsByDescription(openSlots.description);
+      // Only set when the exhaustive fallback below actually runs - captures just enough of the
+      // current navigation state to restore afterward, so walking the whole tree to find a match
+      // doesn't leave every unrelated folder visibly expanded as a side effect of the search
+      // itself. Deliberately captured BEFORE expandEntireMenuTree (while the tree is still its
+      // normal, small size) rather than after.
+      let preSearchSnapshot = null;
+      if (matches.length === 0) {
+        // Nothing visible/already-expanded matched - walk the whole tree before giving up for
+        // real, silently (no interim "still looking" speech - that ended up talking over the
+        // final result since this search is fast enough that it was never really needed). This
+        // is deliberately the exception, not the rule: most searches hit something already on
+        // screen and return above without ever reaching this block.
+        preSearchSnapshot = {
+          menu_hierarchy: deepCopy(reactData.menu_hierarchy),
+          levelPages: deepCopy(reactData.levelPages),
+          level_active_parent: deepCopy(reactData.level_active_parent)
+        };
+        await expandEntireMenuTree();
+        matches = findMenuItemsByDescription(openSlots.description);
+      }
+      const restorePreSearchSnapshot = () => {
+        if (!preSearchSnapshot) { return; }
+        reactData.menu_hierarchy = preSearchSnapshot.menu_hierarchy;
+        reactData.levelPages = preSearchSnapshot.levelPages;
+        reactData.level_active_parent = preSearchSnapshot.level_active_parent;
+        updateReactData({
+          menu_hierarchy: reactData.menu_hierarchy,
+          levelPages: reactData.levelPages,
+          level_active_parent: reactData.level_active_parent
+        }, true);
+      };
+      // If still ambiguous and exactly one candidate's parent is the Favorites folder
+      // ('__v3_favorites__' - see applyFavoritesCardToHierarchy), prefer that one. A favorited
+      // item is duplicated as a separate cell under Favorites alongside its "real" location
+      // elsewhere in the tree, so the same item can otherwise show up as two candidates for
+      // itself; and when it's a genuine collision between two different items, the one the user
+      // bothered to favorite is the far more likely intended target.
+      if (matches.length > 1) {
+        const favoritesMatches = matches.filter((m) => m.cell.parent === '__v3_favorites__');
+        if (favoritesMatches.length === 1) {
+          matches = favoritesMatches;
+        }
+      }
+      if (matches.length === 0) {
+        respondToVoiceCommand(command, {
+          severity: 'warning',
+          title: 'Voice Command',
+          message: `Didn't find a menu item called "${openSlots.description}".`
+        });
+        restorePreSearchSnapshot();
+      }
+      else if (matches.length === 1) {
+        respondToVoiceCommand(
+          command,
+          { severity: 'info', title: 'Voice Command', message: `Opening ${matches[0].label}.` },
+          { audioMode: 'success' }
+        );
+        await activateMenuItem(matches[0].item, matches[0].cell, matches[0].levelIndex);
+        // findMenuItemsByDescription never returns 'menu'-type matches, so activating one of
+        // these never itself leaves a new branch visibly expanded - always safe to restore.
+        restorePreSearchSnapshot();
+      }
+      else if (matches.length > 8) {
+        respondToVoiceCommand(command, {
+          severity: 'warning',
+          title: 'Voice Command',
+          message: `Found ${matches.length} menu items matching "${openSlots.description}" - try being more specific.`
+        });
+        restorePreSearchSnapshot();
+      }
+      else {
+        // Disambiguation list - deliberately NOT restored here even if this came from the
+        // exhaustive search: each candidate's cell/levelIndex refers to a position in the
+        // just-expanded tree, and reverting now would make tapping one afterward operate on
+        // stale/missing data. The expanded tree stays visible until the user picks something.
+        respondToVoiceCommand(command, {
+          severity: 'warning',
+          title: 'Multiple Matches',
+          message: (
+            <Box display='flex' flexDirection='column'>
+              <Typography variant='caption'>{`Found ${matches.length} menu items matching "${openSlots.description}":`}</Typography>
+              {matches.map((m, idx) => (
+                <Typography
+                  key={`${m.item.menu_id}_${idx}`}
+                  style={{ cursor: 'pointer', textDecoration: 'underline', marginTop: 4 }}
+                  onClick={async () => {
+                    updateReactData({ alert: false }, true);
+                    await activateMenuItem(m.item, m.cell, m.levelIndex);
+                  }}
+                >
+                  {m.label}
+                </Typography>
+              ))}
+            </Box>
+          )
+        }, { audioMode: 'disambiguate' });
+      }
+      return;
+    }
+
+    // No structured intent matched.
+    respondToVoiceCommand(command, { severity: 'warning', title: 'Voice Command', message: `Didn't catch a command for: "${command}"` });
+    // TODO: route unmatched `command` to LLM-based intent parsing / action handling, if that's
+    // ever needed - the structured intents above are tried first and take priority.
+  };
+
+  const toggleVoiceCapture = () => {
+    if (!voiceCommandSupported) {
+      updateReactData({
+        alert: {
+          severity: 'warning',
+          title: 'Voice Commands Not Supported',
+          message: 'This browser does not support voice input. Please try Chrome or Edge.'
+        }
+      }, true);
+      return;
+    }
+    if (reactData.voiceListening) {
+      if (voiceRecognitionRef.current) { voiceRecognitionRef.current.stop(); }
+      return;
+    }
+    const clearVoiceSilenceTimer = () => {
+      if (voiceSilenceTimerRef.current) {
+        clearTimeout(voiceSilenceTimerRef.current);
+        voiceSilenceTimerRef.current = null;
+      }
+    };
+    const resetVoiceSilenceTimer = () => {
+      clearVoiceSilenceTimer();
+      voiceSilenceTimerRef.current = setTimeout(() => {
+        if (voiceRecognitionRef.current) { voiceRecognitionRef.current.stop(); }
+      }, VOICE_SILENCE_TIMEOUT_MS);
+    };
+    voiceTranscriptRef.current = '';
+    const recognition = new SpeechRecognitionImpl();
+    recognition.lang = 'en-US';
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.maxAlternatives = 1;
+    recognition.onstart = () => {
+      updateReactData({ voiceListening: true }, true);
+      resetVoiceSilenceTimer();
+    };
+    recognition.onresult = (event) => {
+      // Any new result (interim or final) means they're still talking - push the stop-listening
+      // deadline back out rather than letting it cut them off mid-sentence.
+      resetVoiceSilenceTimer();
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const result = event.results[i];
+        if (result.isFinal) {
+          voiceTranscriptRef.current = `${voiceTranscriptRef.current} ${result[0].transcript}`.trim();
+        }
+      }
+    };
+    recognition.onerror = (event) => {
+      console.error('Voice command recognition error:', event.error);
+      if (!['aborted', 'no-speech'].includes(event.error)) {
+        updateReactData({
+          alert: {
+            severity: 'warning',
+            title: 'Voice Command Error',
+            message: `AVA couldn't understand that. (${event.error})`
+          }
+        }, true);
+      }
+    };
+    recognition.onend = () => {
+      clearVoiceSilenceTimer();
+      voiceRecognitionRef.current = null;
+      updateReactData({ voiceListening: false }, true);
+      const finalTranscript = voiceTranscriptRef.current;
+      voiceTranscriptRef.current = '';
+      handleVoiceCommand(finalTranscript);
+    };
+    voiceRecognitionRef.current = recognition;
+    recognition.start();
+  };
+
+  // Stops any in-progress recognition session (and any Polly audio response) if this component
+  // unmounts mid-capture/mid-playback.
+  React.useEffect(() => {
+    return () => {
+      if (voiceSilenceTimerRef.current) { clearTimeout(voiceSilenceTimerRef.current); }
+      if (voiceRecognitionRef.current) { voiceRecognitionRef.current.stop(); }
+      if (voicePlaybackRef.current) { voicePlaybackRef.current.pause(); }
+    };
+  }, []);
+
   const firstVisibleLevelIndex = reactData.menu_hierarchy.findIndex((menuLevel) => {
     return Array.isArray(menuLevel) && menuLevel.some((cell) => !cell.menuItemRec.hidden);
   });
@@ -3985,6 +4867,7 @@ export default ({ start_at }) => {
                   menu_id: this_item.menu_id,
                   description_short: this_item.description?.short || '',
                   description_long: this_item.description?.long || '',
+                  description_shorthand: this_item.description?.shorthand || '',
                   available_to: deepCopy(this_item.available_to || []),
                   color: this_item.color || null,
                   parent: this_cell.parent || null,
@@ -3998,160 +4881,7 @@ export default ({ start_at }) => {
           }, true);
         }}
         onClick={async () => {
-          if (this_item.menu_itemType === 'menu') {
-            if (useTileUI) {
-              for (let levelToClear = level_index + 1; levelToClear < reactData.menu_hierarchy.length; levelToClear++) {
-                reactData.menu_hierarchy[levelToClear] = [];
-              }
-              // Ensure the next level slot always exists, even if no children load (e.g. empty addable menu)
-              if (!reactData.menu_hierarchy[level_index + 1]) {
-                reactData.menu_hierarchy[level_index + 1] = [];
-              }
-              reactData.level_active_parent[level_index + 1] = this_item.menu_id;
-              // Reset to first page when opening a new menu level
-              reactData.levelPages = Object.assign({}, reactData.levelPages, { [level_index + 1]: 0 });
-              delete lazyFetchCursorRef.current[`${level_index + 1}~${this_item.menu_id}`];
-              await loadChildrenPage(this_item, level_index + 1, 0);
-            }
-            else {
-              const nextLevelCells = reactData.menu_hierarchy[level_index + 1] || [];
-              const hasLoadedChildren = nextLevelCells.some((cell) => {
-                return cell.parent === this_item.menu_id;
-              });
-
-              if (hasLoadedChildren) {
-                const collapsedIds = new Set([this_item.menu_id]);
-                for (let levelToTrim = level_index + 1; levelToTrim < reactData.menu_hierarchy.length; levelToTrim++) {
-                  const levelCells = reactData.menu_hierarchy[levelToTrim] || [];
-                  const remainingCells = [];
-
-                  for (const levelCell of levelCells) {
-                    if (collapsedIds.has(levelCell.parent)) {
-                      collapsedIds.add(levelCell.menu_id);
-                    }
-                    else {
-                      remainingCells.push(levelCell);
-                    }
-                  }
-
-                  reactData.menu_hierarchy[levelToTrim] = remainingCells;
-                }
-              }
-              else {
-                // Reset to first page when opening a menu
-                reactData.levelPages = Object.assign({}, reactData.levelPages, { [level_index + 1]: 0 });
-                // Note: accessible (non-tile) mode has no pagination UI for nested submenus
-                // (renderAccessibleSubMenu renders everything it's given), so it must keep loading
-                // the full children list up front rather than paging lazily like tile mode does.
-                await batchGetMenuItems(this_item.children, level_index + 1, this_item);
-              }
-            }
-
-            updateReactData({
-              menu_hierarchy: reactData.menu_hierarchy,
-              level_active_parent: reactData.level_active_parent,
-              levelPages: reactData.levelPages
-            }, true);
-            void persistOpenMenusFromHierarchy(reactData.menu_hierarchy);
-          }
-          else if (this_item.menu_itemType === 'function') {
-            void activityLog(this_item.menu_id, this_item.description?.long);
-            if (this_item.activity) {
-              const activityDetail = await getActivityDetail({ activity_code: this_item.activity }, state);
-              updateReactData({
-                renderFunctionCall: {
-                  target: 'MultiObservationFormD',
-                  params: {
-                    fact: { ...activityDetail.activityRec, activity_key: this_item.activity },
-                    factName: activityDetail.activityRec?.name || '',
-                    options: {
-                      listValues: activityDetail.rows,
-                      qualifiers: activityDetail.qualifiers
-                    },
-                    defaults: activityDetail.activityRec?.default_object || {}
-                  }
-                }
-              }, true);
-            }
-            else {
-              updateReactData({
-                renderFunctionCall: await resolveCallParamTokens(this_item.call || false)
-              }, true);
-            }
-          }
-          else if (!isTelLink && (normalizedMenuType === 'live_link' || normalizedMenuType === 'slide_show' || (useTileUI && hasLinkThumbnail && normalizedMenuType === 'link'))) {
-            const itemTitle = this_item.description?.short || this_item.menu_id;
-            if (normalizedMenuType === 'slide_show') {
-              const slideUrls = normalizeSlideShowUrls(this_item.url)
-                .map(slideSrc => buildLiveLinkEmbedUrl(slideSrc))
-                .filter(Boolean);
-              if (slideUrls.length === 0) {
-                updateReactData({
-                  alert: {
-                    severity: 'warning',
-                    title: 'Missing URL',
-                    message: 'This Slide Show does not have any slide images configured.'
-                  }
-                }, true);
-                return;
-              }
-              const slideSiblings = slideUrls.map(url => ({
-                url,
-                title: itemTitle
-              }));
-              updateReactData({
-                showLiveLink: true,
-                liveLinkUrl: slideSiblings[0].url,
-                liveLinkTitle: slideSiblings[0].title,
-                liveLinkSiblings: slideSiblings,
-                liveLinkCurrentIndex: 0,
-                liveLinkIsSlideshow: true,
-                liveLinkPaused: false,
-                liveLinkManualNavToken: 0,
-                liveLinkCacheBust: Date.now()
-              }, true);
-              return;
-            }
-            const frameUrl = buildLiveLinkEmbedUrl(this_item.url);
-            if (!frameUrl) {
-              updateReactData({
-                alert: {
-                  severity: 'warning',
-                  title: 'Missing URL',
-                  message: 'This Live Link does not have a URL configured.'
-                }
-              }, true);
-              return;
-            }
-            const urlSiblings = (reactData.menu_hierarchy[level_index] || [])
-              .filter(cell => {
-                const sibItem = cell.menuItemRec;
-                if (!sibItem || !sibItem.url) { return false; }
-                if (cell.parent !== this_cell.parent) { return false; }
-                const sibType = sibItem.menu_type || sibItem.menu_itemType;
-                const sibIsTel = String(sibItem.url || '').trim().toLowerCase().startsWith('tel:');
-                if (sibIsTel) { return false; }
-                const sibCardImageUrl = getLinkThumbnailUrl(sibItem.url, sibItem.icon || sibItem.icon_thumb);
-                const sibHasLinkThumbnail = !!(sibCardImageUrl && sibCardImageUrl !== sibItem.icon);
-                return (sibType === 'live_link' || (useTileUI && sibHasLinkThumbnail && sibType === 'link'));
-              })
-              .map(cell => ({
-                url: buildLiveLinkEmbedUrl(cell.menuItemRec.url),
-                title: cell.menuItemRec.description?.short || cell.menuItemRec.menu_id
-              }));
-            const currentSiblingIndex = urlSiblings.findIndex(s => s.url === frameUrl);
-            updateReactData({
-              showLiveLink: true,
-              liveLinkUrl: frameUrl,
-              liveLinkTitle: itemTitle,
-              liveLinkSiblings: urlSiblings,
-              liveLinkCurrentIndex: currentSiblingIndex,
-              liveLinkIsSlideshow: false,
-              liveLinkPaused: false,
-              liveLinkManualNavToken: 0,
-              liveLinkCacheBust: Date.now()
-            }, true);
-          }
+          await activateMenuItem(this_item, this_cell, level_index);
         }}
         draggable={canDragThisCard}
         onDragStart={(event) => {
@@ -4532,6 +5262,36 @@ export default ({ start_at }) => {
                   {`${reactData.greetingName}!`}
                 </Typography>
               </Box>
+            </Box>
+            {/* Voice Command */}
+            <Box
+              display='flex'
+              overflow='hidden'
+              flexDirection='column'
+              justifyContent={'center'}
+              alignItems={'center'}
+            >
+              <Tooltip
+                title={
+                  <Typography variant='caption'>
+                    {!voiceCommandSupported
+                      ? 'Voice commands are not supported on this browser'
+                      : (reactData.voiceListening ? 'Listening... tap to stop' : 'Tap to give a voice command')}
+                  </Typography>
+                }
+                placement='bottom-start'
+              >
+                <span>
+                  <IconButton
+                    aria-label='voice_command'
+                    disabled={!voiceCommandSupported}
+                    onClick={toggleVoiceCapture}
+                    style={{ color: reactData.voiceListening ? theme.palette.error.main : chromeTextColor }}
+                  >
+                    <MicIcon className={reactData.voiceListening ? classes.voiceListening : undefined} />
+                  </IconButton>
+                </span>
+              </Tooltip>
             </Box>
             {/* AVA Logo and Pop-up Menu */}
             <Box
@@ -5262,6 +6022,19 @@ export default ({ start_at }) => {
               onClose={() => {
                 updateReactData({
                   showProfileEdit: false
+                }, true);
+              }}
+            />
+          }
+
+          {reactData.voiceLookupPersonId &&
+            <PeopleMaintenance
+              person_id={reactData.voiceLookupPersonId}
+              key={`voiceLookup_${reactData.voiceLookupPersonId}`}
+              options={{ sectionToShow: ['Snapshot'] }}
+              onClose={() => {
+                updateReactData({
+                  voiceLookupPersonId: null
                 }, true);
               }}
             />
@@ -6129,6 +6902,7 @@ export default ({ start_at }) => {
                       editDescriptionMenuId: edit.menu_id,
                       editDescriptionShort: edit.description_short,
                       editDescriptionLong: edit.description_long,
+                      editDescriptionShorthand: edit.description_shorthand || '',
                       editDescriptionAvailableTo: deepCopy(edit.available_to || []),
                       editDescriptionColor: edit.color || null,
                       editDescriptionParent: edit.parent || null,
@@ -6358,6 +7132,15 @@ export default ({ start_at }) => {
               fullWidth
               multiline
               minRows={3}
+              style={{ marginBottom: 24 }}
+            />
+            <TextField
+              label='Shorthand (voice commands only)'
+              helperText={'A short, natural way someone might say this item\u2019s name out loud (e.g. "the directory"). Not shown on screen - only used to match spoken "open ..."/"start ..." voice commands.'}
+              value={reactData.editDescriptionShorthand}
+              onChange={(e) => updateReactData({ editDescriptionShorthand: e.target.value }, true)}
+              variant='outlined'
+              fullWidth
               style={{ marginBottom: 24 }}
             />
             {reactData.editDescriptionHasUrl &&

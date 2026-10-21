@@ -73,7 +73,7 @@ import { getGroupAccess, addMember } from '../../util/AVAGroups';
 import { makeDate } from '../../util/AVADateTime';
 import { AVATextStyle, AVAclasses } from '../../util/AVAStyles';
 import { sendMessages } from '../../util/AVAMessages';
-import { getConfiguredPersonType, resolvePersonType, getPersonTypeLabel } from '../../util/AVAPersonType';
+import { getConfiguredPersonType, resolvePersonType, getPersonTypeLabel, getDisplayPersonType } from '../../util/AVAPersonType';
 import AVAConfirm from '../forms/AVAConfirm';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
@@ -878,10 +878,10 @@ export default ({ onClose, options = {}, new_account_form }) => {
     return validatePersonTypeConfiguration(accountConfig);
   };
 
-  const confirmPersonTypeChange = (personName, currentType, configuredType) => {
+  const confirmPersonTypeChange = (personName, currentType, configuredType, isInactive) => {
     return new Promise((resolve, reject) => {
       personTypeConfirmationRef.current = { resolve, reject };
-      setPersonTypeConfirmation({ personName, currentType, configuredType });
+      setPersonTypeConfirmation({ personName, currentType, configuredType, isInactive: !!isInactive });
     });
   };
 
@@ -2005,7 +2005,8 @@ export default ({ onClose, options = {}, new_account_form }) => {
           (currentType, nextType) => confirmPersonTypeChange(
             existingRecord.display_name || `${existingRecord.name?.first || ''} ${existingRecord.name?.last || ''}`.trim() || existingRecord.person_id,
             currentType,
-            nextType
+            nextType,
+            existingRecord.inactive_account
           )
         );
 
@@ -4186,17 +4187,28 @@ export default ({ onClose, options = {}, new_account_form }) => {
       }
 
       {personTypeConfirmation &&
-        <AVAConfirm
-          promptText={[
-            'Confirm Person Type',
-            `${personTypeConfirmation.personName} is currently classified as ${getPersonTypeLabel(personTypeConfirmation.currentType) || `an unrecognized person type (${JSON.stringify(personTypeConfirmation.currentType)})`}.`,
-            `This account configuration specifies ${getPersonTypeLabel(personTypeConfirmation.configuredType)}. Keep the current classification or change it?`
-          ]}
-          cancelText={`Keep ${getPersonTypeLabel(personTypeConfirmation.currentType) || 'Current Value'}`}
-          confirmText={`Change to ${getPersonTypeLabel(personTypeConfirmation.configuredType)}`}
-          onCancel={() => finishPersonTypeConfirmation(false)}
-          onConfirm={() => finishPersonTypeConfirmation(true)}
-        />
+        (() => {
+          // Display-only: show "Inactive" when the account is currently deactivated, rather
+          // than a stale pre-deactivation type - the underlying stored person_type (and the
+          // confirm/cancel resolution below) is untouched by this override.
+          const displayCurrentType = getDisplayPersonType({
+            person_type: personTypeConfirmation.currentType,
+            inactive_account: personTypeConfirmation.isInactive
+          });
+          return (
+            <AVAConfirm
+              promptText={[
+                'Confirm Person Type',
+                `${personTypeConfirmation.personName} is currently classified as ${getPersonTypeLabel(displayCurrentType) || `an unrecognized person type (${JSON.stringify(personTypeConfirmation.currentType)})`}.`,
+                `This account configuration specifies ${getPersonTypeLabel(personTypeConfirmation.configuredType)}. Keep the current classification or change it?`
+              ]}
+              cancelText={`Keep ${getPersonTypeLabel(displayCurrentType) || 'Current Value'}`}
+              confirmText={`Change to ${getPersonTypeLabel(personTypeConfirmation.configuredType)}`}
+              onCancel={() => finishPersonTypeConfirmation(false)}
+              onConfirm={() => finishPersonTypeConfirmation(true)}
+            />
+          );
+        })()
       }
 
       {/* Alert/Snackbar for error and success messages */}
