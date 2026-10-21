@@ -5739,7 +5739,7 @@ export default ({ start_at }) => {
                   const parentCell = reactData.menu_hierarchy
                     .flat()
                     .find((candidateCell) => candidateCell.menu_id === parentMenuId);
-                  const level_addButton = useTileUI && !!(
+                  const level_addButton = (level_index > 0) && useTileUI && !!(
                     parentCell?.menuItemRec &&
                     Object.prototype.hasOwnProperty.call(parentCell.menuItemRec, 'allow_add') &&
                     authorizedToMenuItem(parentCell.menuItemRec.allow_add)
