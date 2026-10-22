@@ -631,6 +631,8 @@ function makeResultDisplay(message, options = {}) {
     const otherPersonByAddress = options.otherPersonByAddress || (() => '');
     const currentRecipientId = options.currentRecipientId || '';
     const currentRecipientName = options.currentRecipientName || '';
+    const timeZone = options.timeZone;
+    const dateOptions = timeZone ? { timeZone } : {};
     const defaultStatus = sentenceCase(normalizeStatus(message) || 'unknown');
     const method = normalizeMethod(message);
     const heldRuleUsedText = [message?.recipient_list?.rule_used]
@@ -663,7 +665,7 @@ function makeResultDisplay(message, options = {}) {
     else if (method === 'held') {
         methodMsg = `held${heldRuleUsedText ? ` (rule: ${heldRuleUsedText})` : ''}`;
         resultText = `Held${heldRuleUsedText ? ` by rule ${heldRuleUsedText}` : ''}${heldKeywordText ? ` (${heldKeywordText})` : ''} `;
-        resultText += makeDate(message.created_time).oaDate;
+        resultText += makeDate(message.created_time, dateOptions).oaDate;
     }
     else if (normalizeStatus(message) === 'complaint') {
         const complaintHistoryEntry = getComplaintHistoryEntry(message);
@@ -675,7 +677,7 @@ function makeResultDisplay(message, options = {}) {
             || message?.created_time
             || null
         );
-        const complaintDateText = complaintTimestamp ? ` ${makeDate(complaintTimestamp).oaDate}` : '';
+        const complaintDateText = complaintTimestamp ? ` ${makeDate(complaintTimestamp, dateOptions).oaDate}` : '';
         const complaintCarrierText = complaintCarrier ? ` - carrier: ${complaintCarrier}` : '';
         return {
             text: `reported as Spam${complaintCarrierText}${complaintDateText}`,
@@ -695,7 +697,7 @@ function makeResultDisplay(message, options = {}) {
             continue;
         }
 
-        const postedText = resultEntry?.posted_time ? ` ${makeDate(resultEntry.posted_time).oaDate}` : '';
+        const postedText = resultEntry?.posted_time ? ` ${makeDate(resultEntry.posted_time, dateOptions).oaDate}` : '';
 
         if (resultValue.startsWith('reply')) {
             return {
@@ -1294,15 +1296,15 @@ function normalizeDateValue(message) {
     return message.created_time || message.message_date || message.created_at || message.sent_at || message.timestamp || null;
 }
 
-function formatMessageDate(dateValue) {
+function formatMessageDate(dateValue, timeZone) {
     if (!dateValue) { return 'unknown date'; }
     const asNumber = Number(dateValue);
     if (!Number.isNaN(asNumber) && `${asNumber}`.length >= 8) {
-        return makeDate(asNumber).absolute;
+        return makeDate(asNumber, timeZone ? { timeZone } : {}).absolute;
     }
     const asDate = new Date(dateValue);
     if (Number.isNaN(asDate.getTime())) { return String(dateValue); }
-    return asDate.toLocaleString();
+    return asDate.toLocaleString([], timeZone ? { timeZone } : undefined);
 }
 
 function normalizeIdList(value) {
@@ -1510,7 +1512,7 @@ function trimViaAvaOnlyResultEntries(resultEntries = []) {
     return resultEntries.filter((entry) => !isViaAvaEntry(entry));
 }
 
-function buildRecipientSummaries(deliveryItems = [], resolvePersonName = (id) => id) {
+function buildRecipientSummaries(deliveryItems = [], resolvePersonName = (id) => id, timeZone) {
     const recipientMap = new Map();
     const otherPersonByAddress = buildRecipientNameByAddressLookup(deliveryItems, resolvePersonName);
 
@@ -1558,7 +1560,8 @@ function buildRecipientSummaries(deliveryItems = [], resolvePersonName = (id) =>
             const resultDisplay = makeResultDisplay(deliveryItem, {
                 otherPersonByAddress,
                 currentRecipientId: normalizedReceiverId,
-                currentRecipientName: recipientSummary.recipientName
+                currentRecipientName: recipientSummary.recipientName,
+                timeZone
             });
             const resultText = resultDisplay.text;
             const replyText = resultDisplay.replyText;
@@ -2162,7 +2165,7 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
             const selectedDeliveryItems = Array.isArray(selectedMessage.delivery_items)
                 ? selectedMessage.delivery_items
                 : [selectedMessage];
-            const recipientSummaries = buildRecipientSummaries(selectedDeliveryItems, personNameFromAccessList);
+            const recipientSummaries = buildRecipientSummaries(selectedDeliveryItems, personNameFromAccessList, state.session.client_timezone);
             const autoCcRecipientIds = recipientSummaries
                 .filter((recipientSummary) => {
                     return Array.isArray(recipientSummary?.flagLabels) && recipientSummary.flagLabels.includes('Auto CC');
@@ -2280,7 +2283,7 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
         return () => {
             cancelled = true;
         };
-    }, [selectedMessage, currentClientId, accessListByPersonId, personNameFromAccessList]);
+    }, [selectedMessage, currentClientId, accessListByPersonId, personNameFromAccessList, state.session.client_timezone]);
 
     React.useEffect(() => {
         let cancelled = false;
@@ -2787,7 +2790,7 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                 .filter(Boolean)
         ));
 
-        const sentDateText = formatMessageDate(normalizeDateValue(selectedMessage));
+        const sentDateText = formatMessageDate(normalizeDateValue(selectedMessage), state.session.client_timezone);
         const originalText = getMessageText(selectedMessage, {
             signatureKey: getSignatureKeyForPerson(selectedMessage?.sent_from)
         }) || '';
@@ -3692,7 +3695,7 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                                             const isReplyMessage = isReplyMessageFromDeliveries(deliveryItems);
                                             const senderText = personNameFromAccessList(sender);
                                             const receiverText = summarizeReceivers(receivers, personNameFromAccessList, 2);
-                                            const dateText = formatMessageDate(normalizeDateValue(message));
+                                            const dateText = formatMessageDate(normalizeDateValue(message), state.session.client_timezone);
                                             const subjectText = getMessageSubject(message);
                                             const derivedFlags = message.derived_flags || {};
                                             const flagLabels = getEnabledFlagLabels(derivedFlags);
@@ -3925,7 +3928,7 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                                 const selectedHeldKeywordList = Array.from(new Set(
                                     selectedDeliveryItems.flatMap((deliveryItem) => getRuleKeywordListFromMessage(deliveryItem))
                                 ));
-                                const recipientSummaries = buildRecipientSummaries(selectedDeliveryItems, personNameFromAccessList);
+                                const recipientSummaries = buildRecipientSummaries(selectedDeliveryItems, personNameFromAccessList, state.session.client_timezone);
                                 const unresolvedHoldRecipientSummaries = recipientSummaries.filter((recipientSummary) => !!recipientSummary.isUnresolvedHold);
                                 const hasUnresolvedHoldRecipients = unresolvedHoldRecipientSummaries.length > 0;
                                 const replyToBodyHeightStyle = selectedIsReplyMessage
@@ -3957,7 +3960,7 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                                                         replyToContext.loading
                                                             ? 'Loading replied-to message...'
                                                             : (replyToContext.message
-                                                                ? `${formatMessageDate(normalizeDateValue(replyToContext.message))} • ${personNameFromAccessList(replyToContext.message.sent_from || 'Unknown sender')}`
+                                                                ? `${formatMessageDate(normalizeDateValue(replyToContext.message), state.session.client_timezone)} • ${personNameFromAccessList(replyToContext.message.sent_from || 'Unknown sender')}`
                                                                 : (replyToContext.errorText || 'Original message not found in this thread.'))
                                                     }
                                                 </Typography>
@@ -3978,7 +3981,7 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                                                 {'This Message'}
                                             </Typography>
                                             <Typography className={classes.messageBoxMeta}>
-                                                {`${formatMessageDate(normalizeDateValue(selectedMessage))} • ${personNameFromAccessList(selectedMessage.sent_from || 'Unknown sender')} → ${selectedReceiverText}`}
+                                                {`${formatMessageDate(normalizeDateValue(selectedMessage), state.session.client_timezone)} • ${personNameFromAccessList(selectedMessage.sent_from || 'Unknown sender')} → ${selectedReceiverText}`}
                                             </Typography>
                                             <Typography
                                                 className={classes.messageBoxBody}
@@ -4261,7 +4264,7 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
                                         const delivItems = Array.isArray(msg.delivery_items) ? msg.delivery_items : [msg];
                                         const receivers = getUniqueReceiversFromDeliveries(delivItems);
                                         const receiverText = summarizeReceivers(receivers, personNameFromAccessList, 5);
-                                        const dateText = formatMessageDate(normalizeDateValue(msg));
+                                        const dateText = formatMessageDate(normalizeDateValue(msg), state.session.client_timezone);
                                         const sigOptions = { signatureKey: getSignatureKeyForPerson(msg?.sent_from), senderFirstName };
                                         const htmlText = String(msg.html_message_text || '').trim();
                                         const isHtml = htmlText.startsWith('<');

@@ -1310,7 +1310,11 @@ export default ({ start_at }) => {
           if (parent && !parent.hidden) { this_item.color = parent.color; }
           else { this_item.color = stringToColor(this_item.menu_id); }
         }
-        if (state.session.client_style?.suppress_card_image) { this_item.icon = null; }
+        // icon_thumb must be suppressed right alongside icon - cardImageUrl (in renderMenuCardCell/
+        // activateMenuItem) falls back to icon_thumb whenever icon is null, so nulling icon alone
+        // left a backfilled/legacy icon_thumb (see backfillMenuThumbs below) still rendering,
+        // defeating suppression for any item that had already been visited once before.
+        if (state.session.client_style?.suppress_card_image) { this_item.icon = null; this_item.icon_thumb = null; }
         else if (!this_item.icon) { this_item.icon = resolvedSessionClientLogo; }
         const targetParentId = parent?.menu_id || null;
         const alreadyLoaded = reactData.menu_hierarchy[menu_level].some((existingCell) => {
@@ -1829,7 +1833,7 @@ export default ({ start_at }) => {
           if (parent && !parent.hidden) { this_item.color = parent.color; }
           else { this_item.color = stringToColor(this_item.menu_id); }
         }
-        if (state.session.client_style?.suppress_card_image) { this_item.icon = null; }
+        if (state.session.client_style?.suppress_card_image) { this_item.icon = null; this_item.icon_thumb = null; }
         else if (!this_item.icon) { this_item.icon = resolvedSessionClientLogo; }
         const targetParentId = parent?.menu_id || null;
         const loadedKey = `${this_item.menu_id}~${targetParentId}`;
@@ -1938,8 +1942,10 @@ export default ({ start_at }) => {
           menu_itemType: 'menu',
           children: [...normalizedFavorites, ...templateExtras],
           color: template?.color || stringToColor('__v3_favorites__'),
-          icon_thumb: template?.icon_thumb || null,
-          icon: template?.icon || template?.icon_thumb || resolvedSessionClientLogo
+          // This synthetic card is built straight from the template, bypassing the normal
+          // getMenuItem/batchGetMenuItems suppress check entirely - apply it here too.
+          icon_thumb: state.session.client_style?.suppress_card_image ? null : (template?.icon_thumb || null),
+          icon: state.session.client_style?.suppress_card_image ? null : (template?.icon || template?.icon_thumb || resolvedSessionClientLogo)
         }
       });
     }
@@ -4031,6 +4037,24 @@ export default ({ start_at }) => {
     return null;
   };
 
+  // "who [lives|resides|is|stays|occupies] [in|at] [apartment|apt|unit|suite|building|bldg|room]
+  // <location>" - a person lookup keyed by apartment/unit instead of by name. The location-type
+  // word is fully optional (and so is "in"/"at") since real phrasing varies a lot ("who's in
+  // 209", "who lives at west 209", "who occupies unit 14" all need to work).
+  //
+  // No community numbers its apartments/units with letters alone - there's always at least a
+  // digit in there somewhere - so if the captured location has no digit at all, this almost
+  // certainly isn't actually an apartment lookup (more likely a misphrased name lookup, e.g.
+  // "who is Bob Smith"). Bailing out here (rather than claiming the intent and coming up empty)
+  // lets a future "who is <person>" name-lookup synonym fall through to handle it instead.
+  const resolveApartmentLookupIntent = (normalizedCommand) => {
+    const match = normalizedCommand.match(/^who(?:'s|\s+(?:lives|resides|is|stays|occupies))(?:\s+(?:in|at))?(?:\s+(?:apartment|apt\.?|unit|suite|building|bldg\.?|room))?\s+(.+?)\??$/);
+    if (!match) { return null; }
+    const location = match[1].trim();
+    if (!/\d/.test(location)) { return null; }
+    return { location };
+  };
+
   // Builds on QuickSearch.js's OKtoShow name-matching convention (substring match against the
   // person's name) but checks each spoken word independently against first+last+search_data
   // combined, order-independent - needed because spoken full names come in "First Last" order
@@ -4059,6 +4083,123 @@ export default ({ start_at }) => {
     }
     const exactCandidates = candidates.filter((c) => c.isExactMatch);
     return (exactCandidates.length > 0 ? exactCandidates : candidates).map((c) => c.person);
+  };
+
+  // Single-letter homophones a speech engine commonly produces when someone says just the
+  // letter in isolation ("C-14" heard as "see 14"/"sea 14", "1-A" heard as "1 eh"). Only ever
+  // consulted in findPeopleByLocation for a word sitting directly next to a spoken digit (see
+  // below), so an ordinary word elsewhere in the phrase can never be misread as a unit letter.
+  const LOCATION_LETTER_HOMOPHONES = {
+    a: 'a', eh: 'a', ay: 'a',
+    b: 'b', bee: 'b',
+    c: 'c', see: 'c', sea: 'c',
+    d: 'd', dee: 'd',
+    g: 'g', gee: 'g',
+    i: 'i', eye: 'i', aye: 'i',
+    j: 'j', jay: 'j',
+    k: 'k', kay: 'k',
+    o: 'o', oh: 'o',
+    p: 'p', pee: 'p',
+    q: 'q', cue: 'q', queue: 'q',
+    r: 'r', are: 'r',
+    t: 't', tee: 't', tea: 't',
+    u: 'u', you: 'u', ewe: 'u',
+    y: 'y', why: 'y',
+    z: 'z', zee: 'z', zed: 'z'
+  };
+
+  // Compass words -> the single/double-letter abbreviation apartment numbering almost always
+  // shortens them to ("West 209" stored as "W-209", a "Northeast" wing as "NE-...").
+  const LOCATION_COMPASS_WORD_TO_LETTERS = {
+    north: 'n', south: 's', east: 'e', west: 'w',
+    northeast: 'ne', northwest: 'nw', southeast: 'se', southwest: 'sw'
+  };
+
+  // Lowercases, expands any compass word to its letter abbreviation, then separates the
+  // remaining digits from the remaining letters (sorting the letters) and recombines them as
+  // "digits|letters" - keeping the two groups apart, rather than one position-dependent string,
+  // means "West 209" and "209 West" both normalize identically to "W-209"/"209w" regardless of
+  // which order the number and the letter were actually spoken in.
+  const normalizeLocationToken = (text) => {
+    const lowered = (text || '').toLowerCase();
+    const compassExpanded = lowered.replace(
+      /\b(northeast|northwest|southeast|southwest|north|south|east|west)\b/g,
+      (word) => LOCATION_COMPASS_WORD_TO_LETTERS[word] || word
+    );
+    const stripped = compassExpanded.replace(/[^a-z0-9]/g, '');
+    const digits = stripped.replace(/[^0-9]/g, '');
+    const letters = stripped.replace(/[^a-z]/g, '').split('').sort().join('');
+    return `${digits}|${letters}`;
+  };
+
+  // Multi-pass narrowing for "who lives in apartment west 209?" style lookups. apartment_suite
+  // is free text, unindexed, and uses whatever shorthand a given community happens to use, so
+  // this can only ever be a best-effort heuristic. Passes run in order: exact apartment NUMBER,
+  // then unit LETTER (including common single-letter speech-recognition homophones), then a
+  // full fuzzy compare (compass-word expansion + punctuation stripped) against apartment_suite
+  // and search_data - the same staff-editable escape hatch findPeopleByName already relies on
+  // for whatever shorthand convention a community uses that this heuristic doesn't anticipate.
+  //
+  // The NUMBER pass is treated as authoritative, not just a narrowing hint: digits are by far
+  // the most reliably speech-recognized part of this kind of utterance (no homophone ambiguity
+  // the way single letters have), so if a specific number is spoken and nobody's apartment_suite
+  // contains it, that's trustworthy evidence no such apartment exists - the search should report
+  // zero results, not silently fall back to "everyone with an apartment." The LETTER and
+  // full-fuzzy passes that follow are much less reliable (homophones, shorthand guessing), so
+  // for those specifically, a pass that would eliminate every remaining candidate is instead
+  // discarded (treated as a no-op) rather than risk erasing the right person over a bad read -
+  // see the "who's in C-14" example this was designed around, where neither candidate's actual
+  // letter matches the heard homophone, but both are still the right answer to offer.
+  const findPeopleByLocation = (spokenLocation) => {
+    const rawLocation = (spokenLocation || '').trim().toLowerCase();
+    if (!rawLocation) { return []; }
+    const people = state.accessList?.[state.session?.client_id]?.list || [];
+    let pool = people.filter((p) => !!(p.address?.apartment_suite || '').trim());
+    if (pool.length === 0) { return []; }
+
+    const locationWords = rawLocation.split(/\s+/).filter(Boolean);
+
+    // Pass 1: apartment NUMBER - exact match on a digit run, not substring (so "209" doesn't
+    // wrongly match "1209"/"2091"). Authoritative: a number that matches nobody means no such
+    // apartment exists, so report zero results rather than falling back to the full pool.
+    const spokenDigitRuns = new Set(rawLocation.match(/\d+/g) || []);
+    if (spokenDigitRuns.size > 0) {
+      pool = pool.filter((p) => {
+        const candidateDigitRuns = p.address.apartment_suite.match(/\d+/g) || [];
+        return candidateDigitRuns.some((run) => spokenDigitRuns.has(run));
+      });
+      if (pool.length === 0) { return []; }
+    }
+
+    // Pass 2: unit LETTER - only a word immediately touching a spoken digit is considered a
+    // letter candidate (e.g. "1 a" / "a 209" / "c 14"), so a word elsewhere in the phrase is
+    // never misread as a unit letter.
+    const spokenLetters = new Set();
+    locationWords.forEach((word, idx) => {
+      const prevIsDigit = /^\d+$/.test(locationWords[idx - 1] || '');
+      const nextIsDigit = /^\d+$/.test(locationWords[idx + 1] || '');
+      if (!prevIsDigit && !nextIsDigit) { return; }
+      const letter = LOCATION_LETTER_HOMOPHONES[word] || (/^[a-z]$/.test(word) ? word : null);
+      if (letter) { spokenLetters.add(letter); }
+    });
+    if (spokenLetters.size > 0) {
+      const narrowedByLetter = pool.filter((p) => {
+        const candidateLetters = p.address.apartment_suite.toLowerCase().replace(/[^a-z]/g, '');
+        return [...spokenLetters].some((letter) => candidateLetters.includes(letter));
+      });
+      if (narrowedByLetter.length > 0) { pool = narrowedByLetter; }
+    }
+
+    // Pass 3: full fuzzy compare, plus the search_data escape hatch.
+    const normalizedSpoken = normalizeLocationToken(rawLocation);
+    const narrowedByFullMatch = pool.filter((p) => {
+      if (normalizeLocationToken(p.address.apartment_suite) === normalizedSpoken) { return true; }
+      const searchData = (p.search_data || '').toLowerCase();
+      return !!searchData && searchData.includes(rawLocation);
+    });
+    if (narrowedByFullMatch.length > 0) { pool = narrowedByFullMatch; }
+
+    return pool;
   };
 
   // "[send a message to|contact|message|write] [to] <person>" - the trailing "to" is optional
@@ -4360,6 +4501,56 @@ export default ({ start_at }) => {
                   }}
                 >
                   {`${m.name?.first || m.first || ''} ${m.name?.last || m.last || ''}`.trim()}
+                </Typography>
+              ))}
+            </Box>
+          )
+        }, { audioMode: 'disambiguate' });
+      }
+      return;
+    }
+
+    const apartmentSlots = resolveApartmentLookupIntent(normalized);
+    if (apartmentSlots) {
+      const matches = findPeopleByLocation(apartmentSlots.location);
+      if (matches.length === 0) {
+        respondToVoiceCommand(command, {
+          severity: 'warning',
+          title: 'Voice Command',
+          message: `Didn't find anyone in "${apartmentSlots.location}".`
+        });
+      }
+      else if (matches.length === 1) {
+        const matchedName = `${matches[0].name?.first || matches[0].first || ''} ${matches[0].name?.last || matches[0].last || ''}`.trim();
+        respondToVoiceCommand(
+          command,
+          { severity: 'info', title: 'Voice Command', message: `Found ${matchedName} (${matches[0].address.apartment_suite}).` },
+          { audioMode: 'success', extraData: { voiceLookupPersonId: matches[0].person_id } }
+        );
+      }
+      else if (matches.length > 8) {
+        respondToVoiceCommand(command, {
+          severity: 'warning',
+          title: 'Voice Command',
+          message: `Found ${matches.length} people matching "${apartmentSlots.location}" - try saying the full apartment number.`
+        });
+      }
+      else {
+        respondToVoiceCommand(command, {
+          severity: 'warning',
+          title: 'Multiple Matches',
+          message: (
+            <Box display='flex' flexDirection='column'>
+              <Typography variant='caption'>{`Found ${matches.length} people matching "${apartmentSlots.location}":`}</Typography>
+              {matches.map((m) => (
+                <Typography
+                  key={m.person_id}
+                  style={{ cursor: 'pointer', textDecoration: 'underline', marginTop: 4 }}
+                  onClick={() => {
+                    updateReactData({ alert: false, voiceLookupPersonId: m.person_id }, true);
+                  }}
+                >
+                  {`${m.name?.first || m.first || ''} ${m.name?.last || m.last || ''}`.trim()} ({m.address.apartment_suite})
                 </Typography>
               ))}
             </Box>
@@ -5739,7 +5930,7 @@ export default ({ start_at }) => {
                   const parentCell = reactData.menu_hierarchy
                     .flat()
                     .find((candidateCell) => candidateCell.menu_id === parentMenuId);
-                  const level_addButton = useTileUI && !!(
+                  const level_addButton = (level_index > 0) && useTileUI && !!(
                     parentCell?.menuItemRec &&
                     Object.prototype.hasOwnProperty.call(parentCell.menuItemRec, 'allow_add') &&
                     authorizedToMenuItem(parentCell.menuItemRec.allow_add)
