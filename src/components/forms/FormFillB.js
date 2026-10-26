@@ -1190,7 +1190,7 @@ export default ({ request = {}, onClose }) => {
       returnObj.type = 'select';
       const yesNoMin = (field_variables.value?.selection?.min !== undefined && field_variables.value?.selection?.min !== null)
         ? Number(field_variables.value.selection.min)
-        : 1;
+        : (field_variables.required ? 1 : 0);
       returnObj.selectionObj = {
         selectionList: ['yes', 'no'],
         min: yesNoMin,

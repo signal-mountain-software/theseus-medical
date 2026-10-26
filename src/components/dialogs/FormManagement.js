@@ -178,6 +178,18 @@ export default ({ defaults, onClose }) => {
     printQueueTotal: 0,
   });
   const [refreshTrigger, setRefreshTrigger] = React.useState(false);
+  const pendingFormFocusRef = React.useRef(null);
+  const focusClonedForm = (element) => {
+    if (element && pendingFormFocusRef.current === reactData.selectedForm_id) {
+      pendingFormFocusRef.current = null;
+      requestAnimationFrame(() => {
+        if (element.isConnected) {
+          element.focus();
+          element.scrollIntoView({ block: 'nearest' });
+        }
+      });
+    }
+  };
   const updateReactData = (newData, force = false) => {
     setReactData((prevValues) => (Object.assign(
       prevValues,
@@ -1150,7 +1162,7 @@ export default ({ defaults, onClose }) => {
     console.timeEnd('⏱️ TOTAL formPeople');
   }
 
-  async function initialize() {
+  async function initialize(createdForm = null) {
     // this will get a list of forms, and include the groups that each form is attached to (if any)
     const today = makeDate('today');
     let temp_dueDate = today.numeric$ + 10000;     // one year from today
@@ -1182,6 +1194,9 @@ export default ({ defaults, onClose }) => {
       }
       lastFormsKey = allForms?.LastEvaluatedKey;
     } while (lastFormsKey);
+    if (createdForm) {
+      allFormsItems = allFormsItems.filter(form => form.form_id !== createdForm.form_id).concat(createdForm);
+    }
     for (let formRec of allFormsItems) {
         // due_by works like this...
         //   if due_by is single date and the date is in the future, use that date
@@ -1279,6 +1294,7 @@ export default ({ defaults, onClose }) => {
       showCategoryHeaders,
       formsInitialized: true
     }, true);
+    return masterFormList;
   }
 
   const makeColor = (status) => {
@@ -1480,6 +1496,9 @@ export default ({ defaults, onClose }) => {
                         )}
                         <Box display='flex' flexDirection='row'
                           key={`form_master_list_${listIndex}`}
+                          ref={reactData.selectedForm_id === this_formID ? focusClonedForm : null}
+                          tabIndex={-1}
+                          aria-current={reactData.selectedForm_id === this_formID ? 'true' : undefined}
                           justifyContent='flex-start'
                           alignItems='center'
                           style={AVATextStyle({
@@ -3503,11 +3522,32 @@ export default ({ defaults, onClose }) => {
       {reactData.showFormBuilder && (
         <FormBuilder
           directForm={reactData.formBuilderDirectForm}
-          onClose={async (saved) => {
+          onClose={async (saved, savedForm, { focusForm = false } = {}) => {
             updateReactData({ showFormBuilder: false, formBuilderDirectForm: null }, true);
             if (saved) {
-              // Reload the form list to include the new/updated form
-              await initialize();
+              const forms = await initialize(focusForm ? savedForm : null);
+              if (focusForm && savedForm) {
+                pendingFormFocusRef.current = savedForm.form_id;
+                updateReactData({
+                  selectedForm_id: savedForm.form_id,
+                  selectedFormRec: forms[savedForm.form_id],
+                  selectedFormMembers: null,
+                  selectedPerson_id: false,
+                  selectedPersonRec: false,
+                  selectedPersonFirstName: false,
+                  selectedPersonLastName: false,
+                  activity_filter: '',
+                  lower_activity_filter: '',
+                  filterComplete: false,
+                  filterNotStarted: false,
+                  filterInProcess: false,
+                  progressMessage: 'Loading people...',
+                  maxPeopleToRender: 100,
+                  alert: { severity: 'success', message: `Cloned as "${savedForm.form_name}"` }
+                }, true);
+                await formPeople(savedForm.form_id);
+                updateReactData({ selectedFormMembers: forms[savedForm.form_id].memberList }, true);
+              }
             }
           }}
         />

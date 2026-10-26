@@ -105,3 +105,21 @@ Behavior:
 - Wildcard support is opt-in by using `*` in the path.
 - Non-wildcard path behavior is unchanged.
 - Literal key names containing `*` are still supported because literal lookup runs first.
+
+## Name formatting
+
+Dictionary type `name` accepts a name string, a name object, or an array of those values.
+Array entries are resolved independently in input order. The result uses the same shape
+as `string_list`: `formatted` is an array of strings and `details` contains `values` and
+`count`. Blank or unrecognized entries are omitted.
+
+- Strings beginning with `guest:` become `<name> (guest)`, including multiword guest names.
+- Other nonblank, single-word strings are looked up as person IDs using `makeName`
+  (a `People` lookup in the Lambda resolver). If no name is found, the original string
+  is normalized as a literal name.
+- Multiword strings and name objects retain their existing name normalization.
+- Scalar inputs still return one formatted string with `first`, `last`, and `full` details.
+
+For example, if `person123` resolves to Jane Smith, the input
+`["person123", "guest:Pat Jones", {"first":"Alex","last":"Lee"}]` produces
+`["Jane Smith", "Pat Jones (guest)", "Alex Lee"]`.

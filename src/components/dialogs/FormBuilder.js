@@ -62,6 +62,8 @@ const FIELD_TYPES = [
     { value: 'family', label: 'Family Member(s) selector' },
     { value: 'select_event', label: 'Event Signup' },
     { value: 'header', label: 'Header (label only)' },
+    { value: 'signature', label: 'Signature' },
+    { value: 'upload', label: 'File Upload' },
 ];
 
 // Field types whose answer box width is actually controllable (rendered via FormFillB's
@@ -295,6 +297,8 @@ export default ({ onClose, directForm }) => {
         editingForm: null,
         savedSnapshot: null, // JSON.stringify of editingForm as of the last load/save, for the unsaved-changes check
         confirmExit: false, // true while the "unsaved changes" exit confirmation is showing
+        confirmClone: false,
+        selectedFormId: null,
         saving: false,
         previewFormRec: null, // set while the Preview overlay (FormFillB) is open
         showConditionAudienceSearch: false, // true while QuickSearch is open, picking a condition's person/group/class audience
@@ -309,6 +313,18 @@ export default ({ onClose, directForm }) => {
     // onInputChange for a single select/clear), silently leaving React with nothing to re-render.
     // Only the setter is used - the count itself has no meaning outside forcing a re-render.
     const [, setRefreshTrigger] = React.useState(0);
+    const pendingFormFocusRef = React.useRef(null);
+    const focusClonedForm = (element) => {
+        if (element && pendingFormFocusRef.current === reactData.selectedFormId) {
+            pendingFormFocusRef.current = null;
+            requestAnimationFrame(() => {
+                if (element.isConnected) {
+                    element.focus();
+                    element.scrollIntoView({ block: 'nearest' });
+                }
+            });
+        }
+    };
     const updateReactData = (newData, force = false) => {
         setReactData((prevValues) => (Object.assign(prevValues, newData)));
         if (force) { setRefreshTrigger((prev) => prev + 1); }
@@ -640,19 +656,39 @@ export default ({ onClose, directForm }) => {
     // fields, stages, options, and anything else FormBuilder's editor doesn't explicitly model),
     // not a round-trip through startEditingForm/buildFormRecord's reconstruction. form_id is
     // regenerated (it's the table's key, so it must be unique) and form_name is prefixed; every
-    // other attribute is carried over untouched. Stays on the list view - the clone shows up there
-    // once loadFormList refreshes, ready to open/edit like any other form.
+    // other attribute is carried over untouched. Returns to the owning list and focuses the clone.
     const cloneForm = async (formRec) => {
         updateReactData({ loading: true }, true);
         const cloned = deepCopy(formRec);
         cloned.form_id = `form_${uuid(12)}`;
         cloned.form_name = `Copy of ${formRec.form_name || formRec.form_id}`;
-        await putDb({ TableName: 'Forms', Item: cloned }).catch((error) => {
+        try {
+            // putDb logs and swallows write failures, so use the client to verify clone creation.
+            await dbClient.put({ TableName: 'Forms', Item: cloned }).promise();
+        } catch (error) {
             cl(`Error cloning form in FormBuilder: ${error}`);
-        });
+            updateReactData({
+                loading: false,
+                saving: false,
+                alert: { severity: 'error', message: 'Could not clone this form. Please try again.' },
+            }, true);
+            return;
+        }
+        if (directEditMode) {
+            onClose && onClose(true, cloned, { focusForm: true });
+            return;
+        }
         await loadFormList(false);
+        const forms = reactData.forms.filter(form => form.form_id !== cloned.form_id).concat(cloned);
+        forms.sort((a, b) => (a.form_name || '').localeCompare(b.form_name || ''));
+        pendingFormFocusRef.current = cloned.form_id;
         updateReactData({
+            forms,
+            view: 'list',
+            editingForm: null,
+            selectedFormId: cloned.form_id,
             loading: false,
+            saving: false,
             alert: { severity: 'success', message: `Cloned as "${cloned.form_name}"` },
         }, true);
     };
@@ -661,7 +697,7 @@ export default ({ onClose, directForm }) => {
     // its own Clone icon - never renders). Re-fetches the raw, currently-SAVED record by form_id
     // rather than cloning reactData.editingForm directly, so the clone is a true DB copy and isn't
     // subject to buildFormRecord's reconstruction; if there are unsaved changes here, they are
-    // deliberately NOT included; the success message says so.
+    // deliberately NOT included; requestClone confirms before discarding them.
     const cloneCurrentForm = async () => {
         const form_id = reactData.editingForm?.form_id;
         if (!form_id) { return; }
@@ -677,21 +713,19 @@ export default ({ onClose, directForm }) => {
             }, true);
             return;
         }
-        const hadUnsavedChanges = hasUnsavedChanges();
         await cloneForm(rawRec);
-        updateReactData({
-            saving: false,
-            alert: {
-                severity: 'success',
-                message: hadUnsavedChanges
-                    ? `Cloned the last saved version as "Copy of ${rawRec.form_name || rawRec.form_id}" - your unsaved changes here were not included.`
-                    : `Cloned as "Copy of ${rawRec.form_name || rawRec.form_id}"`,
-            },
-        }, true);
     };
 
     // True once editingForm has diverged from the last loaded/saved snapshot.
     const hasUnsavedChanges = () => JSON.stringify(reactData.editingForm) !== reactData.savedSnapshot;
+
+    const requestClone = () => {
+        if (hasUnsavedChanges()) {
+            updateReactData({ confirmClone: true }, true);
+            return;
+        }
+        cloneCurrentForm();
+    };
 
     const exitEditing = () => {
         if (directEditMode) { onClose && onClose(false); return; }
@@ -1397,6 +1431,9 @@ export default ({ onClose, directForm }) => {
                             {reactData.forms.map((formRec) => (
                                 <Paper
                                     key={formRec.form_id}
+                                    ref={formRec.form_id === reactData.selectedFormId ? focusClonedForm : null}
+                                    tabIndex={-1}
+                                    aria-current={formRec.form_id === reactData.selectedFormId ? 'true' : undefined}
                                     variant='outlined'
                                     style={{ padding: '8px 16px', marginBottom: '8px', cursor: 'pointer' }}
                                     onClick={() => startEditingForm(formRec)}
@@ -2154,7 +2191,7 @@ export default ({ onClose, directForm }) => {
                         className={AVAClass.AVAButton}
                         size='small'
                         startIcon={<FileCopyIcon fontSize='small' />}
-                        onClick={cloneCurrentForm}
+                        onClick={requestClone}
                         disabled={reactData.saving || (directForm === 'new')}
                         title={hasUnsavedChanges() ? 'Clones the last saved version - unsaved changes here will not be included' : 'Clone this form'}
                     >
@@ -2186,6 +2223,18 @@ export default ({ onClose, directForm }) => {
                         confirmText={'Yes, discard changes'}
                         onCancel={() => updateReactData({ confirmExit: false }, true)}
                         onConfirm={() => { updateReactData({ confirmExit: false }, true); exitEditing(); }}
+                    />
+                }
+                {reactData.confirmClone &&
+                    <AVAConfirm
+                        promptText={['You have unsaved changes.', 'Clone the last saved version and return to the form list? Your unsaved changes will be discarded.']}
+                        cancelText={'No, keep editing'}
+                        confirmText={'Yes, clone and discard changes'}
+                        onCancel={() => updateReactData({ confirmClone: false }, true)}
+                        onConfirm={() => {
+                            updateReactData({ confirmClone: false }, true);
+                            cloneCurrentForm();
+                        }}
                     />
                 }
             </React.Fragment>
