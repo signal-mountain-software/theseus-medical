@@ -62,6 +62,8 @@ const FIELD_TYPES = [
     { value: 'family', label: 'Family Member(s) selector' },
     { value: 'select_event', label: 'Event Signup' },
     { value: 'header', label: 'Header (label only)' },
+    { value: 'signature', label: 'Signature' },
+    { value: 'upload', label: 'File Upload' },
 ];
 
 // Field types whose answer box width is actually controllable (rendered via FormFillB's
