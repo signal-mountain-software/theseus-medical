@@ -2039,7 +2039,16 @@ async function formatResolvedValue({ rawValue, dictionaryRec, client_id, person_
       };
     }
     case 'name': {
-      const nameObj = normalizeNameInput(rawValue);
+      const nameObj = await normalizeNameInput(rawValue);
+      if (Array.isArray(nameObj)) {
+        return {
+          formatted: nameObj,
+          details: {
+            values: nameObj,
+            count: nameObj.length
+          }
+        };
+      }
       if (!nameObj) {
         return {
           formatted: rawValue,
@@ -2704,13 +2713,25 @@ function normalizeStringListInput(rawValue) {
   return [];
 }
 
-function normalizeNameInput(rawValue) {
+async function normalizeNameInput(rawValue) {
   if (rawValue === null || rawValue === undefined) {
     return null;
   }
 
+  if (Array.isArray(rawValue)) {
+    const names = await Promise.all(rawValue.map(entry => normalizeNameInput(entry)));
+    return normalizeStringListInput(names.map(name => name?.full));
+  }
+
   if (typeof rawValue === 'string') {
-    const parsed = splitNameFromString(rawValue);
+    let name = rawValue.trim();
+    if (name.startsWith('guest:')) {
+      name = `${name.slice('guest:'.length).trim()} (guest)`;
+    }
+    else if (name && !/\s/.test(name)) {
+      name = (await makeName(name)) || name;
+    }
+    const parsed = splitNameFromString(name);
     return parsed;
   }
 
