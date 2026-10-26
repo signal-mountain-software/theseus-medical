@@ -16,6 +16,14 @@ The hook is warning-only (it does not block the push).
 
 This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
 
+## Cloning Forms
+
+Clone copies the last saved form, including attributes not modeled by the editor.
+After a successful clone, the form list refreshes and selects, focuses, and scrolls
+to the new copy. Cloning from the editor returns to the list; unsaved changes
+require confirmation before they are discarded. Failed clones leave the editor
+open and display an error.
+
 ## QuickAdd Person Classification
 
 Every entry in the client's `new_account_form` customization must explicitly
