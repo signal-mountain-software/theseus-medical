@@ -2038,6 +2038,7 @@ async function formatResolvedValue({ rawValue, dictionaryRec, client_id, person_
         details
       };
     }
+    case 'names':
     case 'name': {
       const nameObj = await normalizeNameInput(rawValue);
       if (Array.isArray(nameObj)) {
