@@ -16,6 +16,14 @@ The hook is warning-only (it does not block the push).
 
 This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
 
+## Menu Item Add Permissions
+
+In the MainMenuV3 item editor, menu items (`menu_itemType: "menu"`) include
+`Who can add items under "<short description>"?`. This edits the item's
+`allow_add` array independently of its `available_to` visibility rules.
+Both use the same user/group/special-value picker and allow/deny rules.
+Non-menu items do not show this control or write `allow_add`.
+
 ## Cloning Forms
 
 Clone copies the last saved form, including attributes not modeled by the editor.
