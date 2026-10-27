@@ -4,7 +4,7 @@ import useSession from '../../hooks/useSession';
 
 import { createNewGroup, getGroupMembers, getMemberList, addMember, removeMember, getRole, getPersonGroups } from '../../util/AVAGroups';
 import { dbClient, isObject, listFromArray, cl, recordExists } from '../../util/AVAUtilities';
-import { occurrenceData } from '../../util/AVACalendars';
+import { occurrenceData, writeSlot } from '../../util/AVACalendars';
 import { makeDate } from '../../util/AVADateTime';
 import PeopleMaintenance from '../dialogs/PeopleMaintenance';
 import GroupMaintenance from '../dialogs/GroupMaintenance';
@@ -151,6 +151,23 @@ const useStyles = makeStyles(theme => ({
 // Persists expand/collapse state across GroupControl mounts within the same session
 let _savedLevelHidden = null;
 
+// Picks the slot a person dropped onto an event occurrence should occupy: participant-style
+// sign-ups use the person_id as the slot name; time/seats sign-ups take the first open slot
+// (same rule as CalendarForm's handleAllocateSlot). occ is AVACalendars.occurrenceData output.
+export const chooseEventSlot = (occ, person_id) => {
+  const slots = occ?.slots || {};
+  const isParticipantSignup = !['time', 'seats'].includes(occ?.signup_type);
+  if (isParticipantSignup) {
+    if (slots[person_id]?.owner) { return { alreadyAttending: true }; }
+    return { slot: person_id };
+  }
+  const alreadyIn = Object.keys(slots).find((s) => (s === person_id && slots[s]?.owner) || (slots[s]?.owner === person_id));
+  if (alreadyIn) { return { alreadyAttending: true }; }
+  const openSlot = Object.keys(slots).sort().find((s) => !slots[s]?.owner);
+  if (!openSlot) { return { full: true }; }
+  return { slot: openSlot };
+};
+
 export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedGroup = null, preSelectedFunction = null, directoryGroupIds = null, onCancel = () => { }, onRefresh = () => { }, renderAsDialog = true }) => {
 
   const isMounted = React.useRef(false);
@@ -189,6 +206,10 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
   // eventsExpanded holds node keys: event_id, `${event_id}::upcoming`, `${event_id}::past`, or the
   // '__EVENTS_ROOT__' sentinel for the top-level "Events" header itself.
   const [eventsExpanded, setEventsExpanded] = React.useState(() => new Set());
+  // Person-onto-event-occurrence drag/drop: pending confirmation and the row currently hovered.
+  const [eventDropConfirm, setEventDropConfirm] = React.useState(null);
+  const [eventDropHoverKey, setEventDropHoverKey] = React.useState(null);
+  const [eventRemoveConfirm, setEventRemoveConfirm] = React.useState(null);
 
   const { dispatch, state } = useSession();
 
@@ -2063,19 +2084,33 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
       return entries.map((entry) => {
         const isSelected = (reactData.selectedEventOccurrence?.event_id === entry.event_id && reactData.selectedEventOccurrence?.occurrence_date === entry.occurrence_date)
           || (reactData.intersectingEventKey === `${entry.event_id}_${entry.occurrence_date}`);
+        const isDropHover = canDragManage && (eventDropHoverKey === eventEntryKey(entry));
         return (
           <Typography
             key={`event_occ_${keyPrefix}_${entry.event_id}_${entry.occurrence_date}`}
             onClick={() => { selectEventOccurrence(entry.event_id, entry.occurrence_date, entry.description); }}
-            style={AVATextStyle({
-              size: 1.0,
-              overflow: 'visible',
-              userSelect: 'none',
-              cursor: 'pointer',
-              color: isSelected ? '#c62828' : null,
-              weight: isSelected ? 'bold' : null,
-              margin: { left: (depth + 2) * 1.5, top: 0.25, bottom: 0.25 },
-            })}
+            {...(canDragManage ? {
+              onDragOver: (e) => {
+                handleDragOver(e);
+                if (eventDropHoverKey !== eventEntryKey(entry)) { setEventDropHoverKey(eventEntryKey(entry)); }
+              },
+              onDragLeave: () => {
+                setEventDropHoverKey((prev) => ((prev === eventEntryKey(entry)) ? null : prev));
+              },
+              onDrop: (e) => { handleDrop_personOnEvent(e, entry); }
+            } : {})}
+            style={{
+              ...AVATextStyle({
+                size: 1.0,
+                overflow: 'visible',
+                userSelect: 'none',
+                cursor: 'pointer',
+                color: isSelected ? '#c62828' : null,
+                weight: isSelected ? 'bold' : null,
+                margin: { left: (depth + 2) * 1.5, top: 0.25, bottom: 0.25 },
+              }),
+              ...(isDropHover ? { backgroundColor: 'rgba(25, 118, 210, 0.12)', outline: '1px dashed #1976d2', borderRadius: 6 } : {})
+            }}
           >
             {`${makeDate(entry.occurrence_date).absolute} \u2013 ${entry.description}`}
           </Typography>
@@ -2144,6 +2179,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
         return {
           person_id: attendeePersonId,
           slot_id,
+          owner: slotInfo.owner,
           display_name: slotInfo.display_name || '',
           name: { first: parts[0] || '', last: parts.slice(1).join(' ') }
         };
@@ -2160,6 +2196,129 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
       selectedEventAttendees: attendees,
       loadingEventAttendees: false
     }, true);
+  }
+
+  // ---- Drag a person (right-side member row) onto an event occurrence (left list) ----------
+  const eventEntryKey = (entry) => `${entry.event_id}_${entry.occurrence_date}`;
+
+  const handleDrop_personOnEvent = (ev, entry) => {
+    ev.preventDefault();
+    setEventDropHoverKey(null);
+    let draggedFrom;
+    try { draggedFrom = JSON.parse(ev.dataTransfer.getData('id')); }
+    catch { return; }
+    if (!draggedFrom?.personObj?.person_id || (draggedFrom.intent !== 'person')) {
+      updateReactData({
+        alert: {
+          severity: 'error',
+          title: `You can't drop that there!`,
+          message: 'Only a person can be dragged onto an event.'
+        }
+      }, true);
+      return;
+    }
+    const person = draggedFrom.personObj;
+    setEventDropConfirm({
+      entry,
+      person_id: person.person_id,
+      person_name: `${(person.name?.first || '').trim()} ${(person.name?.last || '').trim()}`.trim() || person.person_id
+    });
+  };
+
+  async function executeAddPersonToEvent({ entry, person_id, person_name }) {
+    const eventLabel = `${entry.description} (${makeDate(entry.occurrence_date).absolute})`;
+    updateReactData({ alert: { severity: 'info', title: 'Adding...', message: `${person_name} \u2192 ${eventLabel}` } }, true);
+    const occ = await occurrenceData({ client_id: state.session.client_id, event_id: entry.event_id, occurrence_id: entry.occurrence_date }).catch(() => null);
+    if (!occ || !occ.slots) {
+      updateReactData({ alert: { severity: 'error', title: 'Event not found', message: `Could not read ${eventLabel}.` } }, true);
+      return;
+    }
+    const choice = chooseEventSlot(occ, person_id);
+    if (choice.alreadyAttending) {
+      updateReactData({ alert: { severity: 'warning', title: 'Already attending', message: `${person_name} is already signed up for ${eventLabel}.` } }, true);
+      return;
+    }
+    if (choice.full) {
+      updateReactData({ alert: { severity: 'error', title: 'No open slots', message: `${eventLabel} has no open slots for ${person_name}.` } }, true);
+      return;
+    }
+    const isPast = entry.occurrence_date < todayNumeric$;
+    const result = await writeSlot({
+      client: state.session.client_id,
+      event: `${entry.event_id}#${entry.occurrence_date}`,
+      occurrence_date: entry.occurrence_date,
+      owner: person_id,
+      slot: choice.slot,
+      status: 'selected',
+      show_this_slot: true,
+      rejectDuplicate: true,
+      // Don't announce additions to an occurrence that has already happened.
+      no_messaging: isPast,
+      ...(occ.signup_type ? { signup_type: occ.signup_type } : {})
+    }).catch((error) => {
+      cl(`Error adding ${person_id} to ${entry.event_id}#${entry.occurrence_date}: ${error}`);
+      return { success: false, message: `${error}` };
+    });
+    if (result && (result.success === false)) {
+      updateReactData({ alert: { severity: 'error', title: 'Not added', message: `${person_name} was not added to ${eventLabel}: ${result.message || 'unknown error'}` } }, true);
+      return;
+    }
+    localStorage.setItem('calendarChanged', true);
+    if ((reactData.selectedEventOccurrence?.event_id === entry.event_id) && (reactData.selectedEventOccurrence?.occurrence_date === entry.occurrence_date)) {
+      await selectEventOccurrence(entry.event_id, entry.occurrence_date, entry.description);
+    }
+    updateReactData({ alert: { severity: 'success', title: 'Added', message: `${person_name} \u2192 ${eventLabel}` } }, true);
+  }
+
+  // ---- Drag an attendee (event right panel) onto the event trash can to release their slot ----
+  const handleDrop_removeEventAttendee = (ev) => {
+    ev.preventDefault();
+    let draggedFrom;
+    try { draggedFrom = JSON.parse(ev.dataTransfer.getData('id')); }
+    catch { return; }
+    const occ = reactData.selectedEventOccurrence;
+    if ((draggedFrom?.intent !== 'eventAttendee') || !draggedFrom.attendeeObj?.slot_id || !occ) {
+      updateReactData({
+        alert: {
+          severity: 'error',
+          title: `You can't drop that there!`,
+          message: 'Only an attendee of this event can be dragged here.'
+        }
+      }, true);
+      return;
+    }
+    if ((draggedFrom.event_id !== occ.event_id) || (draggedFrom.occurrence_date !== occ.occurrence_date)) { return; }
+    setEventRemoveConfirm({
+      entry: { event_id: occ.event_id, occurrence_date: occ.occurrence_date, description: occ.description },
+      attendee: draggedFrom.attendeeObj
+    });
+  };
+
+  async function executeRemoveAttendeeFromEvent({ entry, attendee }) {
+    const eventLabel = `${entry.description} (${makeDate(entry.occurrence_date).absolute})`;
+    const person_name = attendee.display_name || attendee.person_id;
+    const isPast = entry.occurrence_date < todayNumeric$;
+    const result = await writeSlot({
+      client: state.session.client_id,
+      event: `${entry.event_id}#${entry.occurrence_date}`,
+      occurrence_date: entry.occurrence_date,
+      owner: attendee.owner || attendee.person_id,
+      slot: attendee.slot_id,
+      status: 'released',
+      show_this_slot: false,
+      // Don't announce removals from an occurrence that has already happened.
+      no_messaging: isPast
+    }).catch((error) => {
+      cl(`Error removing ${attendee.slot_id} from ${entry.event_id}#${entry.occurrence_date}: ${error}`);
+      return { success: false, message: `${error}` };
+    });
+    if (result && (result.success === false)) {
+      updateReactData({ alert: { severity: 'error', title: 'Not removed', message: `${person_name} was not removed from ${eventLabel}: ${result.message || 'unknown error'}` } }, true);
+      return;
+    }
+    localStorage.setItem('calendarChanged', true);
+    await selectEventOccurrence(entry.event_id, entry.occurrence_date, entry.description);
+    updateReactData({ alert: { severity: 'success', title: 'Removed', message: `${person_name} was removed from ${eventLabel}` } }, true);
   }
 
   async function initialize() {
@@ -3153,7 +3312,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
             }
 
             {/* RIGHT SIDE - Event occurrence attendees. Fully separate from the group right panel
-                above: no rename-on-click, no drag-to-remove - but Send/Directory/Export icons are
+                above: no rename-on-click; dragging a name to this panel's trash releases that slot. Send/Directory/Export icons are
                 shared via getVisibleRawPeopleList(), which reads attendees instead of group members. */}
             {reactData.selectedEventOccurrence && !reactData.selectedGroupRec &&
               <Box display='flex' style={{ width: isSmallScreen() ? '95%' : '50%', overflow: 'auto' }} flexDirection='column'
@@ -3218,6 +3377,15 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                               ...personRowSelectedStyle(attendee.person_id),
                             }}
                             onClick={(e) => { handlePersonRowSelectClick(e, attendee, aX, eventAttendeeDisplayRows); }}
+                            draggable={canDragManage}
+                            onDragStart={canDragManage
+                              ? (e) => handleDragStart(e, {
+                                intent: 'eventAttendee',
+                                attendeeObj: attendee,
+                                event_id: reactData.selectedEventOccurrence.event_id,
+                                occurrence_date: reactData.selectedEventOccurrence.occurrence_date
+                              })
+                              : undefined}
                           >
                             {attendee.display_name}
                           </Typography>
@@ -3262,7 +3430,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                   <GetAppIcon
                     classes={{ root: classes.rowButton }}
                     size='medium'
-                    style={{ opacity: (reactData.selectedEventAttendees.length > 0) ? 1 : 0.4 }}
+                    style={{ marginRight: canDragManage ? '12px' : 0, opacity: (reactData.selectedEventAttendees.length > 0) ? 1 : 0.4 }}
                     aria-label="download_csv_icon_event"
                     onClick={() => {
                       if (reactData.selectedEventAttendees.length > 0) {
@@ -3270,6 +3438,18 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                       }
                     }}
                   />
+                  {canDragManage &&
+                    <Tooltip title='Drag a name here to remove them from this event'>
+                      <DeleteIcon
+                        classes={{ root: classes.rowButton }}
+                        size='medium'
+                        style={{ alignSelf: 'center' }}
+                        aria-label="trash_icon_event"
+                        onDragOver={(e) => handleDragOver(e)}
+                        onDrop={(e) => { handleDrop_removeEventAttendee(e); }}
+                      />
+                    </Tooltip>
+                  }
                 </Box>
               </Box>
             }
@@ -3956,6 +4136,40 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
             </Button>
           </DialogActions>
         </Dialog>
+      }
+      {eventDropConfirm &&
+        <AVAConfirm
+          promptText={[
+            'Add to Event?',
+            `Add ${eventDropConfirm.person_name} to ${eventDropConfirm.entry.description} on ${makeDate(eventDropConfirm.entry.occurrence_date).absolute}?`,
+            ...((eventDropConfirm.entry.occurrence_date < todayNumeric$) ? ['This occurrence is in the past - no notification will be sent.'] : [])
+          ]}
+          cancelText={'Cancel'}
+          confirmText={'Add'}
+          onCancel={() => { setEventDropConfirm(null); }}
+          onConfirm={async () => {
+            const pending = eventDropConfirm;
+            setEventDropConfirm(null);
+            await executeAddPersonToEvent(pending);
+          }}
+        />
+      }
+      {eventRemoveConfirm &&
+        <AVAConfirm
+          promptText={[
+            'Remove from Event?',
+            `Remove ${eventRemoveConfirm.attendee.display_name || eventRemoveConfirm.attendee.person_id} from ${eventRemoveConfirm.entry.description} on ${makeDate(eventRemoveConfirm.entry.occurrence_date).absolute}?`,
+            ...((eventRemoveConfirm.entry.occurrence_date < todayNumeric$) ? ['This occurrence is in the past - no notification will be sent.'] : [])
+          ]}
+          cancelText={'Cancel'}
+          confirmText={'Remove'}
+          onCancel={() => { setEventRemoveConfirm(null); }}
+          onConfirm={async () => {
+            const pending = eventRemoveConfirm;
+            setEventRemoveConfirm(null);
+            await executeRemoveAttendeeFromEvent(pending);
+          }}
+        />
       }
       {deleteGroupConfirmTarget &&
         <AVAConfirm
