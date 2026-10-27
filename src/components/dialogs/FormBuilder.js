@@ -30,7 +30,9 @@ import {
     Snackbar,
     InputAdornment,
     Chip,
+    Tooltip,
 } from '@material-ui/core';
+import { withStyles } from '@material-ui/core/styles';
 import { Alert, Autocomplete } from '@material-ui/lab/';
 
 import AddIcon from '@material-ui/icons/Add';
@@ -210,6 +212,46 @@ const STAGE_RULE_ICON_DEFS = [
     { kind: 'on_complete_notify', Icon: NotificationsNoneIcon, label: 'Notification' },
     { kind: 'on_complete_groups', Icon: GroupIcon, label: 'Groups' },
 ];
+
+const LockedRuleTooltip = withStyles({
+    tooltip: { maxWidth: 520, fontSize: 12, padding: '8px 12px' },
+})(Tooltip);
+
+const truncateJson = (obj, max = 400) => {
+    let s;
+    try { s = JSON.stringify(obj); } catch (e) { s = String(obj); }
+    return (s && s.length > max) ? `${s.slice(0, max)}…` : s;
+};
+
+// Hover content for the "Existing rule requires IT edit" indicator - lists every locked rule
+// (by stage + on_complete_<kind>[index] so IT can find it in the Forms record) with the
+// specific reasons FormBuilder couldn't model it, plus a truncated copy of the raw rule.
+const LockedRuleDetails = ({ ruleState, stageName, intro }) => {
+    const entries = STAGE_RULE_ICON_DEFS.flatMap(({ kind, label }) => (
+        (ruleState?.[kind]?.lockedDetails || []).map((d) => ({ kind, label, ...d }))
+    ));
+    return (
+        <Box>
+            {intro && <Typography style={{ fontSize: 12, marginBottom: 6 }}>{intro}</Typography>}
+            {entries.map(({ kind, label, index, block, reasons }) => (
+                <Box key={`${kind}-${index}`} style={{ marginBottom: 8 }}>
+                    <Typography style={{ fontSize: 12, fontWeight: 'bold' }}>
+                        {`${label} rule - ${stageName ? `stage "${stageName}", ` : ''}${kind}[${index}]`}
+                    </Typography>
+                    <ul style={{ margin: '2px 0 2px 16px', padding: 0 }}>
+                        {reasons.map((r, rIdx) => <li key={rIdx}>{r}</li>)}
+                    </ul>
+                    <Typography style={{ fontSize: 11, fontFamily: 'monospace', opacity: 0.85, wordBreak: 'break-all' }}>
+                        {truncateJson(block)}
+                    </Typography>
+                </Box>
+            ))}
+            <Typography style={{ fontSize: 11, fontStyle: 'italic' }}>
+                {'FormBuilder leaves these rules untouched on save - edit them directly in the Forms record if they need to change.'}
+            </Typography>
+        </Box>
+    );
+};
 
 // A short "The person this form is about" / "Group: Staff" label for a single recognized
 // recipient/available_to entry - shared by the message and notify rule editors.
@@ -1132,6 +1174,96 @@ export default ({ onClose, directForm }) => {
         on_complete_notify: classifyUnconditionalNotifyRule,
     };
 
+    // Human-readable reasons a block was rejected by classify*Rule above - mirrors those checks
+    // (same recognized key/value sets) so the locked indicator's tooltip can say exactly what
+    // FormBuilder didn't understand. field_name null means the block was evaluated as an
+    // unconditional (section/complete-level) rule.
+    const explainLockedStageRule = (kind, block, { field_name = null, validValues = [], duplicate = false } = {}) => {
+        const reasons = [];
+        if (!block || typeof block !== 'object' || Array.isArray(block)) {
+            return ['Rule is not an object'];
+        }
+        const quote = (v) => JSON.stringify(v);
+        if (duplicate) {
+            reasons.push('Another unconditional rule of this kind already exists in this stage - FormBuilder models only one per kind');
+        }
+        if (field_name) {
+            if (block.ignoreIf) { reasons.push('Uses an "ignoreIf" condition - FormBuilder only models a single "showIf" test'); }
+            if (block.showIf !== undefined && !Array.isArray(block.showIf)) {
+                reasons.push('"showIf" is not a list');
+            }
+            else if (Array.isArray(block.showIf)) {
+                if (block.showIf.length === 0) { reasons.push('"showIf" is empty'); }
+                if (block.showIf.length > 1) {
+                    reasons.push(`Has ${block.showIf.length} "showIf" tests (an OR condition) - FormBuilder models exactly one`);
+                }
+                block.showIf.forEach((test, tIdx) => {
+                    const prefix = (block.showIf.length > 1) ? `showIf test #${tIdx + 1}: ` : '';
+                    if (!test || typeof test !== 'object') { reasons.push(`${prefix}test is not an object`); return; }
+                    if (test.currentUser_audience) { reasons.push(`${prefix}tests the current user's audience`); }
+                    if (test.memberOf) { reasons.push(`${prefix}tests group membership (memberOf)`); }
+                    if (test.pertainsTo_memberOf) { reasons.push(`${prefix}tests the subject's group membership (pertainsTo_memberOf)`); }
+                    if (test.field !== field_name) {
+                        reasons.push(`${prefix}tests field ${quote(test.field)} instead of ${quote(field_name)}`);
+                        return;
+                    }
+                    const values = Array.isArray(test.values) ? test.values : (test.values !== undefined ? [test.values] : []);
+                    if (values.length === 0) { reasons.push(`${prefix}has no "values" to match`); }
+                    if (values.length > 1) {
+                        reasons.push(`${prefix}fires on ${values.length} values (${values.map(quote).join(', ')}) - FormBuilder models one value per rule`);
+                    }
+                    const unknown = values.filter((v) => !validValues.includes(v));
+                    if (unknown.length) {
+                        reasons.push(`${prefix}matches ${unknown.map(quote).join(', ')}, which ${unknown.length > 1 ? 'are not' : 'is not'} one of this Item's current choices`);
+                    }
+                });
+            }
+        }
+        const extraKeys = Object.keys(block).filter((k) => !STAGE_RULE_RECOGNIZED_KEYS[kind].includes(k));
+        if (extraKeys.length) {
+            reasons.push(`Uses key(s) FormBuilder doesn't model: ${extraKeys.map(quote).join(', ')}`);
+        }
+        if (kind === 'on_complete_groups') {
+            ['add', 'remove'].forEach((k) => {
+                const v = block[k];
+                if (v !== undefined && !(Array.isArray(v) && v.every((g) => typeof g === 'string'))) {
+                    reasons.push(`"${k}" must be a list of group IDs`);
+                }
+            });
+        }
+        else {
+            if (block.template_id && block.text) { reasons.push('Has both "template_id" and "text" - FormBuilder uses one or the other'); }
+            if (!block.template_id && !block.text) { reasons.push('Has neither "template_id" nor "text"'); }
+            const textKey = (kind === 'on_complete_message') ? 'subject' : 'title';
+            if (block[textKey] !== undefined && typeof block[textKey] !== 'string') {
+                reasons.push(`"${textKey}" is not plain text`);
+            }
+            const recipKey = (kind === 'on_complete_message') ? 'recipientList' : 'available_to';
+            const recipCheck = (kind === 'on_complete_message') ? isRecognizedRecipientValue : isRecognizedAvailableToValue;
+            const recip = block[recipKey];
+            if (recip !== undefined) {
+                if (!Array.isArray(recip)) { reasons.push(`"${recipKey}" is not a list`); }
+                else {
+                    const bad = recip.filter((r) => !recipCheck(r));
+                    if (bad.length) { reasons.push(`"${recipKey}" has unrecognized entr${bad.length > 1 ? 'ies' : 'y'}: ${bad.map(quote).join(', ')}`); }
+                }
+            }
+            if (kind === 'on_complete_notify' && block.options !== undefined) {
+                if (typeof block.options !== 'object' || Array.isArray(block.options) || block.options === null) {
+                    reasons.push('"options" is not an object');
+                }
+                else {
+                    const badOpt = Object.keys(block.options).filter((k) => !STAGE_RULE_RECOGNIZED_NOTIFY_OPTION_KEYS.includes(k));
+                    if (badOpt.length) { reasons.push(`"options" has unsupported key(s): ${badOpt.map(quote).join(', ')}`); }
+                    const nested = Object.keys(block.options).filter((k) => typeof block.options[k] === 'object' && block.options[k] !== null);
+                    if (nested.length) { reasons.push(`"options" has nested value(s) in: ${nested.map(quote).join(', ')}`); }
+                }
+            }
+        }
+        if (!reasons.length) { reasons.push('Rule shape not recognized'); }
+        return reasons;
+    };
+
     // Scans one stage's on_complete_<kind> array for instructions that test field_name, split into
     // byValue (recognized - keyed by the value they fire on, each carrying its original array
     // index for buildFieldStageRuleOutput below) and lockedCount (instructions that mention this
@@ -1144,14 +1276,18 @@ export default ({ onClose, directForm }) => {
             const classifier = STAGE_RULE_CLASSIFIERS[kind];
             const byValue = {};
             let lockedCount = 0;
+            const lockedDetails = [];
             instructionList.forEach((block, index) => {
                 const mentionedTests = [...(block.showIf || []), ...(block.ignoreIf || [])];
                 if (!mentionedTests.some((t) => t?.field === field_name)) { return; } // unrelated to this field
                 const parsed = classifier(block, field_name, validValues);
                 if (parsed) { byValue[parsed.value] = { index, ...parsed }; }
-                else { lockedCount += 1; }
+                else {
+                    lockedCount += 1;
+                    lockedDetails.push({ index, block, reasons: explainLockedStageRule(kind, block, { field_name, validValues }) });
+                }
             });
-            result[kind] = { byValue, lockedCount };
+            result[kind] = { byValue, lockedCount, lockedDetails };
         }
         return result;
     };
@@ -1169,13 +1305,17 @@ export default ({ onClose, directForm }) => {
             const classifier = STAGE_RULE_UNCONDITIONAL_CLASSIFIERS[kind];
             let rule = null;
             let lockedCount = 0;
+            const lockedDetails = [];
             instructionList.forEach((block, index) => {
                 if (block.showIf || block.ignoreIf) { return; } // gated - classifyFieldStageRules' concern
                 const parsed = !rule && classifier(block);
                 if (parsed) { rule = { index, ...parsed }; }
-                else { lockedCount += 1; }
+                else {
+                    lockedCount += 1;
+                    lockedDetails.push({ index, block, reasons: explainLockedStageRule(kind, block, { duplicate: !!rule }) });
+                }
             });
-            result[kind] = { rule, lockedCount };
+            result[kind] = { rule, lockedCount, lockedDetails };
         }
         return result;
     };
@@ -1556,11 +1696,19 @@ export default ({ onClose, directForm }) => {
                                                     );
                                                 })}
                                                 {totalLocked > 0 &&
-                                                    <WarningIcon
-                                                        fontSize='small'
-                                                        style={{ color: '#f44336' }}
-                                                        titleAccess={`${totalLocked} existing unconditional rule(s) on this section use a shape FormBuilder doesn't model - edit them directly in the Forms record if they need to change.`}
-                                                    />
+                                                    <LockedRuleTooltip
+                                                        interactive
+                                                        title={<LockedRuleDetails
+                                                            ruleState={unconditionalRuleState}
+                                                            stageName={stageDef.stage_name}
+                                                            intro={`${totalLocked} unconditional rule(s) on this section use a shape FormBuilder doesn't model:`}
+                                                        />}
+                                                    >
+                                                        <WarningIcon
+                                                            fontSize='small'
+                                                            style={{ color: '#f44336', cursor: 'help' }}
+                                                        />
+                                                    </LockedRuleTooltip>
                                                 }
                                             </React.Fragment>
                                         );
@@ -1787,13 +1935,19 @@ export default ({ onClose, directForm }) => {
                                                                 {'Values to choose from:'}
                                                             </Typography>
                                                             {totalLocked > 0 &&
-                                                                <Typography
-                                                                    title={`${totalLocked} existing rule(s) on this Item use a condition FormBuilder doesn't model (e.g. more than one "show if" test) - edit them directly in the Forms record if they need to change.`}
-                                                                    style={AVATextStyle({ size: 0.75, color: 'error' })}
+                                                                <LockedRuleTooltip
+                                                                    interactive
+                                                                    title={<LockedRuleDetails
+                                                                        ruleState={stageRuleState}
+                                                                        stageName={stageDef?.stage_name}
+                                                                        intro={`${totalLocked} rule(s) on "${field.field_name}" use a condition FormBuilder doesn't model:`}
+                                                                    />}
                                                                 >
-                                                                    <WarningIcon fontSize='inherit' style={{ verticalAlign: 'middle', marginRight: '2px' }} />
-                                                                    {'Existing rule requires IT edit'}
-                                                                </Typography>
+                                                                    <Typography style={{ ...AVATextStyle({ size: 0.75, color: 'error' }), cursor: 'help' }}>
+                                                                        <WarningIcon fontSize='inherit' style={{ verticalAlign: 'middle', marginRight: '2px' }} />
+                                                                        {'Existing rule requires IT edit'}
+                                                                    </Typography>
+                                                                </LockedRuleTooltip>
                                                             }
                                                         </Box>
                                                         {field.selectionList.map((value, valueIdx) => (
@@ -2155,13 +2309,19 @@ export default ({ onClose, directForm }) => {
                                         })}
                                     </Box>
                                     {totalLocked > 0 &&
-                                        <Typography
-                                            title={`${totalLocked} existing rule(s) on the form's "complete" stage use a shape FormBuilder doesn't model - edit them directly in the Forms record if they need to change.`}
-                                            style={AVATextStyle({ size: 0.75, color: 'error' })}
+                                        <LockedRuleTooltip
+                                            interactive
+                                            title={<LockedRuleDetails
+                                                ruleState={unconditionalRuleState}
+                                                stageName={COMPLETE_STAGE_NAME}
+                                                intro={`${totalLocked} rule(s) on the form's "complete" stage use a shape FormBuilder doesn't model:`}
+                                            />}
                                         >
-                                            <WarningIcon fontSize='inherit' style={{ verticalAlign: 'middle', marginRight: '2px' }} />
-                                            {'Existing rule requires IT edit'}
-                                        </Typography>
+                                            <Typography style={{ ...AVATextStyle({ size: 0.75, color: 'error' }), cursor: 'help', display: 'inline-block' }}>
+                                                <WarningIcon fontSize='inherit' style={{ verticalAlign: 'middle', marginRight: '2px' }} />
+                                                {'Existing rule requires IT edit'}
+                                            </Typography>
+                                        </LockedRuleTooltip>
                                     }
                                 </Paper>
                             );
