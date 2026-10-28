@@ -4,9 +4,10 @@ import {
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, LinearProgress, Dialog
 } from '@material-ui/core';
 import { Alert, AlertTitle } from '@material-ui/lab';
-import { dbClient, putDb, isEmpty, titleCase, cl } from '../../util/AVAUtilities';
+import { dbClient, putDb, isEmpty, cl } from '../../util/AVAUtilities';
 import { addMember, removeMember } from '../../util/AVAGroups';
 import { AVATextStyle } from '../../util/AVAStyles';
+import { toStoragePhone, parseCreatePeopleRows, loadClientIdStyle, createPersonAccount } from '../../util/AVAPeopleImport';
 
 const XLSX = require('xlsx');
 
@@ -49,15 +50,6 @@ const IMPORT_TYPES = [
 ];
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
-
-const toStoragePhone = (phoneValue) => {
-  if (!phoneValue) return '';
-  const digits = String(phoneValue).replace(/\D/g, '');
-  if (digits.length === 10) return `+1${digits}`;
-  if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
-  if (digits.length > 0) return `+${digits}`;
-  return '';
-};
 
 // Set a value at a dotted path inside obj, stripping a leading 'person'/'peoplerec' prefix segment.
 // Numeric path segments are treated as array indices, e.g. 'my_field.0' targets element 0 of my_field[].
@@ -192,206 +184,36 @@ export default ({ reactData }) => {
 
   // ── import processors ─────────────────────────────────────────────────────
 
-  const parseFullName = (raw) => {
-    const trimmed = String(raw || '').trim();
-    if (!trimmed) return { firstName: '', lastName: '' };
-    if (trimmed.includes(',')) {
-      const commaIdx = trimmed.indexOf(',');
-      const lastName = trimmed.slice(0, commaIdx).trim();
-      const firstName = trimmed.slice(commaIdx + 1).trim();
-      return { firstName, lastName };
-    }
-    const parts = trimmed.split(/\s+/);
-    const lastName = parts.pop();
-    const firstName = parts.join(' ');
-    return { firstName, lastName };
-  };
-
   const processCreatePeople = async (headers, rows) => {
-    const lowerHeaders = headers.map(h => String(h).toLowerCase().trim());
-    const firstIdx = lowerHeaders.findIndex(h => h.includes('first'));
-    const lastIdx = lowerHeaders.findIndex(h => h.includes('last'));
-    const fullNameIdx = lowerHeaders.findIndex(h => h === 'name' || h === 'full name' || h === 'full_name' || h === 'fullname');
-    const emailIdx = lowerHeaders.findIndex(h => (h.includes('email') || h.includes('mail')) && !h.includes('alt'));
-    const cellIdx = lowerHeaders.findIndex(h => h.includes('cell') || h.includes('mobile') || (h.includes('phone') && !h.includes('home') && !h.includes('work')));
-
-    const useSingleNameCol = fullNameIdx !== -1 && (firstIdx === -1 || lastIdx === -1);
-    if (!useSingleNameCol && (firstIdx === -1 || lastIdx === -1)) {
-      return { successes: 0, errors: [{ rowNum: 0, message: 'Could not find name columns. Expected "First Name" + "Last Name", or a single "Name" / "Full Name" column.' }], warnings: [] };
+    const { columnError, people, errors, warnings } = parseCreatePeopleRows(headers, rows);
+    if (columnError) {
+      return { successes: 0, errors: [{ rowNum: 0, message: columnError }], warnings: [] };
     }
 
-    // Load client style once for user_id format
-    let clientSuffix = null;
-    let idSeparator = '-';
-    let useNameOnly = false;
-    const clientStyleRec = await dbClient
-      .get({ Key: { client_id, custom_key: 'client_style' }, TableName: 'Customizations' })
-      .promise()
-      .catch(() => null);
-    if (clientStyleRec?.Item?.customization_value) {
-      const cv = clientStyleRec.Item.customization_value;
-      if (cv.id_separator !== undefined) {
-        idSeparator = cv.id_separator;
-      }
-      if (cv.client_suffix !== undefined) {
-        const rawSuffix = cv.client_suffix;
-        useNameOnly = (rawSuffix === '*none');
-        clientSuffix = useNameOnly ? null : rawSuffix;
-      }
-    }
-
+    const idStyle = await loadClientIdStyle(client_id);
     const successes = [];
-    const errors = [];
-    const warnings = [];
     const usedIds = new Set(); // track IDs generated in this batch
-    const seenNames = new Set(); // track names seen in this spreadsheet to catch in-batch duplicates
     const assignedIds = new Array(rows.length).fill('');
 
-    for (let i = 0; i < rows.length; i++) {
-      const rowNum = i + 2; // 1-based, +1 for header row
-      const row = rows[i];
-      let firstName, lastName;
-      if (useSingleNameCol) {
-        const parsed = parseFullName(row[fullNameIdx]);
-        firstName = titleCase(parsed.firstName);
-        lastName = titleCase(parsed.lastName);
-      } else {
-        firstName = titleCase(String(row[firstIdx] || '').trim());
-        lastName = titleCase(String(row[lastIdx] || '').trim());
-      }
-      if (!firstName || !lastName) {
-        errors.push({ rowNum, message: `Row ${rowNum}: missing first or last name — skipped.` });
-        continue;
-      }
-      const nameKey = `${firstName.toLowerCase()} ${lastName.toLowerCase()}`;
-      if (seenNames.has(nameKey)) {
-        warnings.push(`Row ${rowNum} (${firstName} ${lastName}): duplicate name in spreadsheet — skipped.`);
-        continue;
-      }
-      seenNames.add(nameKey);
-      const email = emailIdx >= 0 ? String(row[emailIdx] || '').trim().toLowerCase() : '';
-      const cell = cellIdx >= 0 ? toStoragePhone(String(row[cellIdx] || '').trim()) : '';
-
-      const firstInitial = firstName.charAt(0).toLowerCase();
-      const cleanLast = lastName.toLowerCase().replace(/[^a-z]/g, '');
-
-      // Generate unique user_id
-      let counter = '';
-      let attempts = 0;
-      let user_id = '';
-      let alreadyExists = false;
-      while (attempts < 100) {
-        let candidate;
-        if (useNameOnly) {
-          candidate = `${firstInitial}${cleanLast}${counter}`.toLowerCase();
-        } else {
-          const suffix = clientSuffix || client_id;
-          candidate = `${firstInitial}${cleanLast}${counter}${idSeparator}${suffix}`.toLowerCase();
-        }
-        if (!usedIds.has(candidate)) {
-          // Check People table
-          const existing = await dbClient
-            .get({ Key: { person_id: candidate }, TableName: 'People' })
-            .promise()
-            .catch(() => null);
-          if (!existing?.Item) {
-            user_id = candidate;
-            break;
-          }
-          // Exact name match on collision → treat as duplicate, skip creation
-          const existFirst = titleCase(String(existing.Item.name?.first || '').trim());
-          const existLast = titleCase(String(existing.Item.name?.last || '').trim());
-          if (existFirst === firstName && existLast === lastName) {
-            user_id = candidate;
-            alreadyExists = true;
-            break;
-          }
-        }
-        counter = counter === '' ? 2 : Number(counter) + 1;
-        attempts++;
-      }
-      if (!user_id) {
-        errors.push({ rowNum, message: `Row ${rowNum}: could not generate unique user_id for ${firstName} ${lastName} — skipped.` });
-        continue;
-      }
-      if (alreadyExists) {
-        warnings.push(`Row ${rowNum} (${firstName} ${lastName}): exact match already exists as "${user_id}" — skipped.`);
-        assignedIds[i] = user_id;
-        continue;
-      }
-      usedIds.add(user_id);
-
-      // Build People record
-      const contact_info = {};
-      const messaging = {};
-      if (email) { contact_info.email = { address: email }; messaging.email = email; }
-      if (cell) { contact_info.cell = { number: cell }; messaging.sms = cell; }
-
-      const preferred_method = email ? 'email' : (cell ? 'sms' : 'AVA');
-      const preferred_methods = preferred_method === 'AVA' ? ['AVA'] : [preferred_method];
-
-      const searchWords = [firstName, lastName, firstName.toLowerCase(), lastName.toLowerCase()];
-      if (cell) searchWords.push(cell.slice(-10));
-      if (email) searchWords.push(email);
-
-      const peopleRecord = {
-        person_id: user_id,
-        user_id,
-        client_id,
-        name: { first: firstName, last: lastName },
-        display_name: `${firstName} ${lastName}`,
-        groups: ['__TOP__', 'ALL'],
-        preferred_method,
-        preferred_methods,
-        contact_info,
-        messaging,
-        search_data: searchWords.join(' '),
-        created_on: new Date().toISOString(),
-        last_update: new Date().toISOString(),
-      };
-
-      const sessionRecord = {
-        session_id: user_id,
-        client_id,
-        last_login: null,
-        method: 'Import',
-        patient_display_name: `${firstName} ${lastName}`,
-        patient_id: user_id,
-        person_id: user_id,
-        requirePassword: false,
-        storePassword: true,
-        subscription_status: 'na',
-        user_display_name: `${firstName} ${lastName}`,
-        user_homeClient: client_id,
-        user_id,
-        last_update: new Date().toISOString(),
-      };
-
-      // Build PeopleAccounts entries
-      const accountEntries = [
-        { field: (`${firstName} ${lastName} ${client_id}`).toLowerCase(), type: 'name' },
-      ];
-      if (email) accountEntries.push({ field: email, type: 'eMail' });
-      if (cell) accountEntries.push({ field: cell.slice(-10), type: 'phone_number' });
-
+    for (const { rowIndex, rowNum, firstName, lastName, email, cell } of people) {
       try {
-        await putDb({ TableName: 'People', Item: peopleRecord });
-        await putDb({ TableName: 'SessionsV2', Item: sessionRecord });
-        await addMember(user_id, client_id, ['__TOP__', 'ALL'], { allowParent: true });
-        const putRequests = accountEntries
-          .filter(a => !isEmpty(a.field))
-          .map(a => ({ PutRequest: { Item: { person_id: user_id, identifier: a.field, account_type: a.type } } }));
-        if (putRequests.length > 0) {
-          await dbClient.batchWrite({ RequestItems: { PeopleAccounts: putRequests } }).promise()
-            .catch(err => cl({ 'PeopleAccounts batchWrite error': err }));
+        const created = await createPersonAccount({ client_id, idStyle, usedIds, firstName, lastName, email, cell });
+        if (created.error) {
+          errors.push({ rowNum, message: `Row ${rowNum}: ${created.error} — skipped.` });
+          continue;
         }
-        successes.push(user_id);
-        assignedIds[i] = user_id;
+        assignedIds[rowIndex] = created.user_id;
+        if (created.alreadyExists) {
+          warnings.push(`Row ${rowNum} (${firstName} ${lastName}): exact match already exists as "${created.user_id}" — skipped.`);
+          continue;
+        }
+        successes.push(created.user_id);
       } catch (err) {
         cl({ 'Create people row error': { rowNum, err } });
         errors.push({ rowNum, message: `Row ${rowNum} (${firstName} ${lastName}): ${err.message}` });
       }
     }
+    errors.sort((a, b) => (a.rowNum - b.rowNum));
     return { successes: successes.length, errors, warnings, assignedIds };
   };
 

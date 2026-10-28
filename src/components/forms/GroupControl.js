@@ -10,6 +10,7 @@ import PeopleMaintenance from '../dialogs/PeopleMaintenance';
 import GroupMaintenance from '../dialogs/GroupMaintenance';
 import AVAConfirm from './AVAConfirm';
 import { getPerson } from '../../util/AVAPeople';
+import { readSpreadsheetFile, parseCreatePeopleRows, matchExistingPerson, loadClientIdStyle, createPersonAccount } from '../../util/AVAPeopleImport';
 
 import { Snackbar, Paper, TextField, Box, Dialog, DialogActions, Button, Typography, Checkbox, FormControlLabel, LinearProgress, Tooltip, Avatar, Menu, MenuList, MenuItem, CircularProgress } from '@material-ui/core';
 import { Alert, AlertTitle } from '@material-ui/lab/';
@@ -50,6 +51,7 @@ import BuildIcon from '@material-ui/icons/Build';
 import OpenWithIcon from '@material-ui/icons/OpenWith';
 import EventIcon from '@material-ui/icons/Event';
 import EditIcon from '@material-ui/icons/Edit';
+import CloudUploadIcon from '@material-ui/icons/CloudUpload';
 
 import { SET_GROUPS, SET_ACCESSLIST } from '../../contexts/Session/actions';
 
@@ -179,6 +181,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
   const personRowShiftAnchorRef = React.useRef(null); // last ctrl/shift-clicked row index, for shift-range selection
   const familyDataCacheRef = React.useRef({});
   const skipExtrasRecomputeRef = React.useRef(false); // set by a ctrl-click intersection that already narrowed extraPeople itself
+  const uploadInputRef = React.useRef(null);
   const [selectedFieldDropTargetIndex, setSelectedFieldDropTargetIndex] = React.useState(null);
   const [selectedFieldDragIndex, setSelectedFieldDragIndex] = React.useState(null);
   // Admin Mode "Add group" inline input - which row it's open for, its uncommitted text,
@@ -211,6 +214,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
   const [eventDropConfirm, setEventDropConfirm] = React.useState(null);
   const [eventDropHoverKey, setEventDropHoverKey] = React.useState(null);
   const [eventRemoveConfirm, setEventRemoveConfirm] = React.useState(null);
+  // Upload: matched/unmatched rows awaiting the "create new accounts?" decision.
+  const [uploadCreateConfirm, setUploadCreateConfirm] = React.useState(null);
 
   const { dispatch, state } = useSession();
 
@@ -304,7 +309,11 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
     eventsLoading: false,
     selectedEventOccurrence: false,
     selectedEventAttendees: [],
-    loadingEventAttendees: false
+    loadingEventAttendees: false,
+
+    // Upload section (left list) - spreadsheet-sourced people list, session-only.
+    uploadedList: false, // { fileName, members, issues, summary: { rows, matched, created, skipped } }
+    uploadBusy: false // progress text while reading/matching/creating
   });
   const [refreshTrigger, setRefreshTrigger] = React.useState(false);
   const updateReactData = (newData, force = false) => {
@@ -600,7 +609,9 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
       // Move is not allowed when the source group is the top-level ("ALL") group —
       // removing it would leave the person with no group assignment at all.
       const topLevelGroup = state.groups.adminHierarchy.find(h => h.level === 0);
-      const sourceIsTopLevel = topLevelGroup && (draggedFrom.personGroup === topLevelGroup.id);
+      // No single source group (multi-group selection or uploaded spreadsheet list) - there's
+      // nothing to move them out of, so only Copy is offered.
+      const sourceIsTopLevel = !draggedFrom.personGroup || (topLevelGroup && (draggedFrom.personGroup === topLevelGroup.id));
       const bulkPeople = draggedBulk(draggedFrom);
       if (bulkPeople) {
         updateReactData({
@@ -1064,7 +1075,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
 
     // Event attendees aren't guaranteed to be in the viewer's own accessList (e.g. cross-group
     // signups) — pass raw person_id strings and let GroupPhotoDirectory fetch missing records.
-    if (reactData.selectedEventOccurrence) {
+    // Same for an uploaded spreadsheet list (which may include accounts created moments ago).
+    if (reactData.selectedEventOccurrence || reactData.selectedGroupRec?.upload) {
       return visibleMemberIds;
     }
 
@@ -1554,6 +1566,18 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
     let draggedFrom = JSON.parse(ev.dataTransfer.getData('id'));
     console.log(draggedFrom);
     if (draggedFrom.hasOwnProperty('personGroup')) {
+      if (!draggedFrom.personGroup) {
+        updateReactData({
+          alert: {
+            severity: 'info',
+            title: 'Nothing to remove from',
+            message: (reactData.selectedGroupRec?.upload
+              ? 'These names came from an uploaded spreadsheet, not a single group.'
+              : 'These names come from more than one group.') + '  Select a single group to remove people from it.'
+          }
+        }, true);
+        return;
+      }
       if (draggedBulk(draggedFrom)) {
         await startBulkGroupOp('remove', draggedFrom, null);
         return;
@@ -2389,8 +2413,245 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
     }, true);
   }
 
+  // ---- Upload: a "Create new accounts"-format spreadsheet resolved to a list of people -------
+  // Each row is matched (client-scoped) to an existing account by email, then phone, then name;
+  // unmatched rows become new accounts only if the user confirms. The resulting list is shown on
+  // the right like any group's members and lasts for this GroupControl session only.
+  const openUploadPicker = () => {
+    if (reactData.uploadBusy || !uploadInputRef.current) { return; }
+    uploadInputRef.current.value = ''; // so choosing the same file again still fires onChange
+    uploadInputRef.current.click();
+  };
+
+  const uploadMember = (person_id, rec, row) => {
+    const first = (rec?.name?.first ?? row.firstName ?? '').trim();
+    const last = (rec?.name?.last ?? row.lastName ?? '').trim();
+    return {
+      person_id,
+      name: { first, last },
+      display_name: rec?.display_name || `${first} ${last}`.trim() || person_id,
+      search_data: rec?.search_data || `${first} ${last}`.toLowerCase(),
+    };
+  };
+
+  const showUploadedList = (list = reactData.uploadedList) => {
+    if (!list) { return; }
+    updateReactData({
+      uploadedList: list,
+      uploadBusy: false,
+      selectedGroupRec: { group_id: null, group_name: list.fileName, upload: true, multi: true },
+      selectedGroup_id: null,
+      selectedGroupIds: [],
+      selectedGroupMembersPerGroup: {},
+      selectedGroupMembers: (Object.keys(list.members).length > 0) ? list.members : false,
+      sortedGroupMembers: sortGroupMembers(list.members),
+      intersectionMode: false,
+      intersectingEventKey: false,
+      selectedPerson_id: false,
+      selectedPersonRec: false,
+      selectedPersonFirstName: false,
+      selectedPersonLastName: false,
+      selectedPersonRowIds: [],
+      showFamilyMembers: false,
+      showPrimaryCaregivers: false,
+      extraPeople: [],
+      selectedEventOccurrence: false,
+      selectedEventAttendees: [],
+    }, true);
+  };
+
+  const showUploadIssues = (list = reactData.uploadedList) => {
+    if (!list) { return; }
+    updateReactData({
+      alert: {
+        severity: (list.issues.length > 0) ? 'warning' : 'info',
+        title: list.fileName,
+        message: <div>
+          <div>{`${list.summary.rows} spreadsheet row${(list.summary.rows === 1) ? '' : 's'}: ${list.summary.matched} matched existing accounts, ${list.summary.created} new account${(list.summary.created === 1) ? '' : 's'} created, ${list.summary.skipped} skipped.`}</div>
+          {(list.issues.length > 0) &&
+            <ul style={{ margin: '8px 0 0 0', paddingLeft: '20px' }}>
+              {list.issues.map((msg, x) => <li key={`upl_issue_${x}`}>{msg}</li>)}
+            </ul>
+          }
+        </div>
+      }
+    }, true);
+  };
+
+  // Adds accounts created by an upload to the cached accessList (same entry shape as
+  // AVAGroups.accountAccess builds), so group drags, "already a member" checks and the rest of the
+  // app treat them like everyone else without a reload. One dispatch for the whole batch.
+  const addCreatedPeopleToAccessList = (peopleRecs) => {
+    const cid = pSession.client_id;
+    const clientRec = state.accessList?.[cid];
+    if (!clientRec?.list || (peopleRecs.length === 0)) { return; }
+    const existingIds = new Set(clientRec.list.map((p) => p.person_id));
+    const access = (['master', 'admin'].includes(state.user?.account_class)) ? 'proxy' : 'view';
+    const newEntries = peopleRecs
+      .filter((rec) => rec?.person_id && !existingIds.has(rec.person_id))
+      .map((rec) => ({
+        person_id: rec.person_id,
+        name: rec.name,
+        first: rec.name.first,
+        last: rec.name.last,
+        display_name: `${rec.name.first} ${rec.name.last}`,
+        preferred_method: rec.preferred_method,
+        id: rec.person_id,
+        access,
+        signature_key: null,
+        groups: rec.groups,
+        messaging: rec.messaging,
+        search_data: rec.search_data,
+      }));
+    if (newEntries.length === 0) { return; }
+    const byLastFirst = (a, b) => ((a.last > b.last) ? 1 : (a.last < b.last) ? -1 : (a.first > b.first) ? 1 : (a.first < b.first) ? -1 : 0);
+    const list = [...clientRec.list, ...newEntries].sort(byLastFirst);
+    const count = { ...(clientRec.count || {}) };
+    newEntries.forEach((p) => { count[access] = (count[access] || 0) + 1; });
+    const shortList = Array.isArray(clientRec.shortList)
+      ? [...clientRec.shortList, ...newEntries.map((p) => {
+        let searchString = [...Object.values(p.name), p.search_data].join(' ');
+        if (p.messaging) { searchString += Object.values(p.messaging).join(' '); }
+        return `${p.name.last}, ${p.name.first}:${p.person_id}:${searchString}`;
+      })]
+      : clientRec.shortList;
+    dispatch({
+      type: SET_ACCESSLIST,
+      payload: { ...state.accessList, [cid]: { ...clientRec, list, count, shortList } }
+    });
+  };
+
+  const finishUpload = async (pending, createNew) => {
+    const client_id = state.session.client_id;
+    const members = {};
+    const issues = [...pending.issues];
+    let matchedCount = 0;
+    let createdCount = 0;
+    const createdRecs = [];
+    for (const { row, person_id, personRec } of pending.matched) {
+      members[person_id] = uploadMember(person_id, personRec, row);
+      matchedCount++;
+    }
+    if (pending.unmatched.length > 0) {
+      if (createNew) {
+        updateReactData({ uploadBusy: `Creating ${pending.unmatched.length} account${(pending.unmatched.length === 1) ? '' : 's'}...` }, true);
+        const idStyle = await loadClientIdStyle(client_id);
+        const usedIds = new Set();
+        for (const row of pending.unmatched) {
+          const label = `Row ${row.rowNum} (${row.firstName} ${row.lastName})`;
+          try {
+            const created = await createPersonAccount({ client_id, idStyle, usedIds, ...row });
+            if (created.error) {
+              issues.push(`${label}: ${created.error} — skipped.`);
+            }
+            else if (members[created.user_id]) {
+              issues.push(`${label}: same account as an earlier row (${created.user_id}) — skipped.`);
+            }
+            else if (created.alreadyExists) {
+              members[created.user_id] = uploadMember(created.user_id, null, row);
+              matchedCount++;
+              issues.push(`${label}: matched existing account "${created.user_id}" by user ID.`);
+            }
+            else {
+              members[created.user_id] = uploadMember(created.user_id, created.peopleRecord, row);
+              createdRecs.push(created.peopleRecord);
+              createdCount++;
+            }
+          } catch (err) {
+            cl({ 'GroupControl upload: create account error': { row, err } });
+            issues.push(`${label}: ${err.message} — not created.`);
+          }
+        }
+      }
+      else {
+        for (const row of pending.unmatched) {
+          issues.push(`Row ${row.rowNum} (${row.firstName} ${row.lastName}): no matching account — not created.`);
+        }
+      }
+    }
+    const list = {
+      fileName: pending.fileName,
+      members,
+      issues,
+      summary: {
+        rows: pending.rowCount,
+        matched: matchedCount,
+        created: createdCount,
+        skipped: pending.rowCount - Object.keys(members).length,
+      }
+    };
+    showUploadedList(list);
+    if (createdCount > 0) {
+      addCreatedPeopleToAccessList(createdRecs);
+      updateReactData({ updatesMade: true });
+    }
+  };
+
+  const handleUploadFileChosen = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) { return; }
+    updateReactData({ uploadBusy: `Reading ${file.name}...` }, true);
+    let parsed, rowCount;
+    try {
+      const { headers, rows } = await readSpreadsheetFile(file);
+      rowCount = rows.length;
+      parsed = parseCreatePeopleRows(headers, rows);
+    } catch (err) {
+      cl({ 'GroupControl upload: read error': err });
+      updateReactData({ uploadBusy: false, alert: { severity: 'error', title: `Couldn't read ${file.name}`, message: err.message || 'The file could not be read as a spreadsheet.' } }, true);
+      return;
+    }
+    if (parsed.columnError || (parsed.people.length === 0)) {
+      updateReactData({
+        uploadBusy: false,
+        alert: {
+          severity: 'error',
+          title: `Nothing to upload from ${file.name}`,
+          message: parsed.columnError
+            || <div>
+              <div>{'No usable rows were found.'}</div>
+              <ul style={{ margin: '8px 0 0 0', paddingLeft: '20px' }}>
+                {[...parsed.errors.map((er) => er.message), ...parsed.warnings].map((msg, x) => <li key={`upl_err_${x}`}>{msg}</li>)}
+              </ul>
+            </div>
+        }
+      }, true);
+      return;
+    }
+    const client_id = state.session.client_id;
+    const peopleCache = {};
+    const matched = [];
+    const unmatched = [];
+    const issues = [...parsed.errors.map((er) => er.message), ...parsed.warnings];
+    const matchedIds = new Set();
+    for (let x = 0; x < parsed.people.length; x++) {
+      const row = parsed.people[x];
+      updateReactData({ uploadBusy: `Matching ${x + 1} of ${parsed.people.length}...` }, true);
+      const found = await matchExistingPerson({ client_id, peopleCache, ...row });
+      if (!found) {
+        unmatched.push(row);
+        continue;
+      }
+      const label = `Row ${row.rowNum} (${row.firstName} ${row.lastName})`;
+      if (matchedIds.has(found.person_id)) {
+        issues.push(`${label}: same account as an earlier row (${found.person_id}) — skipped.`);
+        continue;
+      }
+      matchedIds.add(found.person_id);
+      matched.push({ row, ...found });
+      if (found.note) { issues.push(`${label}: ${found.note}.`); }
+    }
+    const pending = { fileName: file.name, rowCount, matched, unmatched, issues };
+    if (unmatched.length > 0) {
+      updateReactData({ uploadBusy: false }, true);
+      setUploadCreateConfirm(pending);
+      return;
+    }
+    await finishUpload(pending, false);
+  };
+
   // ---- Drag a person (right-side member row) onto an event occurrence (left list) ----------
-  const eventEntryKey = (entry) => `${entry.event_id}_${entry.occurrence_date}`;
+  const eventEntryKey =  (entry) => `${entry.event_id}_${entry.occurrence_date}`;
 
   const handleDrop_personOnEvent = (ev, entry) => {
     ev.preventDefault();
@@ -2911,6 +3172,15 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                                     newMembersPerGroup = {};
                                     if (Object.keys(filtered).length > 0) newMembersPerGroup[listEntry] = filtered;
                                     intersectingEventKey = `${reactData.selectedEventOccurrence.event_id}_${reactData.selectedEventOccurrence.occurrence_date}`;
+                                  } else if (currentIds.length === 0 && reactData.selectedGroupRec?.upload) {
+                                    // Current right-side list is an uploaded spreadsheet - intersect against it.
+                                    const uploadedIds = new Set(reactData.sortedGroupMembers || []);
+                                    const filtered = Object.fromEntries(
+                                      Object.entries(intersectPerGroup[listEntry] || {}).filter(([pid]) => uploadedIds.has(pid))
+                                    );
+                                    newMembersPerGroup = {};
+                                    if (Object.keys(filtered).length > 0) newMembersPerGroup[listEntry] = filtered;
+                                    intersectingEventKey = false;
                                   } else {
                                     const intersectPersonIds = new Set(Object.keys(intersectPerGroup[listEntry] || {}));
                                     // Filter each currently-selected group's member list to the intersection
@@ -3217,6 +3487,49 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                           );
                         })
                     )}
+
+                    {/* UPLOAD SECTION - a spreadsheet ("Create new accounts" format) resolved to a people
+                        list shown on the right. Tap: pick a file if none yet, otherwise show the list. */}
+                    <Tooltip title={reactData.uploadedList ? 'Show the uploaded list' : 'Upload a spreadsheet of people (Create new accounts format)'}>
+                      <Box
+                        display='flex' flexDirection='row'
+                        justifyContent='flex-start' alignItems='center'
+                        key='upload_section_header'
+                        style={{ marginTop: '12px', cursor: reactData.uploadBusy ? 'progress' : 'pointer' }}
+                        onClick={() => {
+                          if (reactData.uploadBusy) { return; }
+                          if (reactData.uploadedList) { showUploadedList(); }
+                          else { openUploadPicker(); }
+                        }}
+                      >
+                        <CloudUploadIcon style={{ fontSize: '1.1rem', marginRight: '0.4rem' }} />
+                        <Typography style={AVATextStyle({ size: 1.2, bold: true, overflow: 'visible', userSelect: 'none' })}>
+                          {'Upload'}
+                        </Typography>
+                        {reactData.uploadBusy && <CircularProgress size={14} style={{ marginLeft: '8px' }} />}
+                      </Box>
+                    </Tooltip>
+                    {reactData.uploadBusy &&
+                      <Typography key='upload_busy' style={AVATextStyle({ size: 0.9, color: 'textSecondary', margin: { left: 1.5 } })}>
+                        {reactData.uploadBusy}
+                      </Typography>
+                    }
+                    {!reactData.uploadBusy && reactData.uploadedList &&
+                      <Typography
+                        key='upload_file_row'
+                        onClick={() => { showUploadedList(); }}
+                        style={AVATextStyle({
+                          size: 1.2,
+                          overflow: 'visible',
+                          userSelect: 'none',
+                          cursor: 'pointer',
+                          bold: !!reactData.selectedGroupRec?.upload,
+                          margin: { left: 1.5, top: 0.35, bottom: 0.35 },
+                        })}
+                      >
+                        {`${reactData.uploadedList.fileName} (${Object.keys(reactData.uploadedList.members).length})`}
+                      </Typography>
+                    }
                   </Box>
                 </Paper>
               </Box>
@@ -3231,9 +3544,12 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                 marginLeft='16px'
                 paddingLeft={'32px'}
               >
+                <Tooltip title={reactData.selectedGroupRec.upload ? 'Tap to choose a different spreadsheet' : ''}>
                 <Typography
                   key={`g_name`}
-                  onClick={reactData.selectedGroupRec.multi ? undefined : async () => {
+                  onClick={reactData.selectedGroupRec.upload
+                    ? () => { openUploadPicker(); }
+                    : reactData.selectedGroupRec.multi ? undefined : async () => {
                     if (!(await guardGroupAuthorization(reactData.selectedGroupRec.group_id))) { return; }
                     updateReactData({
                       viewGroupMaintenance: reactData.selectedGroupRec.group_id
@@ -3244,21 +3560,29 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                     overflow: 'visible',
                     bold: true,
                     color: reactData.intersectionMode ? '#c62828' : null,
-                    cursor: reactData.selectedGroupRec.multi ? 'default' : null,
+                    cursor: reactData.selectedGroupRec.upload ? 'pointer' : (reactData.selectedGroupRec.multi ? 'default' : null),
                     margin: { top: 1, bottom: 0 },
                   })}>
+                  {reactData.selectedGroupRec.upload &&
+                    <CloudUploadIcon style={{ fontSize: '1.3rem', marginRight: '0.4rem', verticalAlign: 'middle' }} />
+                  }
                   {reactData.selectedGroupRec.group_name}
                 </Typography>
+                </Tooltip>
                 <Box display='flex' flexDirection='row' alignItems='center'>
                   <Typography
+                    onClick={reactData.selectedGroupRec.upload ? () => { showUploadIssues(); } : undefined}
                     style={AVATextStyle({
                       size: 0.9,
                       margin: { top: 0, bottom: (reactData.lower_people_filter ? 0 : 1.2) },
                       color: 'textSecondary',
+                      cursor: reactData.selectedGroupRec.upload ? 'pointer' : null,
                       overflow: 'visible'
                     })}
                   >
-                    {`${reactData.sortedGroupMembers?.length || 0} ${(reactData.selectedGroupIds || []).length > 1 ? 'people across selected groups' : 'people in the group'}${(reactData.extraPeople?.length > 0) ? ` (+${reactData.extraPeople.length} ${reactData.showFamilyMembers ? 'family members' : 'primary caregivers'})` : ''}`}
+                    {(reactData.selectedGroupRec.upload && reactData.uploadedList)
+                      ? `${reactData.sortedGroupMembers?.length || 0} people from spreadsheet (${reactData.uploadedList.summary.matched} matched, ${reactData.uploadedList.summary.created} new${(reactData.uploadedList.summary.skipped > 0) ? `, ${reactData.uploadedList.summary.skipped} skipped` : ''})${(reactData.uploadedList.issues.length > 0) ? ' - tap for details' : ''}`
+                      : `${reactData.sortedGroupMembers?.length || 0} ${(reactData.selectedGroupIds || []).length > 1 ? 'people across selected groups' : 'people in the group'}${(reactData.extraPeople?.length > 0) ? ` (+${reactData.extraPeople.length} ${reactData.showFamilyMembers ? 'family members' : 'primary caregivers'})` : ''}`}
                   </Typography>
                   {reactData.loadingExtraPeople &&
                     <CircularProgress size={14} style={{ marginLeft: '8px', marginBottom: (reactData.lower_people_filter ? 0 : '12px') }} />
@@ -4432,6 +4756,36 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
             const pending = eventDropConfirm;
             setEventDropConfirm(null);
             await executeAddPeopleToEvent(pending);
+          }}
+        />
+      }
+      {/* Upload's file picker - kept outside the left panel, which is hidden on small screens while the right side shows. */}
+      <input
+        type='file'
+        accept='.xlsx,.xls,.csv'
+        ref={uploadInputRef}
+        style={{ display: 'none' }}
+        onChange={handleUploadFileChosen}
+      />
+      {uploadCreateConfirm &&
+        <AVAConfirm
+          promptText={[
+            'Create new accounts?',
+            `${uploadCreateConfirm.fileName}: ${uploadCreateConfirm.matched.length} matched existing account${(uploadCreateConfirm.matched.length === 1) ? '' : 's'}.`,
+            `${uploadCreateConfirm.unmatched.length} ${(uploadCreateConfirm.unmatched.length === 1) ? 'row has' : 'rows have'} no matching account (by email, phone, or name): ${listFromArray(uploadCreateConfirm.unmatched.map((r) => `${r.firstName} ${r.lastName}`))}.`,
+            `Create ${(uploadCreateConfirm.unmatched.length === 1) ? 'an account for this person' : 'accounts for these people'}, or continue with matched people only?`
+          ]}
+          cancelText={'Matched only'}
+          confirmText={'Create'}
+          onCancel={async () => {
+            const pending = uploadCreateConfirm;
+            setUploadCreateConfirm(null);
+            await finishUpload(pending, false);
+          }}
+          onConfirm={async () => {
+            const pending = uploadCreateConfirm;
+            setUploadCreateConfirm(null);
+            await finishUpload(pending, true);
           }}
         />
       }
