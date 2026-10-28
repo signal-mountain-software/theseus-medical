@@ -49,7 +49,7 @@ export default ({ currentValues, updateField }) => {
       } while (lastKey);
 
       let formsLibrary = allItems.filter((formRec) => {
-        return (!formRec.hasOwnProperty('active') || !!formRec.active);
+        return (formRec.active !== false);
       });
 
       formsLibrary.sort((a, b) => {

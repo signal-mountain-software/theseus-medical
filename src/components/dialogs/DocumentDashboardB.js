@@ -250,7 +250,7 @@ export default ({ request, onClose }) => {
       });
     if (recordExists(formResult)) {
       formResult.Items.forEach(this_form => {
-        if (this_form.active || reactData.options.viewInactive) {
+        if ((this_form.active !== false) || reactData.options.viewInactive) {
           response.push(Object.assign({}, this_form, {
             groupList: groupForms.hasOwnProperty(this_form.form_id) ? groupForms[this_form.form_id] : []
           }));
@@ -271,7 +271,7 @@ export default ({ request, onClose }) => {
         form_id: this_form.form_id,
         form_name: this_form.form_name,
         groupList: this_form.groupList,
-        active: this_form.active
+        active: this_form.active !== false
       };
     };
     return returnObj;

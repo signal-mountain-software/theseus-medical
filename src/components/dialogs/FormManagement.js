@@ -1221,7 +1221,7 @@ export default ({ defaults, onClose }) => {
         }
         // Determine category: inactive forms go to "Inactive Forms" by default
         let formCategory = formRec.category || 'No Category';
-        if (!formRec.active) {
+        if (formRec.active === false) {
           formCategory = 'Inactive Forms';
         }
         masterFormList[formRec.form_id] = {
@@ -1232,7 +1232,7 @@ export default ({ defaults, onClose }) => {
           options: formRec.options || {},
           dueDate: date_assigned,
           dated_docs: formRec.options?.dated_docs || false,
-          active: formRec.active || false
+          active: formRec.active !== false
         };
       }
     // are there one or more groups that require this form?
@@ -3522,8 +3522,22 @@ export default ({ defaults, onClose }) => {
       {reactData.showFormBuilder && (
         <FormBuilder
           directForm={reactData.formBuilderDirectForm}
-          onClose={async (saved, savedForm, { focusForm = false } = {}) => {
+          onClose={async (saved, savedForm, { focusForm = false, deleted = false } = {}) => {
             updateReactData({ showFormBuilder: false, formBuilderDirectForm: null }, true);
+            if (saved && deleted) {
+              if (savedForm && (reactData.selectedForm_id === savedForm.form_id)) {
+                updateReactData({
+                  selectedForm_id: false,
+                  selectedFormRec: false,
+                  selectedFormMembers: false,
+                }, true);
+              }
+              await initialize(null);
+              updateReactData({
+                alert: { severity: 'success', message: `Deleted "${savedForm?.form_name || savedForm?.form_id || 'form'}"` }
+              }, true);
+              return;
+            }
             if (saved) {
               const forms = await initialize(focusForm ? savedForm : null);
               if (focusForm && savedForm) {

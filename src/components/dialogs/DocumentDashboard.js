@@ -374,7 +374,7 @@ export default ({ request = {}, onClose }) => {
         });
       if (recordExists(formResult)) {
         formResult.Items.forEach(this_form => {
-          if ((!this_form.hasOwnProperty('active') || this_form.active)
+          if ((this_form.active !== false)
             && ((reactData.formType_filter.includes('*all')) || (reactData.formType_filter.includes(this_form.form_id)))) {
             formLibrary.push(this_form);
             if (!rememberedForms.hasOwnProperty(this_form.form_id)) {

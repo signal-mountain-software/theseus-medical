@@ -4,6 +4,7 @@ import useSession from '../../hooks/useSession';
 import { dbClient, recordExists, cl, getDb, putDb, deepCopy, uuid, titleCase } from '../../util/AVAUtilities';
 import { AVAclasses, AVATextStyle } from '../../util/AVAStyles';
 import { getEventMasterList } from '../../util/AVACalendars';
+import { isFormActive, findFormReferences, formHasReferences, softDeleteForm } from '../../util/AVAForms';
 import FormFillB from '../forms/FormFillB';
 import AVAConfirm from '../forms/AVAConfirm';
 import QuickSearch from '../sections/QuickSearch';
@@ -349,6 +350,10 @@ export default ({ onClose, directForm }) => {
         showRuleRecipientSearch: false, // true while QuickSearch is open, picking a single group or person for a message/notify rule's recipient
         showRuleGroupsSearch: null, // 'add' | 'remove' | null - which groups list a groups-rule QuickSearch picker is editing
         alert: false,
+        editingIsStored: false, // false while editing a brand-new form that has never been saved
+        deleteCheck: null, // null | { checking } | { refs, blocked } - drives the Delete dialogs
+        deleteTypedName: '',
+        deleting: false,
     });
     // A counter (not a boolean) - a boolean toggle would cancel itself out when `force` is
     // invoked twice in the same event/batch (e.g. Autocomplete fires both onChange and
@@ -673,7 +678,7 @@ export default ({ onClose, directForm }) => {
             form_id: cloned.form_id,
             form_name: cloned.form_name || '',
             category: cloned.category || '',
-            active: (cloned.active !== undefined) ? cloned.active : true,
+            active: isFormActive(cloned),
             sections: resolvedSections,
             stages: ensureCompleteStage(stages),
         };
@@ -681,6 +686,7 @@ export default ({ onClose, directForm }) => {
             view: 'edit',
             editingForm: loadedForm,
             savedSnapshot: JSON.stringify(loadedForm),
+            editingIsStored: true,
             loading: false,
         }, true);
     };
@@ -691,6 +697,7 @@ export default ({ onClose, directForm }) => {
             view: 'edit',
             editingForm: newForm,
             savedSnapshot: JSON.stringify(newForm),
+            editingIsStored: false,
         }, true);
     };
 
@@ -779,6 +786,55 @@ export default ({ onClose, directForm }) => {
     const requestExit = () => {
         if (hasUnsavedChanges()) { updateReactData({ confirmExit: true }, true); return; }
         exitEditing();
+    };
+
+    const canDeleteForms = ['admin', 'support', 'master'].includes(state.user?.account_class);
+
+    // Step 1 of Delete: check every place that could still use this form. The dialog that
+    // follows either explains what blocks the delete or asks for the typed-name confirmation.
+    const requestDelete = async () => {
+        const { form_id } = reactData.editingForm;
+        updateReactData({ deleteCheck: { checking: true }, deleteTypedName: '' }, true);
+        const refs = await findFormReferences({ client_id, form_id })
+            .catch((error) => ({ documentCount: 0, groups: [], events: [], menus: [], errors: [`${error.message || error}`] }));
+        updateReactData({ deleteCheck: { refs, blocked: formHasReferences(refs) } }, true);
+    };
+
+    const cancelDelete = () => {
+        updateReactData({ deleteCheck: null, deleteTypedName: '', deleting: false }, true);
+    };
+
+    // Step 2: re-check references right before writing (something may have started using the
+    // form while the dialog was open), then move the stored record to the deleted-forms area.
+    const confirmDelete = async () => {
+        const { form_id, form_name } = reactData.editingForm;
+        updateReactData({ deleting: true }, true);
+        const refs = await findFormReferences({ client_id, form_id })
+            .catch((error) => ({ documentCount: 0, groups: [], events: [], menus: [], errors: [`${error.message || error}`] }));
+        if (formHasReferences(refs)) {
+            updateReactData({ deleting: false, deleteCheck: { refs, blocked: true } }, true);
+            return;
+        }
+        let archived;
+        try {
+            archived = await softDeleteForm({ client_id, form_id, deleted_by: state.session.user_id });
+        }
+        catch (error) {
+            cl(`Error deleting form ${form_id}: ${error}`);
+            updateReactData({
+                deleting: false,
+                alert: { severity: 'error', message: `"${form_name}" was NOT deleted: ${error.message || error}` },
+            }, true);
+            return;
+        }
+        updateReactData({ deleting: false, deleteCheck: null, deleteTypedName: '' }, true);
+        if (directEditMode) {
+            onClose && onClose(true, Object.assign({}, archived, { client_id }), { deleted: true });
+            return;
+        }
+        updateReactData({ view: 'list', editingForm: null }, true);
+        await loadFormList();
+        updateReactData({ alert: { severity: 'success', message: `"${form_name}" deleted.` } }, true);
     };
 
     const updateEditingForm = (changes) => {
@@ -1492,7 +1548,7 @@ export default ({ onClose, directForm }) => {
             form_id: editingForm.form_id,
             form_name: editingForm.form_name,
             category: editingForm.category || '',
-            active: editingForm.active,
+            active: isFormActive(editingForm),
             sections,
             fields,
             stages: editingForm.stages || [],
@@ -1552,6 +1608,7 @@ export default ({ onClose, directForm }) => {
         updateReactData({
             saving: false,
             savedSnapshot: JSON.stringify(editingForm),
+            editingIsStored: true,
             alert: { severity: 'success', message: `"${finalForm.form_name}" saved.` },
         }, true);
     };
@@ -1622,6 +1679,110 @@ export default ({ onClose, directForm }) => {
         </React.Fragment>
     );
 
+    const renderDeleteDialog = () => {
+        const editingForm = reactData.editingForm;
+        const { checking, refs, blocked } = reactData.deleteCheck;
+        const formName = (editingForm.form_name || '').trim() || editingForm.form_id;
+        const nameMatches = !!formName.trim() && (reactData.deleteTypedName.trim() === formName.trim());
+        const fieldCount = (editingForm.sections || []).reduce((n, s) => n + (s.fields || []).length, 0);
+        const refLines = (label, list) => (list.length > 0) && (
+            <Box mb={1}>
+                <Typography style={AVATextStyle({ bold: true })}>{`${label} (${list.length})`}</Typography>
+                {list.slice(0, 10).map((r) => (
+                    <Typography key={r.id || r.name} style={AVATextStyle({ size: 0.9, margin: { left: 1 } })}>{r.name}</Typography>
+                ))}
+                {(list.length > 10) &&
+                    <Typography style={AVATextStyle({ size: 0.9, margin: { left: 1 }, color: 'textSecondary' })}>{`...and ${list.length - 10} more`}</Typography>
+                }
+            </Box>
+        );
+        return (
+            <Dialog open={true} onClose={() => { if (!reactData.deleting) { cancelDelete(); } }} maxWidth='sm' fullWidth>
+                <DialogTitle>{checking ? 'Checking form usage...' : (blocked ? 'This form cannot be deleted' : 'Delete this form?')}</DialogTitle>
+                <DialogContent>
+                    {checking &&
+                        <Box display='flex' justifyContent='center' p={2}><CircularProgress /></Box>
+                    }
+                    {!checking && blocked &&
+                        <React.Fragment>
+                            <Typography style={AVATextStyle({ margin: { bottom: 1 } })}>
+                                {`"${formName}" is still in use, so it cannot be deleted:`}
+                            </Typography>
+                            {(refs.documentCount > 0) &&
+                                <Typography style={AVATextStyle({ bold: true, margin: { bottom: 1 } })}>
+                                    {`${refs.documentCount} document${refs.documentCount === 1 ? '' : 's'} created from this form`}
+                                </Typography>
+                            }
+                            {refLines('Groups using this form', refs.groups)}
+                            {refLines('Events / templates using this form', refs.events)}
+                            {refLines('Menu items that may open this form', refs.menus)}
+                            {(refs.errors.length > 0) &&
+                                <Alert severity='warning' style={{ marginBottom: '8px' }}>
+                                    {`Usage could not be fully checked (${refs.errors.join('; ')}). Please try again later.`}
+                                </Alert>
+                            }
+                            <Typography style={AVATextStyle({ size: 0.9, color: 'textSecondary' })}>
+                                {'To retire this form without deleting it, check "Inactive Form?" and save.'}
+                            </Typography>
+                        </React.Fragment>
+                    }
+                    {!checking && !blocked &&
+                        <React.Fragment>
+                            <Alert severity='warning' style={{ marginBottom: '12px' }}>
+                                {'Deleting removes this form from every list. It is kept in an archive and can only be restored by a technician.'}
+                            </Alert>
+                            <Typography style={AVATextStyle({ bold: true })}>{formName}</Typography>
+                            <Typography style={AVATextStyle({ size: 0.9, color: 'textSecondary', margin: { bottom: 1 } })}>
+                                {`${editingForm.category || 'No Category'} - ${(editingForm.sections || []).length} section(s), ${fieldCount} field(s)`}
+                            </Typography>
+                            <Typography style={AVATextStyle({ size: 0.9, margin: { bottom: 1 } })}>
+                                {'No documents, groups, events, or menu items use this form.'}
+                            </Typography>
+                            {hasUnsavedChanges() &&
+                                <Typography style={AVATextStyle({ size: 0.9, color: 'red', margin: { bottom: 1 } })}>
+                                    {'You have unsaved changes - the last saved version is what will be deleted.'}
+                                </Typography>
+                            }
+                            <TextField
+                                fullWidth
+                                autoFocus
+                                label='Type the form name to confirm'
+                                value={reactData.deleteTypedName}
+                                onChange={(e) => updateReactData({ deleteTypedName: e.target.value }, true)}
+                                disabled={reactData.deleting}
+                                inputProps={{ 'aria-label': 'Type the form name to confirm' }}
+                            />
+                        </React.Fragment>
+                    }
+                </DialogContent>
+                <DialogActions>
+                    <Button
+                        className={AVAClass.AVAButton}
+                        variant='contained'
+                        color='primary'
+                        size='small'
+                        onClick={cancelDelete}
+                        disabled={reactData.deleting}
+                    >
+                        {blocked ? 'OK' : 'Cancel'}
+                    </Button>
+                    {!checking && !blocked &&
+                        <Button
+                            className={AVAClass.AVAButton}
+                            size='small'
+                            style={nameMatches && !reactData.deleting ? { backgroundColor: 'red', color: 'white' } : {}}
+                            startIcon={<DeleteIcon fontSize='small' />}
+                            onClick={confirmDelete}
+                            disabled={!nameMatches || reactData.deleting}
+                        >
+                            {reactData.deleting ? <CircularProgress size={18} /> : 'Delete Form'}
+                        </Button>
+                    }
+                </DialogActions>
+            </Dialog>
+        );
+    };
+
     const renderEditView = () => {
         const editingForm = reactData.editingForm;
         // Existing categories across every form for this client, offered as Autocomplete options -
@@ -1649,6 +1810,18 @@ export default ({ onClose, directForm }) => {
                             style={{ flexGrow: 1 }}
                             renderInput={(params) => <TextField {...params} label='Category' />}
                         />
+                        <Tooltip title='Inactive forms stay in the system (and keep their documents) but are listed separately and not offered for new documents'>
+                            <FormControlLabel
+                                style={{ marginRight: 0, whiteSpace: 'nowrap' }}
+                                control={
+                                    <Checkbox
+                                        checked={!isFormActive(editingForm)}
+                                        onChange={(e) => updateEditingForm({ active: !e.target.checked })}
+                                    />
+                                }
+                                label='Inactive Form?'
+                            />
+                        </Tooltip>
                     </Box>
                     <Typography style={AVATextStyle({ size: 0.75, color: 'textSecondary', margin: { top: 1, bottom: 1 } })}>
                         {`Form ID: ${editingForm.form_id}`}
@@ -2339,6 +2512,19 @@ export default ({ onClose, directForm }) => {
                     >
                         {'Exit'}
                     </Button>
+                    {canDeleteForms && reactData.editingIsStored &&
+                        <Button
+                            className={AVAClass.AVAButton}
+                            size='small'
+                            style={{ color: 'red' }}
+                            startIcon={<DeleteIcon fontSize='small' />}
+                            onClick={requestDelete}
+                            disabled={reactData.saving || reactData.deleting}
+                            title={hasUnsavedChanges() ? 'Deletes the last saved version of this form' : 'Delete this form'}
+                        >
+                            {'Delete'}
+                        </Button>
+                    }
                     <Button
                         className={AVAClass.AVAButton}
                         size='small'
@@ -2397,6 +2583,7 @@ export default ({ onClose, directForm }) => {
                         }}
                     />
                 }
+                {reactData.deleteCheck && renderDeleteDialog()}
             </React.Fragment>
         );
     };
