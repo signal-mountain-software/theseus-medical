@@ -39,6 +39,27 @@ beforeEach(() => {
 
 const deleteButton = () => screen.queryByText('Delete', { selector: 'button span' });
 
+it.each([undefined, false, true, 'true', 1])('loads current=%s and saves the toggled boolean', async current => {
+  render(<FormBuilder directForm={{ ...form, current }} onClose={jest.fn()} />);
+  const checkbox = (await screen.findByText('Current Form?')).closest('label').querySelector('input');
+  expect(checkbox.checked).toBe(current === true);
+  fireEvent.click(checkbox);
+  fireEvent.click(screen.getByText('Save Form'));
+  await wait(() => expect(putDb).toHaveBeenCalled());
+  expect(putDb.mock.calls[0][0].Item.current).toBe(current !== true);
+});
+
+it('defaults new forms to not current and saves changes with Save and Continue', async () => {
+  render(<FormBuilder directForm='new' onClose={jest.fn()} />);
+  const checkbox = (await screen.findByText('Current Form?')).closest('label').querySelector('input');
+  expect(checkbox).not.toBeChecked();
+  fireEvent.change(screen.getByText('Form Name').parentElement.querySelector('input'), { target: { value: 'New form' } });
+  fireEvent.click(checkbox);
+  fireEvent.click(screen.getByText('Save and Continue'));
+  await wait(() => expect(putDb).toHaveBeenCalled());
+  expect(putDb.mock.calls[0][0].Item.current).toBe(true);
+});
+
 it('treats a missing active attribute as active and stores the inverse of "Inactive Form?"', async () => {
   const onClose = jest.fn();
   render(<FormBuilder directForm={form} onClose={onClose} />);

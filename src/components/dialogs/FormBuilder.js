@@ -312,6 +312,7 @@ const blankForm = (client_id) => {
         form_name: '',
         category: '',
         active: true,
+        current: false,
         sections: [initialSection],
         stages: ensureCompleteStage([{ stage_name }]),
     };
@@ -679,6 +680,7 @@ export default ({ onClose, directForm }) => {
             form_name: cloned.form_name || '',
             category: cloned.category || '',
             active: isFormActive(cloned),
+            current: cloned.current === true,
             sections: resolvedSections,
             stages: ensureCompleteStage(stages),
         };
@@ -1549,6 +1551,7 @@ export default ({ onClose, directForm }) => {
             form_name: editingForm.form_name,
             category: editingForm.category || '',
             active: isFormActive(editingForm),
+            current: editingForm.current === true,
             sections,
             fields,
             stages: editingForm.stages || [],
@@ -1810,18 +1813,32 @@ export default ({ onClose, directForm }) => {
                             style={{ flexGrow: 1 }}
                             renderInput={(params) => <TextField {...params} label='Category' />}
                         />
-                        <Tooltip title='Inactive forms stay in the system (and keep their documents) but are listed separately and not offered for new documents'>
-                            <FormControlLabel
-                                style={{ marginRight: 0, whiteSpace: 'nowrap' }}
-                                control={
-                                    <Checkbox
-                                        checked={!isFormActive(editingForm)}
-                                        onChange={(e) => updateEditingForm({ active: !e.target.checked })}
-                                    />
-                                }
-                                label='Inactive Form?'
-                            />
-                        </Tooltip>
+                        <Box display='flex' flexDirection='column'>
+                            <Tooltip title='Inactive forms stay in the system (and keep their documents) but are listed separately and not offered for new documents'>
+                                <FormControlLabel
+                                    style={{ marginRight: 0, whiteSpace: 'nowrap' }}
+                                    control={
+                                        <Checkbox
+                                            checked={!isFormActive(editingForm)}
+                                            onChange={(e) => updateEditingForm({ active: !e.target.checked })}
+                                        />
+                                    }
+                                    label='Inactive Form?'
+                                />
+                            </Tooltip>
+                            <Tooltip title="Include this form in the Current Forms section of a person's profile">
+                                <FormControlLabel
+                                    style={{ marginRight: 0, whiteSpace: 'nowrap' }}
+                                    control={
+                                        <Checkbox
+                                            checked={editingForm.current === true}
+                                            onChange={(e) => updateEditingForm({ current: e.target.checked })}
+                                        />
+                                    }
+                                    label='Current Form?'
+                                />
+                            </Tooltip>
+                        </Box>
                     </Box>
                     <Typography style={AVATextStyle({ size: 0.75, color: 'textSecondary', margin: { top: 1, bottom: 1 } })}>
                         {`Form ID: ${editingForm.form_id}`}
