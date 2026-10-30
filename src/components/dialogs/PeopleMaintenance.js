@@ -53,6 +53,14 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
+const matchesRequestedSection = (section, sectionToShow) => {
+  const identifiers = [section.component_name, section.section_key, section.section_name]
+    .filter(Boolean).map(identifier => identifier.toLowerCase());
+  return [sectionToShow].flat().some(identifier => (
+    typeof identifier === 'string' && identifiers.includes(identifier.toLowerCase())
+  ));
+};
+
 export default ({ patient, person_id, personRec, initialValues, options = {}, onClose }) => {
 
   const isMounted = React.useRef(false);
@@ -138,6 +146,9 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         component_id: PeopleDocumentsSection
       },
       FormSection: {
+        component_id: FormSection,
+      },
+      CurrentFormsSection: {
         component_id: FormSection,
       },
       ActivitiesSection: {
@@ -246,7 +257,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
             const string_address = peopleRec.address;
             peopleRec.address = {
               address: string_address
-            }
+            };
           }
           if (peopleRec.checkout_status) {
             const checkoutDefault = peopleRec.checkout_default
@@ -274,7 +285,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
           }
 
           reactUpdObj.og.familyRecs = [];
-          reactUpdObj.myFamilyData = [];          
+          reactUpdObj.myFamilyData = [];
           if (peopleRec.family_groups && (peopleRec.family_groups.length > 0)) {
             for (let i = 0; i < peopleRec.family_groups.length; i++) {
               let familyRec = await dbClient
@@ -587,146 +598,175 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
           }
         }
       }
-      reactUpdObj.sections = [{
-        section_name: 'Snapshot',
-        color: initialValues?.color || 'orange',
-        isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().some(this_optionSection => { return (this_optionSection.toLowerCase() === 'snapshot'); })) : false),
-        isAuthorized: (reactData.administrative_account || (reactData.sectionList && reactData.sectionList.includes('snapshot'))),
-        version_id: 0,
-        component_name: 'Snapshot'
-      },
-      {
-        section_name: 'Additional Data',
-        color: initialValues?.color || 'orange',
-        isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('AdministrativeSection')) : false),
-        isAuthorized: reactData.master_account
-          || (reactData.sectionList ? reactData.sectionList.includes('admin') : state.session.client_style?.profile_sections_visible?.admin !== false),
-        version_id: 0,
-        component_name: 'AdministrativeSection'
-      },
-      {
-        section_name: 'Name & Contact info',
-        color: initialValues?.color || 'orange',
-        isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('ProfileSection')) : false),
-        isAuthorized: (reactData.administrative_account || (reactData.sectionList ? reactData.sectionList.includes('contact') : true)),
-        version_id: 0,
-        component_name: 'ProfileSection'
-      },
-      {
-        section_name: 'Messaging',
-        color: initialValues?.color || 'orange',
-        isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('MessagePreferencesSection')) : false),
-        isAuthorized: (reactData.administrative_account || (reactData.sectionList ? reactData.sectionList.includes('messaging') : true)),
-        version_id: 0,
-        component_name: 'MessagePreferencesSection'
-      },
-      {
-        section_name: 'Message History',
-        color: initialValues?.color || 'orange',
-        isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('MessagesSection')) : false),
-        isAuthorized: (reactData.administrative_account || (reactData.sectionList ? reactData.sectionList.includes('messages') : true))
-          && !(reactUpdObj.mode === 'add'),
-        version_id: 0,
-        component_name: 'MessagesSection'
-      },
-      {
-        section_name: 'Events & Participation',
-        color: initialValues?.color || 'orange',
-        isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('ActivitiesSection')) : false),
-        isAuthorized: (reactData.master_account
-          || (reactData.sectionList ? reactData.sectionList.includes('activities') : state.session.client_style?.profile_sections_visible?.activities !== false))
-          && !(reactUpdObj.mode === 'add'),
-        version_id: 0,
-        component_name: 'ActivitiesSection'
-      },
-      {
-        section_name: 'Daily Activities & Tasks',
-        color: initialValues?.color || 'orange',
-        isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('TaskManagerSection')) : false),
-        isAuthorized: (reactData.master_account
-          || (reactData.sectionList ? reactData.sectionList.includes('task_manager') : state.session.client_style?.profile_sections_visible?.task_manager !== false))
-          && !(reactUpdObj.mode === 'add'),
-        version_id: 0,
-        component_name: 'TaskManagerSection'
-      },
-      {
-        section_name: 'My Family',
-        color: initialValues?.color || 'orange',
-        isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('LinkedAccounts')) : false),
-        isAuthorized: (!(reactUpdObj.mode === 'add') &&
-          (reactData.master_account
-            || (reactData.sectionList ? reactData.sectionList.includes('family') : state.session.client_style?.profile_sections_visible?.family !== false))),
-        version_id: 0,
-        component_name: 'LinkedAccounts'
-      },
-      {
-        section_name: 'Photo & Personalization',
-        color: initialValues?.color || 'orange',
-        isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('PersonalizationSection')) : false),
-        isAuthorized: reactData.master_account
-          || (reactData.sectionList ? reactData.sectionList.includes('personal') : state.session.client_style?.profile_sections_visible?.personal !== false),
-        version_id: 0,
-        component_name: 'PersonalizationSection'
-      },
-      {
-        section_name: 'Groups',
-        color: initialValues?.color || 'orange',
-        isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('GroupAssignments')) : false),
-        isAuthorized: reactData.master_account
-          || (reactData.sectionList ? reactData.sectionList.includes('groups') : state.session.client_style?.profile_sections_visible?.groups !== false),
-        version_id: 0,
-        component_name: 'GroupAssignments'
-      },
-      {
-        section_name: 'Forms & Documents',
-        color: initialValues?.color || 'orange',
-        isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('FormSection')) : false),
-        isAuthorized: reactData.master_account
-          || (reactData.sectionList
-            ? reactData.sectionList.includes('forms')
-            : (state.session.client_style?.profile_sections_visible?.hasOwnProperty('forms')
-              ? !!state.session.client_style.profile_sections_visible.forms
-              : !state.session.client_style?.suppress_forms_in_profile)),
-        version_id: 0,
-        component_name: 'FormSection'
-      },
-      {
-        section_name: 'Archived Documents',
-        color: initialValues?.color || 'orange',
-        isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('PeopleDocumentsSection')) : false),
-        isAuthorized: reactData.master_account
-          || (reactData.sectionList ? reactData.sectionList.includes('documents') : state.session.client_style?.profile_sections_visible?.documents !== false),
-        version_id: 0,
-        component_name: 'PeopleDocumentsSection'
-      },
-      {
-        section_name: 'Notes',
-        color: initialValues?.color || 'orange',
-        isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('PersonNotes')) : false),
-        isAuthorized: reactData.master_account
-          || (reactData.sectionList ? reactData.sectionList.includes('notes') : state.session.client_style?.profile_sections_visible?.notes !== false),
-        version_id: 0,
-        component_name: 'PersonNotes'
-      },
-      {
-        section_name: 'Check-in/Check-out History',
-        color: initialValues?.color || 'orange',
-        isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('CheckoutHistory')) : false),
-        isAuthorized: reactData.master_account
-          || (reactData.sectionList ? reactData.sectionList.includes('checkout') : state.session.client_style?.profile_sections_visible?.checkout !== false),
-        version_id: 0,
-        component_name: 'CheckoutHistory'
-      },
-      {
-        section_name: 'Password & Tech Stuff',
-        color: initialValues?.color || 'orange',
-        isOpen: (options?.sectionToShow ? ([options.sectionToShow].flat().includes('TechInfoSection')) : false),
-        isAuthorized: reactData.administrative_account
-          || (reactData.sectionList && reactData.sectionList.includes('tech')),
-        version_id: 0,
-        component_name: 'TechInfoSection'
-      }
+      // An explicit list (including []) takes precedence over every default visibility rule.
+      const sectionIsVisible = (key, admin_required, allowed_in_add_mode) => {
+        if (reactData.sectionList) { return reactData.sectionList.includes(key); }
+        if (state.session.client_style?.profile_sections_visible?.hasOwnProperty(key)
+          && state.session.client_style.profile_sections_visible[key] === false) {
+          return false;
+        }
+        if ((reactUpdObj.mode || reactData.mode) === 'add' && !allowed_in_add_mode) {
+          return false;
+        }
+        return admin_required ? reactData.administrative_account : true;
+      };
+      const ADMIN_REQUIRED = true;
+      const ADMIN_NOT_REQUIRED = false;
+      const ALLOWED_IN_ADD_MODE = true;
+      const NOT_ALLOWED_IN_ADD_MODE = false;
+      reactUpdObj.sections = [
+        {
+          section_name: 'Snapshot',
+          section_key: 'snapshot',
+          color: initialValues?.color || 'orange',
+          isOpen: false,
+          isAuthorized: sectionIsVisible('snapshot', ADMIN_REQUIRED, ALLOWED_IN_ADD_MODE),
+          version_id: 0,
+          component_name: 'Snapshot'
+        },
+        {
+          section_name: 'Additional Data',
+          section_key: 'admin',
+          color: initialValues?.color || 'orange',
+          isOpen: false,
+          isAuthorized: sectionIsVisible('admin', ADMIN_REQUIRED, ALLOWED_IN_ADD_MODE),
+          version_id: 0,
+          component_name: 'AdministrativeSection'
+        },
+        {
+          section_name: 'Name & Contact info',
+          section_key: 'contact',
+          color: initialValues?.color || 'orange',
+          isOpen: false,
+          isAuthorized: sectionIsVisible('contact', ADMIN_NOT_REQUIRED, ALLOWED_IN_ADD_MODE),
+          version_id: 0,
+          component_name: 'ProfileSection'
+        },
+        {
+          section_name: 'Messaging',
+          section_key: 'messaging',
+          color: initialValues?.color || 'orange',
+          isOpen: false,
+          isAuthorized: sectionIsVisible('messaging', ADMIN_NOT_REQUIRED, ALLOWED_IN_ADD_MODE),
+          version_id: 0,
+          component_name: 'MessagePreferencesSection'
+        },
+        {
+          section_name: 'Message History',
+          section_key: 'message_history',
+          color: initialValues?.color || 'orange',
+          isOpen: false,
+          isAuthorized: sectionIsVisible('message_history', ADMIN_NOT_REQUIRED, NOT_ALLOWED_IN_ADD_MODE),
+          version_id: 0,
+          component_name: 'MessagesSection'
+        },
+        {
+          section_name: 'Events & Participation',
+          section_key: 'activities',
+          color: initialValues?.color || 'orange',
+          isOpen: false,
+          isAuthorized: sectionIsVisible('activities', ADMIN_NOT_REQUIRED, NOT_ALLOWED_IN_ADD_MODE),
+          version_id: 0,
+          component_name: 'ActivitiesSection'
+        },
+        {
+          section_name: 'Daily Activities & Tasks',
+          section_key: 'task_manager',
+          color: initialValues?.color || 'orange',
+          isOpen: false,
+          isAuthorized: sectionIsVisible('task_manager', ADMIN_NOT_REQUIRED, NOT_ALLOWED_IN_ADD_MODE),
+          version_id: 0,
+          component_name: 'TaskManagerSection'
+        },
+        {
+          section_name: 'My Family',
+          section_key: 'family',
+          color: initialValues?.color || 'orange',
+          isOpen: false,
+          isAuthorized: sectionIsVisible('family', ADMIN_NOT_REQUIRED, NOT_ALLOWED_IN_ADD_MODE),
+          version_id: 0,
+          component_name: 'LinkedAccounts'
+        },
+        {
+          section_name: 'Photo & Personalization',
+          section_key: 'personal',
+          color: initialValues?.color || 'orange',
+          isOpen: false,
+          isAuthorized: sectionIsVisible('personal', ADMIN_NOT_REQUIRED, ALLOWED_IN_ADD_MODE),
+          version_id: 0,
+          component_name: 'PersonalizationSection'
+        },
+        {
+          section_name: 'Groups',
+          section_key: 'groups',
+          color: initialValues?.color || 'orange',
+          isOpen: false,
+          isAuthorized: sectionIsVisible('groups', ADMIN_REQUIRED, ALLOWED_IN_ADD_MODE),
+          version_id: 0,
+          component_name: 'GroupAssignments'
+        },
+        {
+          section_name: 'Forms & Documents',
+          section_key: 'forms',
+          color: initialValues?.color || 'orange',
+          isOpen: false,
+          isAuthorized: sectionIsVisible('forms', ADMIN_NOT_REQUIRED, ALLOWED_IN_ADD_MODE),
+          version_id: 0,
+          component_name: 'FormSection'
+        },
+        {
+          section_name: 'Current Forms',
+          section_key: 'current',
+          color: initialValues?.color || 'orange',
+          isOpen: false,
+          isAuthorized: sectionIsVisible('current', ADMIN_NOT_REQUIRED, ALLOWED_IN_ADD_MODE),
+          version_id: 0,
+          component_name: 'CurrentFormsSection'
+        },
+        {
+          section_name: 'Archived Documents',
+          section_key: 'documents',
+          color: initialValues?.color || 'orange',
+          isOpen: false,
+          isAuthorized: sectionIsVisible('documents', ADMIN_REQUIRED, NOT_ALLOWED_IN_ADD_MODE),
+          version_id: 0,
+          component_name: 'PeopleDocumentsSection'
+        },
+        {
+          section_name: 'Notes',
+          section_key: 'notes',
+          color: initialValues?.color || 'orange',
+          isOpen: false,
+          isAuthorized: sectionIsVisible('notes', ADMIN_REQUIRED, ALLOWED_IN_ADD_MODE),
+          version_id: 0,
+          component_name: 'PersonNotes'
+        },
+        {
+          section_name: 'Check-in/Check-out History',
+          section_key: 'checkout',
+          color: initialValues?.color || 'orange',
+          isOpen: false,
+          isAuthorized: sectionIsVisible('checkout', ADMIN_NOT_REQUIRED, NOT_ALLOWED_IN_ADD_MODE),
+          version_id: 0,
+          component_name: 'CheckoutHistory'
+        },
+        {
+          section_name: 'Password & Tech Stuff',
+          section_key: 'tech',
+          color: initialValues?.color || 'orange',
+          isOpen: false,
+          isAuthorized: sectionIsVisible('tech', ADMIN_REQUIRED, ALLOWED_IN_ADD_MODE),
+          version_id: 0,
+          component_name: 'TechInfoSection'
+        }
       ];
+
+      if (options?.sectionToShow) {
+        for (const this_section of reactUpdObj.sections) {
+          this_section.isOpen = this_section.component_name !== 'MessagesSection'
+            && matchesRequestedSection(this_section, options.sectionToShow);
+        }
+      }
 
       if (!reactData.groupObj && state.groups && reactUpdObj.og.peopleRec.groups) {
         // check all groups you belong to - we are trying to figure out whether to show the linked account section
@@ -781,7 +821,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
           return (this_section.component_name === 'LinkedAccounts');
         });
         if (foundAt > -1) {
-          if (isDisabled && !isEnabled) {
+          if (!reactData.sectionList && isDisabled && !isEnabled) {
             reactUpdObj.sections[foundAt].isAuthorized = false;
           }
           if (set_sectionName) {
@@ -792,12 +832,13 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
           reactUpdObj.addAccountList = addAccountList;
         }
       }
-      // Apply section_security overrides from profile_style
+      // Apply section_security overrides only when no explicit sectionList was supplied.
       const sectionSecurity = state.session?.profile_style?.section_security;
-      if (sectionSecurity && typeof sectionSecurity === 'object') {
+      if (!reactData.sectionList && sectionSecurity && typeof sectionSecurity === 'object') {
         for (const this_section of reactUpdObj.sections) {
           if (Object.prototype.hasOwnProperty.call(sectionSecurity, this_section.component_name)) {
-            this_section.isAuthorized = isAuthorizedByRules(sectionSecurity[this_section.component_name]);
+            this_section.isAuthorized = this_section.isAuthorized
+              && isAuthorizedByRules(sectionSecurity[this_section.component_name]);
           }
         }
       }
@@ -806,6 +847,10 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         sessionRec: deepCopy(reactUpdObj.og.sessionRec),
         familyRecs: deepCopy(reactUpdObj.og.familyRecs)
       };
+      const messagesSection = reactUpdObj.sections.find(section => section.component_name === 'MessagesSection');
+      setShowMessagesSection(!!(messagesSection?.isAuthorized
+        && options?.sectionToShow
+        && matchesRequestedSection(messagesSection, options.sectionToShow)));
       updateReactData(reactUpdObj, true);
       window.addEventListener('resize', handleResize);
     };
@@ -826,6 +871,14 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
 
   function renderSection(componentName) {
     const SectionToRender = reactData.components[componentName].component_id;
+    const currentOnly = componentName === 'CurrentFormsSection';
+    const sectionReactData = currentOnly ? {
+      ...reactData,
+      formsInitialized: false,
+      formHistoryMode: false,
+      isAmendingForm: false,
+      ...reactData.currentFormsData,
+    } : reactData;
     return (
       <SectionToRender
         currentValues={reactData.current}
@@ -876,9 +929,19 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
             updateReactData(reactUpdObj, true);
           }
         }}
-        reactData={reactData}
+        currentOnly={currentOnly}
+        reactData={sectionReactData}
         updateReactData={(newData, force) => {
-          updateReactData(newData, force);
+          if (currentOnly) {
+            const { alert, ...sectionData } = newData;
+            updateReactData({
+              currentFormsData: { ...reactData.currentFormsData, ...sectionData },
+              ...(Object.prototype.hasOwnProperty.call(newData, 'alert') ? { alert } : {}),
+            }, force);
+          }
+          else {
+            updateReactData(newData, force);
+          }
         }}
         onClose={onExit}
       />);
@@ -1170,7 +1233,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         else if (!isEmpty(reactData.current.peopleRec.contact_info?.cell?.number)) {
           reactData.current.peopleRec.preferred_methods = ['sms'];
           reactData.current.peopleRec.preferred_method = 'sms';
-        } 
+        }
         else if (!isEmpty(reactData.current.peopleRec.contact_info?.alt_email?.address)) {
           reactData.current.peopleRec.preferred_methods = ['alt_email'];
           reactData.current.peopleRec.preferred_method = 'alt_email';
@@ -1444,7 +1507,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
       // update the cross-reference table PeopleAccounts
       // Note here...  we are intentionally NOT removing old records from PeopleAccounts because we want to preserve the history of all accounts that have ever been associated with this person_id
       // This means that a mis-spelled email, phone number, or name will still be a valid cross reference.
-      
+
       // Add new records for all phone numbers and email addresses
       const phoneFields = [
         { field: reactData.current.peopleRec.contact_info?.cell?.number?.slice(-10), type: 'phone_number' },
@@ -1452,7 +1515,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
         { field: reactData.current.peopleRec.contact_info?.work?.number?.slice(-10), type: 'phone_number' },
         { field: reactData.current.peopleRec.contact_info?.alternate?.number?.slice(-10), type: 'phone_number' }
       ];
-      
+
       const emailFields = [
         { field: reactData.current.peopleRec.contact_info?.email?.address?.toLowerCase(), type: 'eMail' },
         { field: reactData.current.peopleRec.contact_info?.alt_email?.address?.toLowerCase(), type: 'eMail' }
@@ -1461,9 +1524,9 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
       const nameFields = [
         { field: (`${reactData.current.peopleRec.name?.first} ${reactData.current.peopleRec.name?.last} ${reactData.current.peopleRec.client_id}`).toLowerCase(), type: 'name' },
       ];
-      
+
       const allFields = [...phoneFields, ...emailFields, ...nameFields];
-      
+
       // Build batch write items for non-empty fields
       const putRequests = allFields
         .filter(accountField => !isEmpty(accountField.field))
@@ -1476,7 +1539,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
             }
           }
         }));
-      
+
       // Write all records in a single batch operation
       if (putRequests.length > 0) {
         await dbClient
@@ -1490,7 +1553,7 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
             console.log(`caught error batch writing to PeopleAccounts; error is:`, error);
           });
       }
-      
+
     }
     if (updatedPeopleRecord) {
       syncPersonToSessionCaches({
@@ -1921,10 +1984,8 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
             })()}
             {reactData.sections.map((this_section, sectionNdx) => (
               (this_section.isAuthorized &&
-                (!reactData.options?.sectionToShow || reactData.administrative_account
-                  || ([reactData.options?.sectionToShow].flat().some(this_optionSection => {
-                    return (this_optionSection.toLowerCase() === this_section.component_name.toLowerCase());
-                  }))) &&
+                (reactData.sectionList || !reactData.options?.sectionToShow || reactData.administrative_account
+                  || matchesRequestedSection(this_section, reactData.options.sectionToShow)) &&
                 (reactData.person_id || (this_section.component_name === 'ProfileSection')) &&
                 <Box
                   key={`frag__${sectionNdx}`}
@@ -1991,12 +2052,10 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
                         }}
                         ml={2} mr={2} mb={1.5}
                         onClick={async () => {
-                          if (reactData.options?.sectionToShow !== this_section.component_name) {
-                            reactData.sections[sectionNdx].isOpen = !reactData.sections[sectionNdx].isOpen;
-                            updateReactData({
-                              sections: reactData.sections
-                            }, true);
-                          }
+                          reactData.sections[sectionNdx].isOpen = false;
+                          updateReactData({
+                            sections: reactData.sections
+                          }, true);
                         }}
                         justifyContent='center'
                         flexDirection='column'
