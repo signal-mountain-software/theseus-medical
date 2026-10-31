@@ -46,6 +46,7 @@ import DragIndicatorIcon from '@material-ui/icons/DragIndicator';
 import MailOutlineIcon from '@material-ui/icons/MailOutline';
 import NotificationsNoneIcon from '@material-ui/icons/NotificationsNone';
 import GroupIcon from '@material-ui/icons/Group';
+import FormatListNumberedIcon from '@material-ui/icons/FormatListNumbered';
 import WarningIcon from '@material-ui/icons/Warning';
 import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
 import ExpandLessIcon from '@material-ui/icons/ExpandLess';
@@ -195,6 +196,9 @@ const blankSection = () => ({
     conditionKind: 'field',
     conditionField: '',
     conditionValues: [],
+    answerMode: 'fields',
+    answerMin: '',
+    answerMax: '',
 });
 
 // The three privileged account_class values a section's audience restriction can target,
@@ -422,10 +426,29 @@ export default ({ onClose, directForm }) => {
     // rule - or a blank defaultEditForKind(kind) - the moment the dialog opens. Every edit made
     // while the dialog is open only updates this draft; nothing is written back into
     // editingForm's stage array until the Save button (see the Rule Editor dialog body) is
-    // clicked. This is what lets Exit (the button, backdrop click, or Escape) and "Remove Rule"
-    // have the unambiguous meaning their names imply, instead of every keystroke already having
-    // half-committed a change you might then tap away from.
+    // clicked. Exit discards the draft; confirmed deletion removes only the existing rule.
     const [ruleEditorDraft, setRuleEditorDraft] = React.useState(null);
+    const [confirmDeleteRule, setConfirmDeleteRule] = React.useState(false);
+    const [answerLimitTarget, setAnswerLimitTarget] = React.useState(null);
+    const [answerLimitDraft, setAnswerLimitDraft] = React.useState(null);
+    const [answerLimitError, setAnswerLimitError] = React.useState('');
+    const [confirmDeleteAnswerLimits, setConfirmDeleteAnswerLimits] = React.useState(false);
+    const openAnswerLimits = (sectionIdx) => {
+        const section = reactData.editingForm.sections[sectionIdx];
+        setAnswerLimitDraft({
+            answerMode: section.answerMode,
+            answerMin: section.answerMin,
+            answerMax: section.answerMax,
+        });
+        setAnswerLimitError('');
+        setConfirmDeleteAnswerLimits(false);
+        setAnswerLimitTarget(sectionIdx);
+    };
+    const closeAnswerLimits = () => {
+        setAnswerLimitTarget(null);
+        setAnswerLimitDraft(null);
+        setConfirmDeleteAnswerLimits(false);
+    };
     // Transient UI-only toggle for the open rule editor's content source - deliberately NOT part
     // of the persisted edit (template_id/text must never both be set, including transiently as ''
     // - see the Rule Editor dialog body for why this stays separate from currentEdit).
@@ -593,7 +616,7 @@ export default ({ onClose, directForm }) => {
     // field-level checkIgnore doesn't support person/group/class restrictions - but parsing one back
     // defensively rather than dropping it costs nothing).
     const parseConditionTest = (obj) => {
-        const conditionRaw = obj.show_if || obj.ignore_if;
+        const conditionRaw = obj.show_if || obj.ignore_if || obj.clear_if;
         const conditionTest = conditionRaw ? (Array.isArray(conditionRaw) ? conditionRaw[0] : conditionRaw) : null;
         const isAudienceTest = !!(conditionTest?.currentUser_audience || conditionTest?.pertainsTo_memberOf);
         const conditionField = (conditionTest && !isAudienceTest)
@@ -612,7 +635,7 @@ export default ({ onClose, directForm }) => {
             conditionValues = conditionTest?.values ? (Array.isArray(conditionTest.values) ? conditionTest.values : [conditionTest.values]) : [];
         }
         return {
-            conditionType: obj.show_if ? 'show_if' : (obj.ignore_if ? 'ignore_if' : 'none'),
+            conditionType: obj.show_if ? 'show_if' : (obj.ignore_if ? 'ignore_if' : (obj.clear_if ? 'clear_if' : 'none')),
             conditionKind: isAudienceTest ? 'audience' : 'field',
             conditionField,
             conditionValues,
@@ -673,6 +696,9 @@ export default ({ onClose, directForm }) => {
                 belongs_to_stage: section.belongs_to_stage || '',
                 fields,
                 ...parseConditionTest(section),
+                answerMode: section.answer_limits?.mode || 'fields',
+                answerMin: section.answer_limits?.min === undefined ? '' : String(section.answer_limits.min),
+                answerMax: section.answer_limits?.max === undefined ? '' : String(section.answer_limits.max),
             };
         }));
 
@@ -1069,6 +1095,7 @@ export default ({ onClose, directForm }) => {
         if (!test) { return {}; }
         if (obj.conditionType === 'show_if') { return { show_if: [test] }; }
         if (obj.conditionType === 'ignore_if') { return { ignore_if: [test] }; }
+        if (obj.conditionType === 'clear_if') { return { clear_if: [test] }; }
         return {};
     };
 
@@ -1503,6 +1530,13 @@ export default ({ onClose, directForm }) => {
             section_name: section.section_name || '',
             belongs_to_stage: section.belongs_to_stage || '',
             ...buildConditionOutput(section),
+            ...((section.answerMin !== '' || section.answerMax !== '') ? {
+                answer_limits: {
+                    mode: section.answerMode || 'fields',
+                    ...(section.answerMin !== '' ? { min: Number(section.answerMin) } : {}),
+                    ...(section.answerMax !== '' ? { max: Number(section.answerMax) } : {}),
+                },
+            } : {}),
             fields: section.fields
                 .filter((field) => (field.field_name || '').trim())
                 .map((field) => {
@@ -1577,7 +1611,21 @@ export default ({ onClose, directForm }) => {
 
     // Opens a live FormFillB overlay against the in-progress (possibly unsaved) form
     // definition - no DB write is involved, so there's nothing to clean up afterward.
+    const answerLimitsAreInvalid = (section) => (
+        !['fields', 'selections'].includes(section.answerMode)
+        || [section.answerMin, section.answerMax].some(value => value !== '' && (!/^\d+$/.test(value) || !Number.isSafeInteger(Number(value))))
+        || (section.answerMin !== '' && section.answerMax !== '' && Number(section.answerMin) > Number(section.answerMax))
+    );
+    const answerLimitValidationMessage = 'Answer limits must be non-negative whole numbers, with minimum no greater than maximum.';
+    const validateAnswerLimits = () => {
+        const invalid = reactData.editingForm.sections.find(answerLimitsAreInvalid);
+        if (!invalid) { return true; }
+        updateReactData({ alert: { severity: 'error', message: `Answer limits for "${invalid.section_name}" must be non-negative whole numbers, with minimum no greater than maximum.` } }, true);
+        return false;
+    };
+
     const previewForm = () => {
+        if (!validateAnswerLimits()) { return; }
         updateReactData({
             previewFormRec: buildFormRecord(Object.assign({}, reactData.editingForm, {
                 form_name: reactData.editingForm.form_name || 'Untitled Form',
@@ -1586,6 +1634,7 @@ export default ({ onClose, directForm }) => {
     };
 
     const saveForm = async () => {
+        if (!validateAnswerLimits()) { return; }
         const editingForm = reactData.editingForm;
 
         if (!(editingForm.form_name || '').trim()) {
@@ -1612,6 +1661,7 @@ export default ({ onClose, directForm }) => {
 
     // Writes the form like saveForm, but stays on the edit screen instead of exiting.
     const saveAndContinue = async () => {
+        if (!validateAnswerLimits()) { return; }
         const editingForm = reactData.editingForm;
 
         if (!(editingForm.form_name || '').trim()) {
@@ -1922,6 +1972,15 @@ export default ({ onClose, directForm }) => {
                                     })()}
                                     <IconButton
                                         size='small'
+                                        aria-label='Section answer limits'
+                                        title={`${section.answerMin !== '' || section.answerMax !== '' ? 'Edit' : 'Add'} section answer limits`}
+                                        style={{ color: section.answerMin !== '' || section.answerMax !== '' ? '#1976d2' : '#bbb' }}
+                                        onClick={() => openAnswerLimits(sectionIdx)}
+                                    >
+                                        <FormatListNumberedIcon fontSize='small' />
+                                    </IconButton>
+                                    <IconButton
+                                        size='small'
                                         title='Move section up'
                                         onClick={() => moveSection(sectionIdx, -1)}
                                         disabled={sectionIdx === 0}
@@ -1963,7 +2022,6 @@ export default ({ onClose, directForm }) => {
                                     </Button>
                                     {renderConditionSummary(section, getConditionFieldOptions(sectionIdx, null))}
                                 </Box>
-
                                 {section.fields.map((field, fieldIdx) => {
                                     const isDragSource = (dragFieldOrigin?.sectionIdx === sectionIdx) && (dragFieldOrigin?.fieldIdx === fieldIdx);
                                     const isDropTarget = !isDragSource
@@ -2404,7 +2462,7 @@ export default ({ onClose, directForm }) => {
                                                             onClick={() => openConditionEditor(sectionIdx, fieldIdx)}
                                                             style={{ flexShrink: 0, whiteSpace: 'nowrap' }}
                                                         >
-                                                            {field.conditionType === 'show_if' ? 'Show if…' : field.conditionType === 'ignore_if' ? 'Ignore if…' : 'Conditional?'}
+                                                            {field.conditionType === 'show_if' ? 'Show if…' : field.conditionType === 'ignore_if' ? 'Ignore if…' : field.conditionType === 'clear_if' ? 'Clear if…' : 'Conditional?'}
                                                         </Button>
                                                         {renderConditionSummary(field, getConditionFieldOptions(sectionIdx, fieldIdx))}
                                                     </Box>
@@ -2718,6 +2776,15 @@ export default ({ onClose, directForm }) => {
                                         }
                                         label={`Ignore this ${targetNoun} when...`}
                                     />
+                                    {!isSectionCondition &&
+                                        <FormControlLabel
+                                            control={<Checkbox
+                                                checked={target.conditionType === 'clear_if'}
+                                                onChange={e => applyChanges({ conditionType: e.target.checked ? 'clear_if' : 'none' })}
+                                            />}
+                                            label='Clear this item when...'
+                                        />
+                                    }
                                 </Box>
                                 {target.conditionType !== 'none' && isSectionCondition &&
                                     <FormControl fullWidth>
@@ -2856,6 +2923,11 @@ export default ({ onClose, directForm }) => {
                                 }
                             </Box>
                             {conditionError && <Alert severity='error' style={{ marginTop: '16px' }}>{conditionError}</Alert>}
+                            {target.conditionType === 'clear_if' &&
+                                <Alert severity='info' style={{ marginTop: '12px' }}>
+                                    {'When a triggering answer changes, clear this item without hiding it. The newest edited answer wins. Existing saved answers are checked, not erased on opening.'}
+                                </Alert>
+                            }
                         </DialogContent>
                         <DialogActions>
                             {target.conditionType !== 'none' &&
@@ -2919,6 +2991,90 @@ export default ({ onClose, directForm }) => {
                                         selections: cleanSelections,
                                     }, true);
                                     applyChanges({ conditionValues: mappedValues });
+                                }}
+                            />
+                        }
+                    </React.Fragment>
+                );
+            })()}
+            {answerLimitTarget !== null && answerLimitDraft && (() => {
+                const section = reactData.editingForm.sections[answerLimitTarget];
+                const configured = section.answerMin !== '' || section.answerMax !== '';
+                const patchDraft = (changes) => {
+                    setAnswerLimitDraft({ ...answerLimitDraft, ...changes });
+                    setAnswerLimitError('');
+                };
+                return (
+                    <React.Fragment>
+                        <Dialog open={true} onClose={closeAnswerLimits} maxWidth='sm' fullWidth>
+                            <DialogTitle>{'Section Answer Limits'}</DialogTitle>
+                            <DialogContent>
+                                <Box display='flex' flexDirection='column' style={{ gap: '16px' }}>
+                                    <Typography style={AVATextStyle({ size: 0.85, color: 'textSecondary' })}>
+                                        {`Applies to section "${section.section_name}". Limits are checked when finishing or locking, without running counters.`}
+                                    </Typography>
+                                    <FormControl fullWidth>
+                                        <InputLabel>{'Count answers by'}</InputLabel>
+                                        <Select
+                                            value={answerLimitDraft.answerMode}
+                                            onChange={e => patchDraft({ answerMode: e.target.value })}
+                                        >
+                                            <MenuItem value='fields'>{'Answered fields'}</MenuItem>
+                                            <MenuItem value='selections'>{'Individual selections'}</MenuItem>
+                                        </Select>
+                                    </FormControl>
+                                    <TextField
+                                        label='Minimum answers'
+                                        value={answerLimitDraft.answerMin}
+                                        onChange={e => patchDraft({ answerMin: e.target.value })}
+                                        helperText='Optional section minimum'
+                                        inputProps={{ inputMode: 'numeric' }}
+                                    />
+                                    <TextField
+                                        label='Maximum answers'
+                                        value={answerLimitDraft.answerMax}
+                                        onChange={e => patchDraft({ answerMax: e.target.value })}
+                                        helperText='Optional section maximum'
+                                        inputProps={{ inputMode: 'numeric' }}
+                                    />
+                                    <Typography variant='caption' color='textSecondary'>
+                                        {'Answered fields counts each nonblank field once. Individual selections counts each selected option; other answers count once. Only visible, applicable fields count, including read-only answers. Limits apply separately to each repetition and do not replace individual field requirements.'}
+                                    </Typography>
+                                    {answerLimitError && <Alert severity='error'>{answerLimitError}</Alert>}
+                                </Box>
+                            </DialogContent>
+                            <DialogActions>
+                                {configured &&
+                                    <IconButton
+                                        aria-label='Delete section answer limits'
+                                        title='Delete section answer limits'
+                                        style={{ color: 'red' }}
+                                        onClick={() => setConfirmDeleteAnswerLimits(true)}
+                                    >
+                                        <DeleteIcon />
+                                    </IconButton>
+                                }
+                                <Box flexGrow={1} />
+                                <Button onClick={closeAnswerLimits}>{'Cancel'}</Button>
+                                <Button variant='contained' color='primary' onClick={() => {
+                                    if (answerLimitsAreInvalid(answerLimitDraft)) {
+                                        setAnswerLimitError(answerLimitValidationMessage);
+                                        return;
+                                    }
+                                    updateSection(answerLimitTarget, answerLimitDraft);
+                                    closeAnswerLimits();
+                                }}>{'Save'}</Button>
+                            </DialogActions>
+                        </Dialog>
+                        {confirmDeleteAnswerLimits &&
+                            <AVAConfirm
+                                promptText={`Remove the answer limits from section "${section.section_name}"? This does not delete the section or its answers. Save the form to persist this change.`}
+                                cancelText='Keep limits'
+                                confirmText='Delete limits'
+                                onCancel={() => setConfirmDeleteAnswerLimits(false)}
+                                onConfirm={() => {
+                                    updateSection(answerLimitTarget, { answerMode: 'fields', answerMin: '', answerMax: '' });
+                                    closeAnswerLimits();
                                 }}
                             />
                         }
@@ -3003,7 +3159,7 @@ export default ({ onClose, directForm }) => {
                 // it was. Used by the Exit button and by backdrop-click/Escape (the Dialog's
                 // onClose below), so every way of leaving without an explicit Save behaves
                 // identically.
-                const exitRuleEditor = () => { setRuleEditorTarget(null); setRuleEditorDraft(null); };
+                const exitRuleEditor = () => { setRuleEditorTarget(null); setRuleEditorDraft(null); setConfirmDeleteRule(false); };
 
                 const saveRule = () => { applyRuleEdit(currentEdit); exitRuleEditor(); };
 
@@ -3227,12 +3383,29 @@ export default ({ onClose, directForm }) => {
                             </DialogContent>
                             <DialogActions>
                                 {existingRaw &&
-                                    <Button style={{ color: 'red' }} onClick={removeRule}>{'Remove Rule'}</Button>
+                                    <IconButton
+                                        aria-label='Delete completion rule'
+                                        title='Delete completion rule'
+                                        style={{ color: 'red' }}
+                                        onClick={() => setConfirmDeleteRule(true)}
+                                    >
+                                        <DeleteIcon />
+                                    </IconButton>
                                 }
+                                <Box flexGrow={1} />
                                 <Button onClick={exitRuleEditor}>{'Exit'}</Button>
                                 <Button variant='contained' color='primary' onClick={saveRule}>{'Save'}</Button>
                             </DialogActions>
                         </Dialog>
+                        {confirmDeleteRule &&
+                            <AVAConfirm
+                                promptText={`Remove this ${kindLabel.toLowerCase()} completion rule? This does not delete the form, section, or field. Save the form to persist this change.`}
+                                cancelText='Keep rule'
+                                confirmText='Delete rule'
+                                onCancel={() => setConfirmDeleteRule(false)}
+                                onConfirm={removeRule}
+                            />
+                        }
                         {reactData.showRuleGroupsSearch &&
                             <QuickSearch
                                 reactData={reactData}

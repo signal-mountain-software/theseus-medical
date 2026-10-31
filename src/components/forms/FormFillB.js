@@ -1,4 +1,5 @@
 import React from 'react';
+import { answerSnapshot, applyClearRules, hasAnswer, resolveAnswerFieldKey, sectionAnswerError } from '../../util/AVAFormAnswerRules';
 
 import { dbClient, cl, makeArray, deepCopy, isEmpty, getDb, listFromArray, array_in_array, recordExists, isObject, titleCase, uuid, isMobile, s3, cloudfront, getObject, booleanLikeToken } from '../../util/AVAUtilities';
 import { putTask, parseQuickActivity } from '../../util/AVATasks';
@@ -515,7 +516,33 @@ export default ({ request = {}, onClose }) => {
   const formFieldDefinitionCacheRef = React.useRef({});
   const commonFieldDefinitionCacheRef = React.useRef({});
   const dictionaryFieldDefinitionCacheRef = React.useRef({});
-  const updateReactData = (newData, force = false) => {
+  const answerSnapshotRef = React.useRef({});
+  const [clearNotice, setClearNotice] = React.useState('');
+  const updateReactData = (newData, force = false, editedKey) => {
+    const fields = newData.fields || reactData.fields || {};
+    if (newData.formUpdates > 0 && !reactData.viewOnlyMode && !reactData.docRec?.formLocked
+      && !['initialize', 'still_initializing'].includes(reactData.stage)) {
+      const cleared = applyClearRules({
+        fields,
+        editedKey,
+        previous: answerSnapshotRef.current,
+        resolveKey: (key, field) => resolveAnswerFieldKey(key, field._occurrence_number, fields),
+        matches: (test, field) => checkIgnore({ ignoreObj: [test], occurrenceNumber: field._occurrence_number, fields }),
+        canClear: (key, field) => !field.options?.viewOnly && !field.ignore,
+      });
+      if (cleared.length) {
+        cleared.forEach(key => {
+          if (fields[key].type === 'signature') {
+            const canvas = signatureRef[fields[key].options?.sigRefNumber || 0]?.current;
+            if (canvas) { canvas.clear(); }
+          }
+        });
+        setClearNotice(`Cleared related answers: ${cleared.map(key => toInlineFieldText(fields[key].prompt?.value || key)).join(', ')}`);
+      }
+    }
+    if (newData.formUpdates !== undefined || ['initialize', 'still_initializing'].includes(reactData.stage)) {
+      answerSnapshotRef.current = answerSnapshot(fields);
+    }
     setReactData((prevValues) => (Object.assign(
       prevValues,
       newData
@@ -620,25 +647,12 @@ export default ({ request = {}, onClose }) => {
   // **************************
 
   const checkIgnore = (tests) => {
-    const { ignoreObj, showObj, occurrenceNumber } = tests;
+    const { ignoreObj, showObj, occurrenceNumber, fields = reactData.fields } = tests;
 
     // Resolve a field key to its occurrence-specific version when inside a repeating block.
     // Handles both '1'-placeholder keys (field_1_name → field_N_name) and _occ1 suffix keys.
     const resolveOccFieldKey = (fieldKey) => {
-      if (!occurrenceNumber || occurrenceNumber === 1 || !fieldKey) return fieldKey;
-      // _occ1 suffix style
-      if (fieldKey.endsWith('_occ1')) {
-        return `${fieldKey.slice(0, -5)}_occ${occurrenceNumber}`;
-      }
-      // '1'-placeholder style: replace first occurrence of '1' surrounded by non-digits (or boundaries)
-      const substituted = fieldKey.replace(/(^|[^0-9])1($|[^0-9])/, `$1${occurrenceNumber}$2`);
-      // If substitution changed the key and that key exists in fields, use it;
-      // otherwise fall back to _occN suffix to avoid silently resolving to the wrong field
-      if (substituted !== fieldKey) {
-        if (reactData.fields[substituted]) return substituted;
-        return `${fieldKey}_occ${occurrenceNumber}`;
-      }
-      return `${fieldKey}_occ${occurrenceNumber}`;
+      return resolveAnswerFieldKey(fieldKey, occurrenceNumber, fields);
     };
     const matchValues = (valToCheck, valuesToMatch) => {
       // Normalize valuesToMatch: convert string values to lowercase without mutating the original
@@ -648,8 +662,7 @@ export default ({ request = {}, onClose }) => {
 
       // '*' matches any non-blank value
       if (normalizedValues.includes('*')) {
-        if (Array.isArray(valToCheck)) { return valToCheck.length > 0; }
-        return valToCheck !== null && valToCheck !== undefined && valToCheck !== '';
+        return hasAnswer(valToCheck);
       }
 
       if (isEmpty(valToCheck) && normalizedValues.includes('%%no_data%%')) {
@@ -674,29 +687,28 @@ export default ({ request = {}, onClose }) => {
       }
       return false;
     };
+    const matchesFieldTest = this_test => {
+      const fieldKey = resolveOccFieldKey(this_test.field || this_test.data?.split('.').slice(-1)[0]);
+      const source = fields[fieldKey];
+      const values = makeArray(this_test.values);
+      const answer = values.includes('*')
+        ? [source?.value, source?.bonusText, source?.guestNames]
+        : source?.value ?? null;
+      return matchValues(answer, values);
+    };
     let ignoreResult = false;
     if (ignoreObj) {
       // ignore_if is an array of tests: [{ field: "field_name", values: [...] }, ...]
       // Also supports legacy scalar form with a .data property for backward compatibility.
       const testList = Array.isArray(ignoreObj) ? ignoreObj : [ignoreObj];
-      ignoreResult = testList.some(this_test => {
-        const rawFieldKey = this_test.field || this_test.data?.split('.').slice(-1)[0];
-        const fieldKey = resolveOccFieldKey(rawFieldKey);
-        const value_to_test = reactData.fields[fieldKey]?.value ?? null;
-        return matchValues(value_to_test, makeArray(this_test.values));
-      });
+      ignoreResult = testList.some(matchesFieldTest);
     }
     else if (showObj) {
       // show_if is an array of tests: [{ field: "field_name", values: [...] }, ...]
       // (same shape as section-level show_if handled by okToShowSection)
       // Also supports legacy scalar form with a .data property for backward compatibility.
       const testList = Array.isArray(showObj) ? showObj : [showObj];
-      const isShown = testList.some(this_test => {
-        const rawFieldKey = this_test.field || this_test.data?.split('.').slice(-1)[0];
-        const fieldKey = resolveOccFieldKey(rawFieldKey);
-        const value_to_test = reactData.fields[fieldKey]?.value ?? null;
-        return matchValues(value_to_test, makeArray(this_test.values));
-      });
+      const isShown = testList.some(matchesFieldTest);
       ignoreResult = !isShown;
     }
     return ignoreResult;
@@ -1491,6 +1503,9 @@ export default ({ request = {}, onClose }) => {
     returnObj.show_if = field_variables.show_if || null;
     returnObj.show_ifAll = field_variables.show_ifAll || null;
     returnObj.ignore_if = field_variables.ignore_if || null;
+    returnObj.clear_if = field_variables.clear_if || null;
+    returnObj._clearedByRule = !!returnObj.clear_if && Object.prototype.hasOwnProperty.call(docFields || {}, field_name)
+      && !hasAnswer(docFields[field_name]);
 
     // set signature reference number if signature type
     if (returnObj.type === 'signature') {
@@ -1908,6 +1923,8 @@ export default ({ request = {}, onClose }) => {
                     numeric_options: reactData.fields[baseFieldName].options
                   }),
                   _occurrence_number: section_number,
+                  _clearedByRule: !!enrichedField.clear_if && Object.prototype.hasOwnProperty.call(docFieldValues, resolvedFieldName)
+                    && !hasAnswer(docFieldValue),
                 });
               }
             } else if (enrichedField) {
@@ -2104,7 +2121,7 @@ export default ({ request = {}, onClose }) => {
       updateReactData(Object.assign({}, (reactUpdObj || {}), {
         formUpdates: ++reactData.formUpdates,
         fields: reactData.fields
-      }), true);
+      }), true, prop);
     }, 0);
   };
 
@@ -2155,7 +2172,7 @@ export default ({ request = {}, onClose }) => {
     updateReactData({
       formUpdates: ++reactData.formUpdates,
       fields: reactData.fields
-    }, true);
+    }, true, props.prop);
   };
 
   const getSelectionMinRequirement = (fieldRec) => {
@@ -2742,7 +2759,7 @@ export default ({ request = {}, onClose }) => {
     let hasChanges = false;
 
     // Resolve default value if not already set
-    if (!reactData.fields[fieldName].value && reactData.formRec.fields[fieldName]) {
+    if (!reactData.fields[fieldName].value && !reactData.fields[fieldName]._clearedByRule && reactData.formRec.fields[fieldName]) {
       const defaultResult = await getDefaultValueForField({
         fieldRec: reactData.formRec.fields[fieldName],
         fieldName
@@ -2951,7 +2968,7 @@ export default ({ request = {}, onClose }) => {
                   updateReactData({
                     formUpdates: ++reactData.formUpdates,
                     fields: reactData.fields
-                  }, true);
+                  }, true, props.prop);
                 }
                 else {
                   if (!values || values.length === 0) {
@@ -3062,7 +3079,7 @@ export default ({ request = {}, onClose }) => {
                           updateReactData({
                             formUpdates: ++reactData.formUpdates,
                             fields: reactData.fields
-                          }, true);
+                          }, true, props.prop);
                           return;
                         }
                         if (text.select_all) {
@@ -3077,7 +3094,7 @@ export default ({ request = {}, onClose }) => {
                           updateReactData({
                             formUpdates: ++reactData.formUpdates,
                             fields: reactData.fields
-                          }, true);
+                          }, true, props.prop);
                           return;
                         }
                         const selectAllItem = optionList.find(o => o.select_all);
@@ -3140,7 +3157,7 @@ export default ({ request = {}, onClose }) => {
                             while (vals.length >= max) { vals.shift(); }
                             reactData.fields[props.prop].value = vals;
                           }
-                          updateReactData({ formUpdates: ++reactData.formUpdates, fields: reactData.fields }, true);
+                          updateReactData({ formUpdates: ++reactData.formUpdates, fields: reactData.fields }, true, props.prop);
                           setTimeout(() => {
                             const textInput = document.getElementById(`${props.prop}_otherText`);
                             if (textInput) { textInput.focus(); textInput.select(); }
@@ -3149,7 +3166,7 @@ export default ({ request = {}, onClose }) => {
                           fieldRec.bonusText = '';
                           const textInput = document.getElementById(`${props.prop}_otherText`);
                           if (textInput) { textInput.value = ''; }
-                          updateReactData({ formUpdates: ++reactData.formUpdates, fields: reactData.fields }, true);
+                          updateReactData({ formUpdates: ++reactData.formUpdates, fields: reactData.fields }, true, props.prop);
                         }
                       }}
                     />
@@ -3176,7 +3193,7 @@ export default ({ request = {}, onClose }) => {
                             reactData.fields[props.prop].value = vals;
                           }
                           const cursorPos = event.target.selectionStart;
-                          updateReactData({ formUpdates: ++reactData.formUpdates, fields: reactData.fields }, true);
+                          updateReactData({ formUpdates: ++reactData.formUpdates, fields: reactData.fields }, true, props.prop);
                           setTimeout(() => {
                             const textInput = document.getElementById(`${props.prop}_otherText`);
                             if (textInput) { textInput.focus(); textInput.setSelectionRange(cursorPos, cursorPos); }
@@ -3184,7 +3201,7 @@ export default ({ request = {}, onClose }) => {
                         }
                       }}
                       onBlur={() => {
-                        updateReactData({ formUpdates: ++reactData.formUpdates, fields: reactData.fields }, true);
+                        updateReactData({ formUpdates: ++reactData.formUpdates, fields: reactData.fields }, true, props.prop);
                       }}
                       variant='standard'
                       placeholder={toInlineFieldText(props.withPrompt || '')}
@@ -3277,7 +3294,7 @@ export default ({ request = {}, onClose }) => {
         next.push('');
       }
       reactData.fields[props.prop].guestNames = next;
-      updateReactData({ formUpdates: ++reactData.formUpdates }, true);
+      updateReactData({ formUpdates: ++reactData.formUpdates }, true, props.prop);
       if (focusIndex !== null) {
         setTimeout(() => {
           const textInput = document.getElementById(`${props.prop}_guest_${focusIndex}`);
@@ -3382,6 +3399,7 @@ export default ({ request = {}, onClose }) => {
       }
       if (okToShowSection(sectionObj) &&
           !(sectionObj.occurrence_template && sectionObj.occurrence_number > (reactData.activeSectionOccurrences?.[sectionObj.occurrence_template] ?? 1))) {
+        const applicableFields = [];
         for (const this_field of sectionObj.fields) {
           // this_field may be a plain string or an object with a field_name property
           // (repeating sections store objects so each occurrence has its own resolved field_name)
@@ -3406,6 +3424,16 @@ export default ({ request = {}, onClose }) => {
               rawValue: thisFieldRec.options.ifEmpty,
               this_field: field_name
             });
+          }
+          applicableFields.push(thisFieldRec);
+          if (thisFieldRec.clear_if && [thisFieldRec.value, thisFieldRec.bonusText, thisFieldRec.guestNames].some(hasAnswer)
+            && checkIgnore({ ignoreObj: thisFieldRec.clear_if, occurrenceNumber: thisFieldRec._occurrence_number })) {
+            const message = `Conflicting answer for ${reconcilePrompt({ rawValue: thisFieldRec.prompt?.value, this_field: field_name })}. Change or clear this answer.`;
+            thisFieldRec.isError = true;
+            thisFieldRec.errorMessage = message;
+            messageList.push(message);
+            number_of_errorsOnForm++;
+            form_stageStatus[stage_name].errors_in_stage++;
           }
           if (isFieldRequired(thisFieldRec)) {
             const minSelectionRequired = getSelectionMinRequirement(thisFieldRec);
@@ -3455,6 +3483,12 @@ export default ({ request = {}, onClose }) => {
               form_stageStatus[stage_name].errors_in_stage++;
             }
           }
+        }
+        const sectionError = sectionAnswerError(sectionObj, applicableFields);
+        if (sectionError) {
+          messageList.push(sectionError);
+          number_of_errorsOnForm++;
+          form_stageStatus[stage_name].errors_in_stage++;
         }
       }
       // if the section is not being shown, then flag the stage that contains the section as "in error" (it can't be cleared yet) 
@@ -5683,7 +5717,7 @@ export default ({ request = {}, onClose }) => {
             }
             reactData.fields[this_field].isError = true;
             reactData.fields[this_field].errorMessage = 'Entry does not match your name or password';
-            updateReactData({ formUpdates: ++reactData.formUpdates, fields: reactData.fields }, true);
+            updateReactData({ formUpdates: ++reactData.formUpdates, fields: reactData.fields }, true, this_field);
             return;
           }
 
@@ -5693,7 +5727,7 @@ export default ({ request = {}, onClose }) => {
               if (!emailValid) {
                 reactData.fields[this_field].isError = true;
                 reactData.fields[this_field].errorMessage = 'Please enter a valid email address';
-                updateReactData({ formUpdates: ++reactData.formUpdates, fields: reactData.fields }, true);
+                updateReactData({ formUpdates: ++reactData.formUpdates, fields: reactData.fields }, true, this_field);
                 return;
               }
               reactData.fields[this_field].isError = false;
@@ -6311,6 +6345,7 @@ export default ({ request = {}, onClose }) => {
                                         const sigRefNumber = reactData.fields[this_field].options.sigRefNumber || 0;
                                         if (signatureRef[sigRefNumber].current && !signatureRef[sigRefNumber].current.isEmpty()) {
                                           reactData.fields[this_field].value = signatureRef[sigRefNumber].current.getTrimmedCanvas().toDataURL('image/png');
+                                          updateReactData({ formUpdates: ++reactData.formUpdates, fields: reactData.fields }, true);
                                         }
                                       }}
                                       canvasProps={{
@@ -6354,7 +6389,8 @@ export default ({ request = {}, onClose }) => {
                                           size='small'
                                           onClick={() => {
                                             signatureRef[reactData.fields[this_field].options.sigRefNumber || 0].current.clear();
-                                            setForceRedisplay(!forceRedisplay);
+                                            reactData.fields[this_field].value = '';
+                                            updateReactData({ formUpdates: ++reactData.formUpdates, fields: reactData.fields }, true);
                                           }}
                                         >
                                           {'Clear'}
@@ -6854,6 +6890,12 @@ export default ({ request = {}, onClose }) => {
               }, true);
             }}
           />
+        }
+        {
+          clearNotice &&
+          <Snackbar open={!!clearNotice} autoHideDuration={6000} onClose={() => setClearNotice('')}>
+            <Alert severity='info' onClose={() => setClearNotice('')}>{clearNotice}</Alert>
+          </Snackbar>
         }
         {
           fieldDebugSnack &&
