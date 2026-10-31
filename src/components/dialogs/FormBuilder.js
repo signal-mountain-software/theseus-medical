@@ -397,6 +397,23 @@ export default ({ onClose, directForm }) => {
 
     // Which field's "Conditional Display" popup is open, if any.
     const [conditionEditorTarget, setConditionEditorTarget] = React.useState(null); // { sectionIdx, fieldIdx } - fieldIdx null means a section-level condition
+    const [confirmDeleteCondition, setConfirmDeleteCondition] = React.useState(false);
+    const [conditionDraft, setConditionDraft] = React.useState(null);
+    const [conditionError, setConditionError] = React.useState('');
+    const openConditionEditor = (sectionIdx, fieldIdx) => {
+        const section = reactData.editingForm.sections[sectionIdx];
+        const target = fieldIdx === null ? section : section.fields[fieldIdx];
+        setConditionDraft({
+            conditionType: target.conditionType,
+            conditionKind: target.conditionKind || 'field',
+            conditionField: target.conditionField || '',
+            conditionValues: [...(target.conditionValues || [])],
+            valueText: (target.conditionValues || []).filter(value => value !== '*').join('\n'),
+        });
+        setConditionError('');
+        setConfirmDeleteCondition(false);
+        setConditionEditorTarget({ sectionIdx, fieldIdx });
+    };
 
     // Which value's message/notify/groups rule popup is open, if any - see the "Per-value stage
     // rules" block below for classifyFieldStageRules/buildFieldStageRuleOutput.
@@ -447,7 +464,7 @@ export default ({ onClose, directForm }) => {
             : (fieldOptions.find((f) => f.field_name === target.conditionField)?.label || target.conditionField);
         const valuesText = isAudienceKind
             ? describeConditionAudience(target.conditionValues)
-            : (target.conditionValues || []).join(', ');
+            : (target.conditionValues || []).map((value) => value === '*' ? 'is not blank' : value).join(', ');
         return (
             <Typography
                 style={Object.assign(
@@ -1939,7 +1956,7 @@ export default ({ onClose, directForm }) => {
                                 <Box display='flex' flexDirection='row' alignItems='center' style={{ gap: '8px', marginTop: '8px' }}>
                                     <Button
                                         size='small'
-                                        onClick={() => setConditionEditorTarget({ sectionIdx, fieldIdx: null })}
+                                        onClick={() => openConditionEditor(sectionIdx, null)}
                                         style={{ flexShrink: 0, whiteSpace: 'nowrap' }}
                                     >
                                         {section.conditionType === 'show_if' ? 'Show if…' : section.conditionType === 'ignore_if' ? 'Ignore if…' : 'Conditional?'}
@@ -2384,7 +2401,7 @@ export default ({ onClose, directForm }) => {
                                                     <Box display='flex' flexDirection='row' alignItems='center' style={{ gap: '8px', marginTop: '12px', minWidth: 0 }}>
                                                         <Button
                                                             size='small'
-                                                            onClick={() => setConditionEditorTarget({ sectionIdx, fieldIdx })}
+                                                            onClick={() => openConditionEditor(sectionIdx, fieldIdx)}
                                                             style={{ flexShrink: 0, whiteSpace: 'nowrap' }}
                                                         >
                                                             {field.conditionType === 'show_if' ? 'Show if…' : field.conditionType === 'ignore_if' ? 'Ignore if…' : 'Conditional?'}
@@ -2639,19 +2656,46 @@ export default ({ onClose, directForm }) => {
             {conditionEditorTarget && (() => {
                 const { sectionIdx, fieldIdx } = conditionEditorTarget;
                 const isSectionCondition = (fieldIdx === null || fieldIdx === undefined);
-                const target = isSectionCondition
-                    ? reactData.editingForm?.sections[sectionIdx]
-                    : reactData.editingForm?.sections[sectionIdx]?.fields[fieldIdx];
+                const target = conditionDraft;
                 if (!target) { return null; }
-                const applyChanges = (changes) => (
+                const commitChanges = (changes) => (
                     isSectionCondition ? updateSection(sectionIdx, changes) : updateField(sectionIdx, fieldIdx, changes)
                 );
+                const applyChanges = (changes) => {
+                    setConditionDraft(previous => ({
+                        ...previous,
+                        ...changes,
+                        ...(Object.prototype.hasOwnProperty.call(changes, 'conditionField') ? { valueText: '' } : {}),
+                    }));
+                    setConditionError('');
+                };
+                const closeConditionEditor = () => {
+                    setConfirmDeleteCondition(false);
+                    setConditionEditorTarget(null);
+                };
+                const saveCondition = () => {
+                    if (target.conditionType !== 'none') {
+                        if (target.conditionKind !== 'audience' && !target.conditionField) {
+                            setConditionError('Choose the other item whose value will be tested.');
+                            return;
+                        }
+                        if (!target.conditionValues.length) {
+                            setConditionError(target.conditionKind === 'audience'
+                                ? 'Choose at least one person, group, or account type, or cancel.'
+                                : 'Check "is not blank" or provide at least one value to test against.');
+                            return;
+                        }
+                    }
+                    const { valueText, ...condition } = target;
+                    commitChanges(condition);
+                    closeConditionEditor();
+                };
                 const fieldOptions = getConditionFieldOptions(sectionIdx, isSectionCondition ? null : fieldIdx);
                 const targetField = fieldOptions.find((f) => f.field_name === target.conditionField);
                 const targetNoun = isSectionCondition ? 'section' : 'item';
                 return (
                     <React.Fragment>
-                        <Dialog open={true} onClose={() => setConditionEditorTarget(null)} maxWidth='sm' fullWidth>
+                        <Dialog open={true} onClose={closeConditionEditor} maxWidth='sm' fullWidth>
                         <DialogTitle>{'Conditional Display'}</DialogTitle>
                         <DialogContent>
                             <Box display='flex' flexDirection='column' style={{ gap: '16px' }}>
@@ -2735,6 +2779,18 @@ export default ({ onClose, directForm }) => {
                                 }
                                 {(target.conditionType !== 'none') && target.conditionField &&
                                     <Box display='flex' flexDirection='column' style={{ gap: '8px' }}>
+                                        <FormControlLabel
+                                            control={
+                                                <Checkbox
+                                                    checked={(target.conditionValues || []).includes('*')}
+                                                    onChange={(e) => {
+                                                        const values = (target.conditionValues || []).filter((value) => value !== '*');
+                                                        applyChanges({ conditionValues: e.target.checked ? ['*', ...values] : values });
+                                                    }}
+                                                />
+                                            }
+                                            label={<Typography style={AVATextStyle({ size: 0.85, color: 'textSecondary' })}>{'...is not blank, or'}</Typography>}
+                                        />
                                         <Typography style={AVATextStyle({ size: 0.85, color: 'textSecondary' })}>
                                             {`...has ${(targetField?.type === 'yes/no' || isSelectType(targetField?.type)) ? 'one of these values' : 'a value in this list'}:`}
                                         </Typography>
@@ -2786,20 +2842,54 @@ export default ({ onClose, directForm }) => {
                                                 minRows={2}
                                                 variant='outlined'
                                                 placeholder='Enter each triggering value on its own line'
-                                                defaultValue={(target.conditionValues || []).join('\n')}
-                                                onBlur={(e) => applyChanges({
-                                                    conditionValues: e.target.value.split('\n').map((v) => v.trim()).filter((v) => v),
+                                                value={target.valueText}
+                                                onChange={(e) => applyChanges({
+                                                    valueText: e.target.value,
+                                                    conditionValues: [
+                                                        ...((target.conditionValues || []).includes('*') ? ['*'] : []),
+                                                        ...e.target.value.split('\n').map((v) => v.trim()).filter((v) => v && v !== '*'),
+                                                    ],
                                                 })}
                                             />
                                         }
                                     </Box>
                                 }
                             </Box>
+                            {conditionError && <Alert severity='error' style={{ marginTop: '16px' }}>{conditionError}</Alert>}
                         </DialogContent>
                         <DialogActions>
-                            <Button onClick={() => setConditionEditorTarget(null)}>{'Done'}</Button>
+                            {target.conditionType !== 'none' &&
+                                <IconButton
+                                    aria-label='Delete conditional rule'
+                                    title='Delete conditional rule'
+                                    style={{ color: 'red' }}
+                                    onClick={() => setConfirmDeleteCondition(true)}
+                                >
+                                    <DeleteIcon />
+                                </IconButton>
+                            }
+                            <Box flexGrow={1} />
+                            <Button onClick={closeConditionEditor}>{'Cancel'}</Button>
+                            <Button onClick={saveCondition}>{'Save'}</Button>
                         </DialogActions>
                         </Dialog>
+                        {confirmDeleteCondition &&
+                            <AVAConfirm
+                                promptText={`Remove the conditional rule from this ${targetNoun}? This does not delete the ${targetNoun} or its answers.`}
+                                cancelText='Keep rule'
+                                confirmText='Delete rule'
+                                onCancel={() => setConfirmDeleteCondition(false)}
+                                onConfirm={() => {
+                                    commitChanges({
+                                        conditionType: 'none',
+                                        conditionKind: 'field',
+                                        conditionField: '',
+                                        conditionValues: [],
+                                    });
+                                    closeConditionEditor();
+                                }}
+                            />
+                        }
                         {reactData.showConditionAudienceSearch &&
                             <QuickSearch
                                 reactData={reactData}
