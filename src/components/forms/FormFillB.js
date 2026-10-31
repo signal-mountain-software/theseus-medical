@@ -2130,7 +2130,7 @@ export default ({ request = {}, onClose }) => {
       reactData.fields[props.prop].value = props.singleValue ? props.clickText : [props.clickText];
     }
     else if (props.singleValue) {
-      reactData.fields[props.prop].value = props.clickText;
+      reactData.fields[props.prop].value = props.deselect ? [] : props.clickText;
     }
     else {
       if (!Array.isArray(reactData.fields[props.prop].value)) {
@@ -2972,6 +2972,7 @@ export default ({ request = {}, onClose }) => {
                 }
                 else {
                   if (!values || values.length === 0) {
+                    await handleChangeValue({ newList: [], prop: props.prop });
                     return;
                   }
                   await handleMakeSelection({
@@ -3118,7 +3119,12 @@ export default ({ request = {}, onClose }) => {
                         await handleMakeSelection({
                           clickText: text.value,
                           prop: props.prop,
-                          singleValue: shouldUseSingleSelection
+                          singleValue: shouldUseSingleSelection,
+                          deselect: !isRequiredField && isSelectionOptionSelected({
+                            selectedValue: fieldRec.value,
+                            optionValue: text.value,
+                            optionDisplay: text.display
+                          })
                         });
                       }}
                       disableRipple

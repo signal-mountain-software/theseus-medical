@@ -62,6 +62,76 @@ const form = {
 
 const inputFor = (text, index = 0) => screen.getAllByText(text)[index].closest('p').parentElement.querySelector('input,textarea');
 
+it.each([1, 3])('allows deselecting the last optional choice with maximum %s', async max => {
+  const optional = {
+    ...form, sections: [{ section_name: 'Choices', fields: ['a'] }],
+    fields: { a: { type: 'select', prompt: 'Optional choice', value: { selection: { min: 0, max, selectionList: ['First', 'Second'] } } } },
+  };
+  render(<FormFillB request={{ form_id: 'form', previewFormRec: optional }} onClose={jest.fn()} />);
+  await screen.findByText('Optional choice');
+  fireEvent.mouseDown(screen.getByLabelText('a_0'));
+  expect(screen.getByLabelText('a_0').querySelector('input').checked).toBe(true);
+  fireEvent.mouseDown(screen.getByLabelText('a_0'));
+  expect(screen.getByLabelText('a_0').querySelector('input').checked).toBe(false);
+  fireEvent.click(screen.getByText('Finish'));
+  expect(await screen.findByText('This form is complete!')).toBeInTheDocument();
+});
+
+it.each([{ min: 1 }, { min: 0, required: true }])('preserves required single-choice behavior for %j', async requirement => {
+  const required = {
+    ...form, sections: [{ section_name: 'Choices', fields: ['a'] }],
+    fields: { a: { type: 'select', prompt: 'Required choice', required: !!requirement.required,
+      value: { selection: { min: requirement.min, max: 1, selectionList: ['First', 'Second'] } } } },
+  };
+  render(<FormFillB request={{ form_id: 'form', previewFormRec: required }} onClose={jest.fn()} />);
+  await screen.findByText('Required choice');
+  fireEvent.mouseDown(screen.getByLabelText('a_0'));
+  fireEvent.mouseDown(screen.getByLabelText('a_0'));
+  expect(screen.getByLabelText('a_0').querySelector('input').checked).toBe(true);
+  fireEvent.mouseDown(screen.getByLabelText('a_1'));
+  expect(screen.getByLabelText('a_0').querySelector('input').checked).toBe(false);
+  expect(screen.getByLabelText('a_1').querySelector('input').checked).toBe(true);
+});
+
+it.each(['First', ['First']])('deselects a saved optional single choice stored as %j without restoring its default', async saved => {
+  dbClient.get.mockReturnValueOnce({ promise: async () => ({
+    Item: { document_id: 'doc', form_type: 'form', pertains_to: 'person', status: 'in_process', field_values: { a: saved }, history: [] },
+  }) });
+  const optional = {
+    ...form, sections: [{ section_name: 'Choices', fields: ['a'] }],
+    fields: { a: { type: 'select', prompt: 'Optional choice', default: { value: 'First' },
+      value: { selection: { min: 0, max: 1, selectionList: ['First', 'Second'] } } } },
+  };
+  render(<FormFillB request={{ document_id: 'doc', form_id: 'form', previewFormRec: optional }} onClose={jest.fn()} />);
+  await screen.findByText('Optional choice');
+  expect(screen.getByLabelText('a_0').querySelector('input').checked).toBe(true);
+  fireEvent.mouseDown(screen.getByLabelText('a_0'));
+  await wait(() => expect(screen.getByLabelText('a_0').querySelector('input').checked).toBe(false));
+  fireEvent.mouseDown(screen.getByLabelText('a_1'));
+  expect(screen.getByLabelText('a_1').querySelector('input').checked).toBe(true);
+  fireEvent.mouseDown(screen.getByLabelText('a_1'));
+  expect(screen.getByLabelText('a_1').querySelector('input').checked).toBe(false);
+});
+
+it.each([1, 3])('clears an optional dropdown with maximum %s', async max => {
+  dbClient.get.mockReturnValueOnce({ promise: async () => ({
+    Item: { document_id: 'doc', form_type: 'form', pertains_to: 'person', status: 'in_process', field_values: { a: ['First'] }, history: [] },
+  }) });
+  const optional = {
+    ...form, sections: [{ section_name: 'Choices', fields: ['a'] }],
+    fields: { a: { type: 'drop', prompt: 'Optional dropdown',
+      value: { selection: { min: 0, max, selectionList: ['First', 'Second'] } } } },
+  };
+  render(<FormFillB request={{ document_id: 'doc', form_id: 'form', previewFormRec: optional }} onClose={jest.fn()} />);
+  await screen.findByText('Optional dropdown');
+  const dropdown = screen.getByText('Optional dropdown').closest('p').parentElement;
+  expect(dropdown.querySelector('.react-dropdown-select-content').textContent).toContain('First');
+  fireEvent.click(dropdown.querySelector('.react-dropdown-select-clear'));
+  await wait(() => expect(screen.getByText('Optional dropdown').closest('p').parentElement.querySelector('.react-dropdown-select-content').textContent).not.toContain('First'));
+  fireEvent.click(screen.getByText('Finish'));
+  expect(await screen.findByText('This form is complete!')).toBeInTheDocument();
+});
+
 it('clears the older answer on text edits while retaining the newest answer', async () => {
   render(<FormFillB request={{ form_id: 'form', person_id: 'person', previewFormRec: form }} onClose={jest.fn()} />);
   await screen.findByText('Question A');
