@@ -1,4 +1,4 @@
-import { chooseEventSlot } from './GroupControl';
+import { chooseEventSlot, getGroupDisplayDepths } from './GroupControl';
 
 jest.mock('../../hooks/useSession', () => () => ({ state: {} }));
 jest.mock('../../util/AVAUtilities', () => ({}));
@@ -17,6 +17,32 @@ jest.mock('./AVAConfirm', () => () => null);
 describe('chooseEventSlot', () => {
   it('uses the person_id as the slot for participant sign-ups', () => {
     expect(chooseEventSlot({ signup_type: 'participant', slots: { other: { owner: 'x' } } }, 'p1')).toEqual({ slot: 'p1' });
+  });
+
+  describe('getGroupDisplayDepths', () => {
+    it('aligns independent tree roots and indents only their descendants', () => {
+      expect(getGroupDisplayDepths({
+        residents: { group_type: 'admin', level: 2 },
+        neighborhood: { group_type: 'admin', level: 3 },
+        street: { group_type: 'admin', level: 4 },
+        other: { group_type: 'admin', level: 2 },
+        __PUBLIC_GROUPS__: { group_type: 'header', level: 1 },
+        club: { group_type: 'public', level: 2 },
+        __PRIVATE_GROUPS__: { group_type: 'header', level: 1 },
+        committee: { group_type: 'private', level: 2 },
+      })).toEqual({
+        residents: 0, neighborhood: 1, street: 2, other: 0,
+        __PUBLIC_GROUPS__: 0, club: 1, __PRIVATE_GROUPS__: 0, committee: 1,
+      });
+    });
+
+    it('does not indent a standalone hierarchy or a group without a displayed header', () => {
+      expect(getGroupDisplayDepths({
+        residents: { group_type: 'admin', level: 5 },
+        child: { group_type: 'admin', level: 6 },
+        club: { group_type: 'public', level: 2 },
+      })).toEqual({ residents: 0, child: 1, club: 0 });
+    });
   });
 
   it('reports a participant who is already attending', () => {

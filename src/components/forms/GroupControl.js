@@ -171,6 +171,32 @@ export const chooseEventSlot = (occ, person_id) => {
   return { slot: openSlot };
 };
 
+export const getGroupDisplayDepths = (groups) => {
+  const depths = {};
+  const ancestors = [];
+  let headerType = null;
+  for (const [id, group] of Object.entries(groups)) {
+    if (group.group_type === 'header') {
+      depths[id] = 0;
+      ancestors.length = 0;
+      headerType = id === '__PUBLIC_GROUPS__' ? 'public' : id === '__PRIVATE_GROUPS__' ? 'private' : null;
+    }
+    else if (group.group_type === 'admin') {
+      headerType = null;
+      while (ancestors.length && ancestors[ancestors.length - 1] >= group.level) {
+        ancestors.pop();
+      }
+      depths[id] = ancestors.length;
+      ancestors.push(group.level);
+    }
+    else {
+      ancestors.length = 0;
+      depths[id] = group.group_type === headerType ? 1 : 0;
+    }
+  }
+  return depths;
+};
+
 export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedGroup = null, preSelectedFunction = null, directoryGroupIds = null, onCancel = () => { }, onRefresh = () => { }, renderAsDialog = true }) => {
 
   const isMounted = React.useRef(false);
@@ -3104,7 +3130,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                     justifyContent='flex-start'
                     alignItems='flex-start'
                   >
-                    {Object.keys(groupsManagedObject).map((listEntry, listIndex) => (
+                    {Object.entries(getGroupDisplayDepths(groupsManagedObject)).map(([listEntry, displayDepth], listIndex) => (
                       <React.Fragment key={`frag_${listIndex}`}>
                         {(((groupsManagedObject[listEntry].level - reactData.minimumGroupLevel) < 3) ||
                           !(reactData.levelHidden[listIndex] ?? reactData.defaultCollapsed)) &&
@@ -3293,7 +3319,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                                 weight: (((reactData.selectedPersonRec && reactData.selectedPersonRec?.groups?.includes(listEntry)) || [listEntry, ...getDescendants(listEntry)].every(id => (reactData.selectedGroupIds || []).includes(id))) ? 'bold' : null),
                                 cursor: canDragManage ? 'grab' : null,
                                 userSelect: 'none',
-                                margin: { left: (groupsManagedObject[listEntry].level ? ((groupsManagedObject[listEntry].level - reactData.minimumGroupLevel) - 1) * 1.5 : 0), top: 0.35, bottom: 0.65, right: 0.8 },
+                                margin: { left: displayDepth * 1.5, top: 0.35, bottom: 0.65, right: 0.8 },
                               })}>
                               {groupsManagedObject[listEntry].group_name}
                             </Typography>
@@ -3395,7 +3421,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                               justifyContent='flex-start'
                               alignItems='center'
                               style={{
-                                marginLeft: `${(groupsManagedObject[listEntry].level - reactData.minimumGroupLevel) * 1.5}rem`,
+                                marginLeft: `${(displayDepth + 1) * 1.5}rem`,
                                 marginTop: 2, marginBottom: 2,
                               }}
                             >
