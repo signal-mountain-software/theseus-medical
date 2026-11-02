@@ -2178,8 +2178,9 @@ export default ({ onClose, directForm }) => {
                                                     {field.type !== 'text' && field.type !== 'numeric' && requiredControl}
                                                     {WIDTH_ADJUSTABLE_TYPES.includes(field.type) &&
                                                         <FormControl style={{ minWidth: 140 }}>
-                                                            <InputLabel>{'Width'}</InputLabel>
+                                                            <InputLabel shrink>{'Width'}</InputLabel>
                                                             <Select
+                                                                displayEmpty
                                                                 value={field.promptWidth || ''}
                                                                 onChange={(e) => updateField(sectionIdx, fieldIdx, { promptWidth: e.target.value })}
                                                             >
@@ -2191,8 +2192,9 @@ export default ({ onClose, directForm }) => {
                                                     }
                                                     {field.type === 'text' &&
                                                         <FormControl style={{ minWidth: 140 }}>
-                                                            <InputLabel>{'Height'}</InputLabel>
+                                                            <InputLabel shrink>{'Height'}</InputLabel>
                                                             <Select
+                                                                displayEmpty
                                                                 value={field.promptRows || ''}
                                                                 onChange={(e) => updateField(sectionIdx, fieldIdx, { promptRows: e.target.value })}
                                                             >

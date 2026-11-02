@@ -49,6 +49,31 @@ const openLimits = () => {
 };
 const limitInput = (dialog, label) => dialog.getByText(label).parentElement.querySelector('input');
 
+it('displays default width and single-line height for unset sizes and when returning to defaults', async () => {
+  render(<FormBuilder directForm={{
+    client_id: 'client', form_id: 'form', form_name: 'Field Sizes',
+    sections: [{ section_name: 'Questions', fields: ['answer'] }],
+    fields: { answer: { type: 'text', prompt: 'Answer' } },
+  }} onClose={jest.fn()} />);
+  await screen.findByText('Default width');
+  expect(screen.getByText('Single line')).toBeInTheDocument();
+  for (const [label, defaultText, preset] of [
+    ['Width', 'Default width', 'Medium'],
+    ['Height', 'Single line', 'Medium (3 lines)'],
+  ]) {
+    expect(screen.getByText(label)).toHaveAttribute('data-shrink', 'true');
+    fireEvent.mouseDown(screen.getByRole('button', { name: defaultText }));
+    fireEvent.click(screen.getByRole('option', { name: preset }));
+    expect(screen.getByRole('button', { name: preset })).toBeInTheDocument();
+    fireEvent.mouseDown(screen.getByRole('button', { name: preset }));
+    fireEvent.click(screen.getByRole('option', { name: defaultText }));
+    expect(screen.getByRole('button', { name: defaultText })).toBeInTheDocument();
+  }
+  fireEvent.click(screen.getByText('Save Form'));
+  await wait(() => expect(putDb).toHaveBeenCalled());
+  expect(putDb.mock.calls[0][0].Item.fields.answer.prompt).toBe('Answer');
+});
+
 it('uses mutually exclusive radio actions for field conditions', async () => {
   const dialog = await openCondition();
   expect(dialog.getByRole('radiogroup', { name: 'Conditional rule action' })).toBeInTheDocument();
