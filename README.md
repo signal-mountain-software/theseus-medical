@@ -24,6 +24,20 @@ In the MainMenuV3 item editor, menu items (`menu_itemType: "menu"`) include
 Both use the same user/group/special-value picker and allow/deny rules.
 Non-menu items do not show this control or write `allow_add`.
 
+## Adding Function Menu Items
+
+Master accounts can select **Function** in MainMenuV3's add-item dialog and the
+shared AddMenuItemDialog used by group menus. Supply the exact target name and
+a JSON object for params (`{}` is valid); these are saved as `call.target` and
+`call.params` on a `menu_itemType: "function"` record. Nested `options`,
+`defaults`, `request`, and string tokens such as `<sessionRec>` are preserved.
+The usual title, color, and visibility controls still apply.
+
+**Copy function from** lists Function entries in the same client. Hover over an
+entry to preview its target and params, or select it to populate the editable
+fields. Copying does not change title, color, or access. Function creation is
+master-only; the new card's `available_to` rules determine who can see it.
+
 ## Cloning Forms
 
 Clone copies the last saved form, including attributes not modeled by the editor.

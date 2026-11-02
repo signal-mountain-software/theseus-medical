@@ -30,6 +30,7 @@ import { useIdleTimer } from 'react-idle-timer';
 import useSession from '../../hooks/useSession';
 import SwitchPatientDialog from '../dialogs/SwitchPatientDialog';
 import PeopleMaintenance from '../dialogs/PeopleMaintenance';
+import MenuFunctionFields, { parseMenuFunctionCall } from '../dialogs/MenuFunctionFields';
 
 import Box from '@material-ui/core/Box';
 import Avatar from '@material-ui/core/Avatar';
@@ -254,6 +255,8 @@ export default ({ start_at }) => {
     addMenuDialogLevel: null,
     addMenuDialogParent: null,
     addMenuDialogType: null,
+    addMenuDialogFunctionTarget: '',
+    addMenuDialogFunctionParamsText: '{}',
     addMenuDialogLinkSource: 'url',
     addMenuDialogTitle: '',
     addMenuDialogUrl: '',
@@ -3293,6 +3296,20 @@ export default ({ start_at }) => {
       return;
     }
 
+    let functionCall;
+    if (itemType === 'function') {
+      try {
+        functionCall = parseMenuFunctionCall({
+          accountClass: state.user?.account_class,
+          target: reactData.addMenuDialogFunctionTarget,
+          paramsText: reactData.addMenuDialogFunctionParamsText,
+        });
+      } catch (error) {
+        updateReactData({ alert: { severity: 'warning', title: 'Invalid Function', message: error.message } }, true);
+        return;
+      }
+    }
+
     if ((itemType === 'link') && (linkSource === 'url') && !urlText) {
       updateReactData({
         alert: {
@@ -3471,6 +3488,8 @@ export default ({ start_at }) => {
         addMenuDialogLevel: null,
         addMenuDialogParent: null,
         addMenuDialogType: null,
+        addMenuDialogFunctionTarget: '',
+        addMenuDialogFunctionParamsText: '{}',
         addMenuDialogLinkSource: 'url',
         addMenuDialogTitle: '',
         addMenuDialogUrl: '',
@@ -3550,6 +3569,9 @@ export default ({ start_at }) => {
       };
       newMenuRec.call = callObj;
     }
+    else if (itemType === 'function') {
+      newMenuRec.call = functionCall;
+    }
     else {
       newMenuRec.children = ['add_item_instructions'];
       if (Object.prototype.hasOwnProperty.call(parentRec.Item, 'allow_add')) {
@@ -3557,23 +3579,14 @@ export default ({ start_at }) => {
       }
     }
 
-    await dbClient
-      .put({
-        TableName: 'MenuV3',
-        Item: newMenuRec
-      })
-      .promise()
-      .catch((error) => {
-        cl({ 'Error creating new MenuV3 record': error });
-      });
-
     const updatedChildren = [...(parentRec.Item.children || [])];
     if (!updatedChildren.includes(newMenuId)) {
       updatedChildren.unshift(newMenuId);
     }
 
-    await dbClient
-      .update({
+    try {
+      await dbClient.put({ TableName: 'MenuV3', Item: newMenuRec }).promise();
+      await dbClient.update({
         TableName: 'MenuV3',
         Key: {
           client_id: state.session.client_id,
@@ -3586,11 +3599,15 @@ export default ({ start_at }) => {
         ExpressionAttributeValues: {
           ':c': updatedChildren
         }
-      })
-      .promise()
-      .catch((error) => {
-        cl({ 'Error updating parent MenuV3 children': error });
-      });
+      }).promise();
+    } catch (error) {
+      cl({ 'Error saving menu item': error });
+      updateReactData({
+        addMenuDialogSaving: false,
+        alert: { severity: 'error', title: 'Unable to add card', message: 'Unable to finish adding the menu item. Please try again.' }
+      }, true);
+      return;
+    }
 
     const updatedMenuHierarchy = [...reactData.menu_hierarchy];
     const targetLevel = reactData.addMenuDialogLevel;
@@ -3611,6 +3628,8 @@ export default ({ start_at }) => {
       addMenuDialogLevel: null,
       addMenuDialogParent: null,
       addMenuDialogType: null,
+      addMenuDialogFunctionTarget: '',
+      addMenuDialogFunctionParamsText: '{}',
       addMenuDialogLinkSource: 'url',
       addMenuDialogTitle: '',
       addMenuDialogUrl: '',
@@ -5317,6 +5336,8 @@ export default ({ start_at }) => {
                     addMenuDialogLevel: level_index + 1,
                     addMenuDialogParent: this_item.menu_id,
                     addMenuDialogType: null,
+                    addMenuDialogFunctionTarget: '',
+                    addMenuDialogFunctionParamsText: '{}',
                     addMenuDialogLinkSource: 'url',
                     addMenuDialogTitle: '',
                     addMenuDialogUrl: '',
@@ -5966,6 +5987,8 @@ export default ({ start_at }) => {
                           addMenuDialogLevel: level_index,
                           addMenuDialogParent: parentMenuId,
                           addMenuDialogType: null,
+                          addMenuDialogFunctionTarget: '',
+                          addMenuDialogFunctionParamsText: '{}',
                           addMenuDialogLinkSource: 'url',
                           addMenuDialogTitle: '',
                           addMenuDialogUrl: '',
@@ -6680,6 +6703,8 @@ export default ({ start_at }) => {
                     addMenuDialogLevel: null,
                     addMenuDialogParent: null,
                     addMenuDialogType: null,
+                    addMenuDialogFunctionTarget: '',
+                    addMenuDialogFunctionParamsText: '{}',
                     addMenuDialogLinkSource: 'url',
                     addMenuDialogTitle: '',
                     addMenuDialogUrl: '',
@@ -6745,8 +6770,24 @@ export default ({ start_at }) => {
                       <FormControlLabel value='link' control={<Radio color='primary' />} label='Document, Video, Picture, or Link' />
                       <FormControlLabel value='message_target' control={<Radio color='primary' />} label='One-tap Message' />
                       <FormControlLabel value='phone_dial' control={<Radio color='primary' />} label='Auto-dial Phone' />
+                      {state.user?.account_class === 'master' &&
+                        <FormControlLabel value='function' control={<Radio color='primary' />} label='Function' />
+                      }
                     </RadioGroup>
                   </React.Fragment>
+                }
+
+                {state.user?.account_class === 'master' && reactData.addMenuDialogType === 'function' &&
+                  <MenuFunctionFields
+                    client_id={state.session.client_id}
+                    target={reactData.addMenuDialogFunctionTarget}
+                    paramsText={reactData.addMenuDialogFunctionParamsText}
+                    disabled={reactData.addMenuDialogSaving}
+                    onChange={patch => updateReactData({
+                      ...(patch.target !== undefined ? { addMenuDialogFunctionTarget: patch.target } : {}),
+                      ...(patch.paramsText !== undefined ? { addMenuDialogFunctionParamsText: patch.paramsText } : {}),
+                    }, true)}
+                  />
                 }
 
                 {(reactData.addMenuDialogType === 'link' || !reactData.is_support) &&
@@ -7031,6 +7072,8 @@ export default ({ start_at }) => {
                           addMenuDialogLevel: null,
                           addMenuDialogParent: null,
                           addMenuDialogType: null,
+                          addMenuDialogFunctionTarget: '',
+                          addMenuDialogFunctionParamsText: '{}',
                           addMenuDialogLinkSource: 'url',
                           addMenuDialogTitle: '',
                           addMenuDialogUrl: '',

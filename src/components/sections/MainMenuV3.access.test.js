@@ -3,6 +3,7 @@ import { fireEvent, render, screen, wait, within } from '@testing-library/react'
 import MainMenuV3 from './MainMenuV3';
 import { dbClient } from '../../util/AVAUtilities';
 
+let mockAccountClass = 'admin';
 jest.mock('@aws-amplify/auth', () => ({ Auth: {} }));
 jest.mock('react-cookie', () => ({ useCookies: () => [{}, jest.fn(), jest.fn()] }));
 jest.mock('react-idle-timer', () => ({ useIdleTimer: () => ({ start: jest.fn(), reset: jest.fn(), pause: jest.fn() }) }));
@@ -10,7 +11,7 @@ jest.mock('../../hooks/useIosCheck', () => () => [false, false]);
 jest.mock('../../hooks/useWebPrompt', () => () => [null, null, jest.fn()]);
 jest.mock('../../hooks/useSession', () => () => ({
   state: {
-    user: { account_class: 'admin' },
+    user: { account_class: mockAccountClass },
     session: { client_id: 'client', user_id: 'user', patient_id: 'user', client_style: {}, expireAt: 0 },
     roles: [],
     groups: { adminHierarchy: [] },
@@ -18,12 +19,12 @@ jest.mock('../../hooks/useSession', () => () => ({
   }
 }));
 jest.mock('../../util/AVAUtilities', () => ({
-  dbClient: { update: jest.fn() },
+  dbClient: { update: jest.fn(), query: jest.fn(), get: jest.fn(), put: jest.fn() },
   deepCopy: value => JSON.parse(JSON.stringify(value)),
   cl: jest.fn(),
   listFromArray: () => '',
   stringToColor: () => 'white',
-  recordExists: () => false
+  recordExists: response => !!response?.Item
 }));
 jest.mock('../../util/AVAStyles', () => ({
   AVATextStyle: () => ({}), AVAclasses: () => ({}), AVADefaults: () => ({}),
@@ -74,10 +75,13 @@ jest.mock('./QuickSearch', () => props => (
 let editorState;
 let menuRec;
 let openViaAlert;
+let openAddMenu;
+let initialAddType;
 const realUseState = React.useState;
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockAccountClass = 'admin';
   window.matchMedia = jest.fn(() => ({ matches: false, addListener: jest.fn(), removeListener: jest.fn() }));
   menuRec = {
     menu_id: 'menu1', menu_itemType: 'menu',
@@ -86,6 +90,8 @@ beforeEach(() => {
   };
   editorState = null;
   openViaAlert = false;
+  openAddMenu = false;
+  initialAddType = null;
   // Isolate the editor from menu bootstrapping, polling, and session-policy effects.
   jest.spyOn(React, 'useEffect').mockImplementation(() => {});
   jest.spyOn(React, 'useState').mockImplementation(initial => {
@@ -93,7 +99,14 @@ beforeEach(() => {
       const state = realUseState({
         ...initial,
         loading: false,
-        editDescriptionDialog: !openViaAlert,
+        editDescriptionDialog: !openViaAlert && !openAddMenu,
+        addMenuDialog: openAddMenu,
+        addMenuDialogTitle: 'New Function',
+        addMenuDialogType: initialAddType,
+        addMenuDialogParent: 'menu1',
+        addMenuDialogLevel: 1,
+        addMenuDialogAvailableTo: ['group:team'],
+        addMenuDialogAccessReviewed: true,
         alert: openViaAlert ? {
           severity: 'info',
           message: 'Item details',
@@ -119,9 +132,70 @@ beforeEach(() => {
     return realUseState(initial);
   });
   dbClient.update.mockImplementation(() => ({ promise: async () => ({}) }));
+  dbClient.put.mockImplementation(() => ({ promise: async () => ({}) }));
+  dbClient.get.mockImplementation(({ Key }) => ({ promise: async () => Key.menu_id === 'menu1' ? { Item: menuRec } : {} }));
 });
 
 afterEach(() => jest.restoreAllMocks());
+
+const menuInput = label => screen.getByLabelText(label);
+
+it('allows a master to create a Function card through the main menu', async () => {
+  mockAccountClass = 'master';
+  openAddMenu = true;
+  render(<MainMenuV3 />);
+  fireEvent.click(screen.getByLabelText('Function'));
+  fireEvent.change(menuInput('Function target'), { target: { value: 'ShowGroup' } });
+  const params = { options: { pSession: '<sessionRec>', pGroup_id: ['residents', '*all_public'] }, request: { editable: true } };
+  fireEvent.change(menuInput('Function params (JSON)'), { target: { value: JSON.stringify(params) } });
+  fireEvent.click(screen.getByText('Add'));
+  await wait(() => expect(dbClient.put).toHaveBeenCalled());
+  expect(dbClient.put.mock.calls[0][0].Item).toMatchObject({
+    client_id: 'client', menu_itemType: 'function', description: { short: 'New Function' },
+    available_to: ['group:team'], call: { target: 'ShowGroup', params },
+  });
+  expect(dbClient.put.mock.calls[0][0].Item).not.toHaveProperty('children');
+  await wait(() => expect(editorState.addMenuDialog).toBe(false));
+  expect(editorState.addMenuDialogFunctionTarget).toBe('');
+  expect(editorState.addMenuDialogFunctionParamsText).toBe('{}');
+});
+
+it.each(['admin', 'support', 'patient'])('hides the Function radio and blocks injected Function creation for %s', async accountClass => {
+  mockAccountClass = accountClass;
+  openAddMenu = true;
+  initialAddType = 'function';
+  render(<MainMenuV3 />);
+  expect(screen.queryByLabelText('Function')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByText('Add'));
+  expect(await screen.findByText('Only master accounts can create Function menu items.')).toBeInTheDocument();
+  expect(dbClient.put).not.toHaveBeenCalled();
+});
+
+it('blocks invalid Function JSON without a database write in the main menu', async () => {
+  mockAccountClass = 'master';
+  openAddMenu = true;
+  initialAddType = 'function';
+  render(<MainMenuV3 />);
+  fireEvent.change(menuInput('Function target'), { target: { value: 'ShowGroup' } });
+  fireEvent.change(menuInput('Function params (JSON)'), { target: { value: '{invalid' } });
+  fireEvent.click(screen.getByText('Add'));
+  expect(await screen.findByText(/Params must be valid JSON/)).toBeInTheDocument();
+  expect(dbClient.put).not.toHaveBeenCalled();
+});
+
+it.each(['put', 'update'])('keeps the main-menu Function draft open on %s failure', async operation => {
+  mockAccountClass = 'master';
+  openAddMenu = true;
+  initialAddType = 'function';
+  dbClient[operation].mockImplementationOnce(() => ({ promise: async () => { throw new Error('offline'); } }));
+  render(<MainMenuV3 />);
+  fireEvent.change(menuInput('Function target'), { target: { value: 'ShowGroup' } });
+  fireEvent.click(screen.getByText('Add'));
+  expect(await screen.findByText(/Unable to finish adding the menu item/)).toBeInTheDocument();
+  expect(editorState.addMenuDialog).toBe(true);
+  expect(editorState.addMenuDialogSaving).toBe(false);
+  expect(editorState.addMenuDialogFunctionTarget).toBe('ShowGroup');
+});
 
 function accessRow(prompt) {
   return screen.getByText(prompt).parentElement.parentElement;
