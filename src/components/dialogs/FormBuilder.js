@@ -23,6 +23,8 @@ import {
     FormControl,
     FormControlLabel,
     Checkbox,
+    Radio,
+    RadioGroup,
     Box,
     Paper,
     Typography,
@@ -46,6 +48,7 @@ import DragIndicatorIcon from '@material-ui/icons/DragIndicator';
 import MailOutlineIcon from '@material-ui/icons/MailOutline';
 import NotificationsNoneIcon from '@material-ui/icons/NotificationsNone';
 import GroupIcon from '@material-ui/icons/Group';
+import LockIcon from '@material-ui/icons/Lock';
 import FormatListNumberedIcon from '@material-ui/icons/FormatListNumbered';
 import WarningIcon from '@material-ui/icons/Warning';
 import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
@@ -1970,6 +1973,32 @@ export default ({ onClose, directForm }) => {
                                             </React.Fragment>
                                         );
                                     })()}
+                                    {(() => {
+                                        // FormFillB always processes the complete stage last.
+                                        const stages = editingForm.stages || [];
+                                        const orderedStages = [
+                                            ...stages.filter(stage => stage.stage_name !== COMPLETE_STAGE_NAME),
+                                            ...stages.filter(stage => stage.stage_name === COMPLETE_STAGE_NAME),
+                                        ];
+                                        const stageIndex = orderedStages.findIndex(stage => stage.stage_name === section.belongs_to_stage);
+                                        const nextStage = stageIndex >= 0 ? orderedStages[stageIndex + 1] : null;
+                                        const locked = !!nextStage?.on_entry_lock;
+                                        return (
+                                            <IconButton
+                                                size='small'
+                                                aria-label={`Lock on entry to next stage for section ${section.section_name}`}
+                                                aria-pressed={locked}
+                                                disabled={!nextStage}
+                                                title={nextStage
+                                                    ? `${locked ? 'Disable' : 'Enable'} automatic lock on entry to stage "${nextStage.stage_name}". Only applies when that stage is reached during a save; stages may be skipped.`
+                                                    : 'No following stage available for automatic locking'}
+                                                style={{ color: locked ? '#1976d2' : '#bbb' }}
+                                                onClick={() => updateStage(nextStage.stage_name, { on_entry_lock: locked ? undefined : true })}
+                                            >
+                                                <LockIcon fontSize='small' />
+                                            </IconButton>
+                                        );
+                                    })()}
                                     <IconButton
                                         size='small'
                                         aria-label='Section answer limits'
@@ -2757,35 +2786,29 @@ export default ({ onClose, directForm }) => {
                         <DialogTitle>{'Conditional Display'}</DialogTitle>
                         <DialogContent>
                             <Box display='flex' flexDirection='column' style={{ gap: '16px' }}>
-                                <Box display='flex' flexDirection='row' style={{ gap: '16px' }}>
+                                <RadioGroup
+                                    aria-label='Conditional rule action'
+                                    value={target.conditionType}
+                                    onChange={e => applyChanges({ conditionType: e.target.value })}
+                                >
                                     <FormControlLabel
-                                        control={
-                                            <Checkbox
-                                                checked={target.conditionType === 'show_if'}
-                                                onChange={(e) => applyChanges({ conditionType: e.target.checked ? 'show_if' : 'none' })}
-                                            />
-                                        }
+                                        value='show_if'
+                                        control={<Radio />}
                                         label={`Only show this ${targetNoun} when...`}
                                     />
                                     <FormControlLabel
-                                        control={
-                                            <Checkbox
-                                                checked={target.conditionType === 'ignore_if'}
-                                                onChange={(e) => applyChanges({ conditionType: e.target.checked ? 'ignore_if' : 'none' })}
-                                            />
-                                        }
+                                        value='ignore_if'
+                                        control={<Radio />}
                                         label={`Ignore this ${targetNoun} when...`}
                                     />
                                     {!isSectionCondition &&
                                         <FormControlLabel
-                                            control={<Checkbox
-                                                checked={target.conditionType === 'clear_if'}
-                                                onChange={e => applyChanges({ conditionType: e.target.checked ? 'clear_if' : 'none' })}
-                                            />}
+                                            value='clear_if'
+                                            control={<Radio />}
                                             label='Clear this item when...'
                                         />
                                     }
-                                </Box>
+                                </RadioGroup>
                                 {target.conditionType !== 'none' && isSectionCondition &&
                                     <FormControl fullWidth>
                                         <InputLabel>{'Test based on'}</InputLabel>

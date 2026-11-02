@@ -49,6 +49,87 @@ const openLimits = () => {
 };
 const limitInput = (dialog, label) => dialog.getByText(label).parentElement.querySelector('input');
 
+it('uses mutually exclusive radio actions for field conditions', async () => {
+  const dialog = await openCondition();
+  expect(dialog.getByRole('radiogroup', { name: 'Conditional rule action' })).toBeInTheDocument();
+  expect(dialog.getAllByRole('radio')).toHaveLength(3);
+  const show = dialog.getByLabelText('Only show this item when...');
+  const ignore = dialog.getByLabelText('Ignore this item when...');
+  const clear = dialog.getByLabelText('Clear this item when...');
+  expect(show).toBeChecked();
+  fireEvent.click(ignore);
+  expect(ignore).toBeChecked();
+  expect(show).not.toBeChecked();
+  fireEvent.click(clear);
+  expect(clear).toBeChecked();
+  expect(ignore).not.toBeChecked();
+  fireEvent.click(dialog.getByText('Save'));
+  fireEvent.click(screen.getByText('Save Form'));
+  await wait(() => expect(putDb).toHaveBeenCalled());
+  const target = putDb.mock.calls[0][0].Item.fields.target;
+  expect(target.clear_if).toEqual([{ field: 'source', values: ['specific'] }]);
+  expect(target).not.toHaveProperty('show_if');
+  expect(target).not.toHaveProperty('ignore_if');
+});
+
+it('offers only show and ignore radio actions for section conditions', async () => {
+  const dialog = await openCondition({ scope: 'section' });
+  expect(dialog.getAllByRole('radio')).toHaveLength(2);
+  expect(dialog.queryByLabelText('Clear this item when...')).not.toBeInTheDocument();
+  expect(dialog.getByLabelText('Only show this section when...')).toBeChecked();
+});
+
+it('toggles the next runtime stage lock, shares stage settings, and preserves unrelated attributes', async () => {
+  render(<FormBuilder directForm={{
+    client_id: 'client', form_id: 'form', form_name: 'Locks',
+    stages: [
+      { stage_name: 'first', on_entry_lock: true },
+      { stage_name: 'complete', on_complete_groups: [{ add: ['done'] }] },
+      { stage_name: 'second', on_entry_message: { text: 'Keep' } },
+    ],
+    sections: [
+      { section_name: 'First', belongs_to_stage: 'first', fields: [] },
+      { section_name: 'Shared', belongs_to_stage: 'first', fields: [] },
+      { section_name: 'Second', belongs_to_stage: 'second', fields: [] },
+    ], fields: {},
+  }} onClose={jest.fn()} />);
+  const first = await screen.findByLabelText('Lock on entry to next stage for section First');
+  const shared = screen.getByLabelText('Lock on entry to next stage for section Shared');
+  const second = screen.getByLabelText('Lock on entry to next stage for section Second');
+  expect(first).toHaveAttribute('aria-pressed', 'false');
+  fireEvent.click(first);
+  expect(shared).toHaveAttribute('aria-pressed', 'true');
+  fireEvent.click(shared);
+  expect(first).toHaveAttribute('aria-pressed', 'false');
+  fireEvent.click(second);
+  expect(second).toHaveAttribute('aria-pressed', 'true');
+  expect(putDb).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByText('Save Form'));
+  await wait(() => expect(putDb).toHaveBeenCalled());
+  const stages = putDb.mock.calls[0][0].Item.stages;
+  expect(stages.find(stage => stage.stage_name === 'first').on_entry_lock).toBe(true);
+  expect(stages.find(stage => stage.stage_name === 'second')).toEqual({ stage_name: 'second', on_entry_message: { text: 'Keep' } });
+  expect(stages.find(stage => stage.stage_name === 'complete')).toEqual({
+    stage_name: 'complete', on_complete_groups: [{ add: ['done'] }], on_entry_lock: true,
+  });
+});
+
+it('loads an existing next-stage lock and allows removing it while the section is collapsed', async () => {
+  render(<FormBuilder directForm={{
+    client_id: 'client', form_id: 'form', form_name: 'Locks',
+    stages: [{ stage_name: 'first' }, { stage_name: 'complete', on_entry_lock: true }],
+    sections: [{ section_name: 'Only', belongs_to_stage: 'first', fields: [] }], fields: {},
+  }} onClose={jest.fn()} />);
+  const lock = await screen.findByLabelText('Lock on entry to next stage for section Only');
+  expect(lock).toHaveAttribute('aria-pressed', 'true');
+  fireEvent.click(screen.getByTitle('Collapse section'));
+  fireEvent.click(lock);
+  expect(lock).toHaveAttribute('aria-pressed', 'false');
+  fireEvent.click(screen.getByText('Save Form'));
+  await wait(() => expect(putDb).toHaveBeenCalled());
+  expect(putDb.mock.calls[0][0].Item.stages.find(stage => stage.stage_name === 'complete')).not.toHaveProperty('on_entry_lock');
+});
+
 it.each(['text', 'yes/no', 'select', 'select&text', 'date', 'number'])('offers any non-blank value for %s triggers and preserves specific values', async type => {
   const dialog = await openCondition({ type });
   const anyValue = dialog.getByLabelText('...is not blank, or');

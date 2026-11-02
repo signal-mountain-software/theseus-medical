@@ -38,6 +38,16 @@ entry to preview its target and params, or select it to populate the editable
 fields. Copying does not change title, color, or access. Function creation is
 master-only; the new card's `available_to` rules determine who can see it.
 
+## Form Stage Locking
+
+FormBuilder's section padlock toggles `on_entry_lock` on the following stage,
+using FormFillB's stage order (`complete` is always last). The last section's
+stage therefore targets `complete`. Blue means enabled; gray means disabled.
+Save the form to persist the toggle. Sections sharing a stage share this setting.
+This retains the existing runtime behavior: locking happens during a save when
+the target stage is current. A stage skipped because its answers are already
+valid does not trigger its entry lock.
+
 ## Cloning Forms
 
 Clone copies the last saved form, including attributes not modeled by the editor.
