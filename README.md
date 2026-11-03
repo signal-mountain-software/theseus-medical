@@ -113,6 +113,46 @@ type. URL and login-preauthorization entry points retain their existing
 verification requirements, and authorization must name the supplied
 `account_type`. An absent or null prop preserves the existing selection flow.
 
+## Form Group Removals
+
+FormFillB's stage `on_complete_groups` / `on_entry_groups` rules and final-save
+`options.group_assignments` remove membership from each named group **and all
+currently joined descendants**. Removals finish before the paired additions run.
+For example, `{ "remove": ["Parent"], "add": ["Child1"] }` clears memberships
+throughout Parent's subtree, then joins Child1 and restores its ancestors.
+Use actual group IDs in these lists.
+
+On every save, FormFillB reevaluates `on_complete_groups` independently for each
+stage with a visible, active section and no section validation errors. An earlier
+hidden or incomplete stage does not block group rules in a later eligible stage.
+Hidden-only and sectionless stages are excluded; the synthetic `complete` stage
+still requires overall completion. Passing rules run on first stage completion,
+including preset/default answers. Subsequently, a field-gated rule runs only
+when one of its referenced `showIf` / `ignoreIf` field values differs from the
+last-saved answer and its current gate passes. Resulting group lists are not
+used to suppress these changes. Unconditional completion rules run only on first
+completion; unchanged answers do not repair external membership changes.
+`group_completed_stages` is persisted on the document to track independent
+completion across saves and reopening. Older documents infer prior completion
+from their saved stage order until this history is written. Entry group rules
+run on stage entry or a relevant field change, not unchanged repeat saves.
+Later stages
+retain exact-group-ID last-mention precedence; current-stage entry rules apply
+after completion rules. Stage ordering, form status, locking, and non-group
+completion eligibility are unchanged.
+Messages, notifications, and tasks retain their existing change/transition
+triggers. Group mutations also run existing `onAdd` / `onRemove` group rules.
+
+Shared utility callers opt in with
+`removeMember(personId, clientId, groupIds, { includeDescendants: true })`.
+Omitting the option preserves the existing named-group removal behavior.
+The opt-in reads a fresh hierarchy and all active membership pages, retains
+unrelated memberships, cleans up orphaned ancestors, and awaits existing
+`onRemove` rules. Those rules retain their existing side effects and error handling.
+Direct removal read/write failures stop FormFillB's paired additions and report
+a save error. These multi-record updates are sequential, not transactional;
+a failure can leave partially applied removals.
+
 ## Login Account-Creation Authorization
 
 LoginModuleV2 always opens the authorization-code step for new accounts.
