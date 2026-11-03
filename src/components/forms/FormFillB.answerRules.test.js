@@ -2,6 +2,11 @@ import React from 'react';
 import { fireEvent, render, screen, wait } from '@testing-library/react';
 import FormFillB from './FormFillB';
 import { dbClient } from '../../util/AVAUtilities';
+import { addMember, removeMember } from '../../util/AVAGroups';
+import { updateDocument } from '../../util/AVADocuments';
+import { sendMessages } from '../../util/AVAMessages';
+import { createNotification } from '../../util/AVANotifications';
+import { putTask } from '../../util/AVATasks';
 
 jest.mock('../../hooks/useSession', () => () => ({
   state: {
@@ -33,18 +38,21 @@ jest.mock('../../util/AVAUtilities', () => ({
   listFromArray: values => values.join(', '),
 }));
 jest.mock('../../util/AVAStyles', () => ({ AVAclasses: () => ({}), AVATextStyle: () => ({}) }));
-jest.mock('../../util/AVATasks', () => ({}));
-jest.mock('../../util/AVAGroups', () => ({}));
+jest.mock('../../util/AVATasks', () => ({ putTask: jest.fn() }));
+jest.mock('../../util/AVAGroups', () => ({
+  addMember: jest.fn(async () => []),
+  removeMember: jest.fn(async () => []),
+}));
 jest.mock('../../util/AVAPeople', () => ({ makeName: () => 'Test Person' }));
 jest.mock('../../util/AVADateTime', () => ({
   makeDate: () => ({ numeric$: 20261030, numeric: 20261030, date: new Date(), absolute: 'Today' }),
   makeTime: () => ({}),
 }));
-jest.mock('../../util/AVAMessages', () => ({}));
-jest.mock('../../util/AVADocuments', () => ({}));
+jest.mock('../../util/AVAMessages', () => ({ sendMessages: jest.fn() }));
+jest.mock('../../util/AVADocuments', () => ({ updateDocument: jest.fn(async ({ docData }) => docData) }));
 jest.mock('../../util/AVACalendars', () => ({}));
-jest.mock('../../util/AVANotifications', () => ({}));
-jest.mock('../../util/AVASessionSync', () => ({}));
+jest.mock('../../util/AVANotifications', () => ({ createNotification: jest.fn() }));
+jest.mock('../../util/AVASessionSync', () => ({ syncPersonToSessionCaches: jest.fn() }));
 jest.mock('../../util/AVAUploadFile', () => () => null);
 
 const form = {
@@ -61,6 +69,325 @@ const form = {
 };
 
 const inputFor = (text, index = 0) => screen.getAllByText(text)[index].closest('p').parentElement.querySelector('input,textarea');
+
+it('caps configured prompt widths at the container and allows selection labels to wrap', async () => {
+  const longOption = 'April 16–18 | Vascular Anomalies & Craniofacial Conditions';
+  const widthForm = {
+    ...form,
+    sections: [{ section_name: 'Widths', fields: ['a', 'b', 'c'] }],
+    fields: {
+      a: { type: 'select', prompt: { value: 'Wide choices', width: 600 },
+        value: { column: true, selection: { min: 0, max: 1, selectionList: [longOption] } } },
+      b: { type: 'text', prompt: { value: 'Wide text', width: 600, rows: 3 } },
+      c: { type: 'drop', prompt: { value: 'Wide dropdown', width: 600 },
+        value: { selection: { min: 0, max: 1, selectionList: ['First'] } } },
+    },
+  };
+  render(<FormFillB request={{ form_id: 'form', previewFormRec: widthForm }} onClose={jest.fn()} />);
+  await screen.findByText('Wide choices');
+  for (const prompt of ['Wide choices', 'Wide text', 'Wide dropdown']) {
+    const box = screen.getByText(prompt).closest('p').parentElement;
+    expect(box.style.maxWidth).toBe('calc(100% - 16px)');
+  }
+  const label = screen.getByText(longOption);
+  expect(label.style.whiteSpace).toBe('normal');
+  expect(label.style.overflowWrap).toBe('anywhere');
+  expect(label.closest('label').style.height).toBe('auto');
+});
+
+it.each([
+  ['default', 'First', 'First', false],
+  ['complete', 'First', 'First', false],
+  ['default', 'First', 'Second', true],
+  ['default', 'Neither', 'Neither', false],
+])('reevaluates completed %s group rules with saved %s and live %s', async (stageName, saved, live, shouldRun) => {
+  addMember.mockClear();
+  removeMember.mockClear();
+  sendMessages.mockClear();
+  createNotification.mockClear();
+  putTask.mockClear();
+  const groupRules = ['First', 'Second'].map(value => ({
+    showIf: [{ field: 'a', values: [value] }], remove: ['Parent'], add: ['Child1'],
+  }));
+  const actions = {
+    on_complete_groups: groupRules,
+    on_complete_message: [{ text: 'Do not resend', recipientList: ['pertains_to'] }],
+    on_complete_notify: [{ text: 'Do not notify again', available_to: ['pertains_to'] }],
+    on_complete_tasks: [{ text: 'Do not create again' }],
+  };
+  dbClient.get.mockReturnValueOnce({ promise: async () => ({
+    Item: { document_id: 'doc', pertains_to: 'person', status: 'in_process',
+      form_stage: 'complete', field_values: { a: saved }, history: [] },
+  }) });
+  const groupForm = {
+    ...form,
+    stages: ['default', 'complete'].map(stage_name => ({ stage_name, ...(stage_name === stageName ? actions : {}) })),
+    sections: [{ section_name: 'Choices', fields: ['a'], belongs_to_stage: 'default' }],
+    fields: { a: { type: 'text', prompt: 'Question A' } },
+  };
+  const onClose = jest.fn();
+  render(<FormFillB request={{ document_id: 'doc', form_id: 'form', open_complete: true, previewFormRec: groupForm }} onClose={onClose} />);
+  await screen.findByText('Question A');
+  if (saved !== live) { fireEvent.blur(inputFor('Question A'), { target: { value: live } }); }
+  fireEvent.click(screen.getByText('Finish'));
+  fireEvent.click(await screen.findByRole('button', { name: 'Complete' }));
+  await wait(() => expect(onClose).toHaveBeenCalled());
+  expect(removeMember).toHaveBeenCalledTimes(shouldRun ? 1 : 0);
+  expect(addMember).toHaveBeenCalledTimes(shouldRun ? 1 : 0);
+  if (shouldRun) {
+    expect(removeMember.mock.calls[0][2]).toEqual(['Parent']);
+    expect(addMember.mock.calls[0][2]).toEqual(['Child1']);
+  }
+  expect(sendMessages).not.toHaveBeenCalled();
+  expect(createNotification).not.toHaveBeenCalled();
+  expect(putTask).not.toHaveBeenCalled();
+});
+
+it('runs unconditional groups on first completion only and persists completion history', async () => {
+  addMember.mockClear();
+  removeMember.mockClear();
+  updateDocument.mockClear();
+  dbClient.get.mockReturnValueOnce({ promise: async () => ({
+    Item: { document_id: 'doc', pertains_to: 'person', form_stage: 'pending',
+      status: 'in_process', field_values: { a: 'First', b: '' }, history: [], group_completed_stages: [] },
+  }) });
+  const groupForm = {
+    ...form,
+    stages: [
+      { stage_name: 'default', on_complete_groups: [{ add: ['Child1'], remove: ['Parent'] }] },
+      { stage_name: 'pending', on_complete_groups: [{ add: ['MustNotAdd'] }] },
+      { stage_name: 'complete', on_complete_groups: [{ add: ['AlsoMustNotAdd'] }] },
+    ],
+    sections: [
+      { section_name: 'Choices', fields: ['a'], belongs_to_stage: 'default' },
+      { section_name: 'Pending', fields: ['b'], belongs_to_stage: 'pending' },
+    ],
+    fields: { a: { type: 'text', prompt: 'Question A' }, b: { type: 'text', prompt: 'Question B', required: true } },
+  };
+  render(<FormFillB request={{ document_id: 'doc', form_id: 'form', previewFormRec: groupForm }} onClose={jest.fn()} />);
+  await screen.findByText('Question A');
+  fireEvent.click(screen.getByText('Save/Continue'));
+  await wait(() => expect(updateDocument).toHaveBeenCalled());
+  expect(removeMember.mock.calls[0][2]).toEqual(['Parent']);
+  expect(addMember.mock.calls[0][2]).toEqual(['Child1']);
+  addMember.mockClear();
+  removeMember.mockClear();
+  updateDocument.mockClear();
+  fireEvent.click(screen.getByText('Save/Continue'));
+  await wait(() => expect(updateDocument).toHaveBeenCalled());
+  expect(removeMember).not.toHaveBeenCalled();
+  expect(addMember).not.toHaveBeenCalled();
+  expect(updateDocument.mock.calls[0][0].docData.group_completed_stages).toEqual(['default']);
+});
+
+it('preserves later-stage and current-entry exact-group conflict precedence', async () => {
+  addMember.mockClear();
+  removeMember.mockClear();
+  const groupForm = {
+    ...form,
+    stages: [
+      { stage_name: 'default', on_complete_groups: [{ add: ['A', 'B'], remove: ['Parent'] }] },
+      { stage_name: 'later', on_complete_groups: [{ remove: ['A', 'B'] }] },
+      { stage_name: 'complete', on_entry_groups: [{ add: ['B'] }] },
+    ],
+    sections: [
+      { section_name: 'Choices', fields: ['a'], belongs_to_stage: 'default' },
+      { section_name: 'Later', fields: ['b'], belongs_to_stage: 'later' },
+    ],
+    fields: { a: { type: 'text', prompt: 'Question A' }, b: { type: 'text', prompt: 'Question B' } },
+  };
+  const onClose = jest.fn();
+  render(<FormFillB request={{ form_id: 'form', person_id: 'person', previewFormRec: groupForm }} onClose={onClose} />);
+  await screen.findByText('Question A');
+  fireEvent.click(screen.getByText('Finish'));
+  fireEvent.click(await screen.findByRole('button', { name: 'Complete' }));
+  await wait(() => expect(onClose).toHaveBeenCalled());
+  expect(removeMember.mock.calls[0][2].sort()).toEqual(['A', 'Parent']);
+  expect(addMember.mock.calls[0][2]).toEqual(['B']);
+});
+
+it('runs only the changed later rule after reopening, then does not replay it on another save', async () => {
+  addMember.mockClear();
+  removeMember.mockClear();
+  updateDocument.mockClear();
+  dbClient.get.mockReturnValueOnce({ promise: async () => ({
+    Item: { document_id: 'doc', pertains_to: 'person', form_stage: 'complete',
+      status: 'in_process', field_values: { a: 'Interest', b: 'Old approval' },
+      group_completed_stages: ['default', 'approvals', 'complete'], history: [] },
+  }) });
+  const groupForm = {
+    ...form,
+    stages: [
+      { stage_name: 'default', on_complete_groups: [{ showIf: [{ field: 'a', values: ['Interest'] }], add: ['InterestGroup'] }] },
+      { stage_name: 'approvals', on_complete_groups: [{
+        showIf: [{ field: 'b', values: ['Old approval', 'New approval'] }], remove: ['InterestParent'], add: ['ApprovedGroup'],
+      }] },
+      { stage_name: 'complete', on_complete_groups: [{ remove: ['OneTimeGroup'] }] },
+    ],
+    sections: [
+      { section_name: 'Choice', fields: ['a'], belongs_to_stage: 'default' },
+      { section_name: 'Approvals', fields: ['b'], belongs_to_stage: 'approvals' },
+    ],
+    fields: { a: { type: 'text', prompt: 'Question A' }, b: { type: 'text', prompt: 'Question B' } },
+  };
+  render(<FormFillB request={{ document_id: 'doc', form_id: 'form', open_complete: true, previewFormRec: groupForm }} onClose={jest.fn()} />);
+  await screen.findByText('Question B');
+  fireEvent.blur(inputFor('Question B'), { target: { value: 'New approval' } });
+  fireEvent.click(screen.getByText('Save/Continue'));
+  await wait(() => expect(updateDocument).toHaveBeenCalled());
+  expect(addMember.mock.calls[0][2]).toEqual(['ApprovedGroup']);
+  expect(removeMember.mock.calls[0][2]).toEqual(['InterestParent']);
+  addMember.mockClear();
+  removeMember.mockClear();
+  updateDocument.mockClear();
+  fireEvent.click(screen.getByText('Save/Continue'));
+  await wait(() => expect(updateDocument).toHaveBeenCalled());
+  expect(addMember).not.toHaveBeenCalled();
+  expect(removeMember).not.toHaveBeenCalled();
+});
+
+it('runs passing default-answer rules on first completion of a new form', async () => {
+  addMember.mockClear();
+  updateDocument.mockClear();
+  const groupForm = {
+    ...form,
+    stages: [{ stage_name: 'default', on_complete_groups: [{
+      showIf: [{ field: 'a', values: ['Preset'] }], add: ['DefaultGroup'],
+    }] }],
+    sections: [{ section_name: 'Choice', fields: ['a'], belongs_to_stage: 'default' }],
+    fields: { a: { type: 'text', prompt: 'Question A', default: { value: 'Preset' } } },
+  };
+  render(<FormFillB request={{ form_id: 'form', person_id: 'person', previewFormRec: groupForm }} onClose={jest.fn()} />);
+  await screen.findByText('Question A');
+  fireEvent.click(screen.getByText('Save/Continue'));
+  await wait(() => expect(updateDocument).toHaveBeenCalled());
+  expect(addMember.mock.calls[0][2]).toEqual(['DefaultGroup']);
+});
+
+it('does not apply a changed field rule when its current condition fails', async () => {
+  addMember.mockClear();
+  removeMember.mockClear();
+  updateDocument.mockClear();
+  dbClient.get.mockReturnValueOnce({ promise: async () => ({
+    Item: { document_id: 'doc', pertains_to: 'person', form_stage: 'complete',
+      status: 'in_process', field_values: { a: 'Match' }, group_completed_stages: ['default'], history: [] },
+  }) });
+  const groupForm = {
+    ...form,
+    stages: [{ stage_name: 'default', on_complete_groups: [{
+      showIf: [{ field: 'a', values: ['Match'] }], add: ['MatchedGroup'],
+    }] }],
+    sections: [{ section_name: 'Choice', fields: ['a'], belongs_to_stage: 'default' }],
+    fields: { a: { type: 'text', prompt: 'Question A' } },
+  };
+  render(<FormFillB request={{ document_id: 'doc', form_id: 'form', open_complete: true, previewFormRec: groupForm }} onClose={jest.fn()} />);
+  await screen.findByText('Question A');
+  fireEvent.blur(inputFor('Question A'), { target: { value: 'No match' } });
+  fireEvent.click(screen.getByText('Save/Continue'));
+  await wait(() => expect(updateDocument).toHaveBeenCalled());
+  expect(addMember).not.toHaveBeenCalled();
+  expect(removeMember).not.toHaveBeenCalled();
+});
+
+it.each(['hidden', 'invalid'])('evaluates later approvals independently of an earlier %s stage', async blocker => {
+  addMember.mockClear();
+  removeMember.mockClear();
+  updateDocument.mockClear();
+  sendMessages.mockClear();
+  createNotification.mockClear();
+  putTask.mockClear();
+  const groupForm = {
+    ...form,
+    stages: [
+      { stage_name: 'default', on_complete_groups: [{ add: ['Interest'] }] },
+      { stage_name: 'siblings', on_complete_groups: [{ add: ['BlockedSibling'] }] },
+      {
+        stage_name: 'approvals',
+        on_complete_groups: [{ showIf: [{ field: 'approval', values: ['Approved'] }], add: ['AprilSession'], remove: ['ApprovalParent'] }],
+        on_complete_message: [{ text: 'Do not send', recipientList: ['pertains_to'] }],
+        on_complete_notify: [{ text: 'Do not notify', available_to: ['pertains_to'] }],
+        on_complete_tasks: [{ text: 'Do not create' }],
+      },
+      { stage_name: 'sectionless', on_complete_groups: [{ add: ['NoSection'] }] },
+      { stage_name: 'complete', on_complete_groups: [{ add: ['NotComplete'] }], on_entry_lock: true },
+    ],
+    sections: [
+      { section_name: 'Top Choice', fields: ['choice'], belongs_to_stage: 'default' },
+      {
+        section_name: 'Siblings', fields: ['sibling'], belongs_to_stage: 'siblings',
+        ...(blocker === 'hidden' ? { show_if: [{ field: 'choice', values: ['Summer'] }] } : {}),
+      },
+      { section_name: 'Approvals', fields: ['approval'], belongs_to_stage: 'approvals',
+        show_if: [{ currentUser_audience: true, audience: ['admin'] }] },
+    ],
+    fields: {
+      choice: { type: 'text', prompt: 'Choice', default: { value: 'Spring' } },
+      sibling: { type: 'text', prompt: 'Sibling', required: true },
+      approval: { type: 'text', prompt: 'Approved for' },
+    },
+  };
+  render(<FormFillB request={{ form_id: 'form', person_id: 'person', previewFormRec: groupForm }} onClose={jest.fn()} />);
+  await screen.findByText('Approved for');
+  fireEvent.blur(inputFor('Approved for'), { target: { value: 'Approved' } });
+  fireEvent.click(screen.getByText('Save/Continue'));
+  await wait(() => expect(updateDocument).toHaveBeenCalled());
+  expect(addMember.mock.calls[0][2]).toEqual(['Interest', 'AprilSession']);
+  expect(removeMember.mock.calls[0][2]).toEqual(['ApprovalParent']);
+  expect(updateDocument.mock.calls[0][0].docData.formLocked).toBe(false);
+  expect(sendMessages).not.toHaveBeenCalled();
+  expect(createNotification).not.toHaveBeenCalled();
+  expect(putTask).not.toHaveBeenCalled();
+});
+
+it.each(['stage', 'final'])('opts %s group removals into subtrees and awaits them before additions', async scope => {
+  addMember.mockClear();
+  removeMember.mockClear();
+  let finishRemoval;
+  removeMember.mockImplementationOnce(() => new Promise(resolve => { finishRemoval = resolve; }));
+  const rule = { remove: ['Parent'], add: ['Child1'] };
+  const groupForm = {
+    ...form,
+    options: scope === 'final' ? { group_assignments: [rule] } : {},
+    stages: [{ stage_name: 'default' }, { stage_name: 'complete', ...(scope === 'stage' ? { on_entry_groups: rule } : {}) }],
+    sections: [{ section_name: 'Choices', fields: ['a'], belongs_to_stage: 'default' }],
+    fields: { a: { type: 'text', prompt: 'Question A' } },
+  };
+  render(<FormFillB request={{ form_id: 'form', person_id: 'person', previewFormRec: groupForm }} onClose={jest.fn()} />);
+  await screen.findByText('Question A');
+  fireEvent.click(screen.getByText('Finish'));
+  fireEvent.click(await screen.findByRole('button', { name: 'Complete' }));
+  await wait(() => expect(removeMember).toHaveBeenCalled());
+  expect(removeMember).toHaveBeenCalledWith('person', 'client', ['Parent'], {
+    includeDescendants: true, _personGroups: expect.any(Map),
+  });
+  expect(addMember).not.toHaveBeenCalled();
+  finishRemoval([]);
+  await wait(() => expect(addMember).toHaveBeenCalled());
+  expect(addMember.mock.calls[0][3]._personGroups).toBe(removeMember.mock.calls[0][3]._personGroups);
+});
+
+it.each(['stage', 'final'])('reports %s removal failures without running paired additions', async scope => {
+  addMember.mockClear();
+  updateDocument.mockClear();
+  removeMember.mockRejectedValueOnce(new Error('Removal failed'));
+  const rule = { remove: ['Parent'], add: ['Child1'] };
+  const groupForm = {
+    ...form,
+    options: scope === 'final' ? { group_assignments: [rule] } : {},
+    stages: [{ stage_name: 'default' }, { stage_name: 'complete', ...(scope === 'stage' ? { on_entry_groups: rule } : {}) }],
+    sections: [{ section_name: 'Choices', fields: ['a'], belongs_to_stage: 'default' }],
+    fields: { a: { type: 'text', prompt: 'Question A' } },
+  };
+  const onClose = jest.fn();
+  render(<FormFillB request={{ form_id: 'form', person_id: 'person', previewFormRec: groupForm }} onClose={onClose} />);
+  await screen.findByText('Question A');
+  fireEvent.click(screen.getByText('Finish'));
+  fireEvent.click(await screen.findByRole('button', { name: 'Complete' }));
+  await screen.findAllByText(/memberships.*Removal failed/);
+  expect(addMember).not.toHaveBeenCalled();
+  expect(onClose).not.toHaveBeenCalled();
+  expect(updateDocument).toHaveBeenCalledTimes(scope === 'final' ? 1 : 0);
+});
 
 it.each([1, 3])('allows deselecting the last optional choice with maximum %s', async max => {
   const optional = {

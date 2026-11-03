@@ -74,6 +74,8 @@ const useStyles = makeStyles(theme => ({
   formControlCheckGroup: {
     marginTop: 0,
     paddingTop: 0,
+    minWidth: 0,
+    maxWidth: '100%',
   },
   checkboxWrappedIndent: {
     marginLeft: 32,
@@ -166,6 +168,7 @@ const useStyles = makeStyles(theme => ({
     color: theme.palette.text.secondary,
     fontSize: '1rem',
     lineHeight: 1.2,
+    overflowWrap: 'anywhere',
   },
   selectionFieldHelper: {
     color: theme.palette.text.secondary,
@@ -278,16 +281,15 @@ export default ({ request = {}, onClose }) => {
   const clampRequestedWidthToContainer = (requestedWidthPx, fallbackWidthPx) => {
     const requestedWidth = Number(requestedWidthPx);
     if (Number.isFinite(requestedWidth) && requestedWidth > 0) {
-      // vw, not %, so this cap holds regardless of an ancestor's own (possibly shrink-to-fit) width
-      return `min(${requestedWidth}px, ${MAX_FIELD_WIDTH_VW}vw)`;
+      return `min(${requestedWidth}px, ${MAX_FIELD_WIDTH_VW}vw, calc(100% - 16px))`;
     }
 
     const fallbackWidth = Number(fallbackWidthPx);
     if (Number.isFinite(fallbackWidth) && fallbackWidth > 0) {
-      return `min(${fallbackWidth}px, ${MAX_FIELD_WIDTH_VW}vw)`;
+      return `min(${fallbackWidth}px, ${MAX_FIELD_WIDTH_VW}vw, calc(100% - 16px))`;
     }
 
-    return `${MAX_FIELD_WIDTH_VW}vw`;
+    return `min(${MAX_FIELD_WIDTH_VW}vw, calc(100% - 16px))`;
   };
 
   const generateHtmlOutput = () => {
@@ -2867,7 +2869,7 @@ export default ({ request = {}, onClose }) => {
     const containerStyle = {
       width: clampRequestedWidthToContainer(promptWidth, 320),
       minWidth: clampRequestedWidthToContainer(MIN_FIELD_WIDTH_PX, MIN_FIELD_WIDTH_PX),
-      maxWidth: `${MAX_FIELD_WIDTH_VW}vw`,
+      maxWidth: 'calc(100% - 16px)',
       marginTop: '24px',
       marginLeft: '8px',
       marginRight: '8px',
@@ -3016,7 +3018,7 @@ export default ({ request = {}, onClose }) => {
       ? {
         width: clampRequestedWidthToContainer(fieldRec.prompt?.width, 320),
         minWidth: clampRequestedWidthToContainer(MIN_FIELD_WIDTH_PX, MIN_FIELD_WIDTH_PX),
-        maxWidth: `${MAX_FIELD_WIDTH_VW}vw`,
+        maxWidth: 'calc(100% - 16px)',
         marginTop: '24px',
         marginLeft: '8px',
         marginRight: '8px',
@@ -3025,7 +3027,7 @@ export default ({ request = {}, onClose }) => {
       : {
         ...(hasRequestedWidth ? { width: clampRequestedWidthToContainer(fieldRec.prompt?.width) } : {}),
         minWidth: clampRequestedWidthToContainer(MIN_FIELD_WIDTH_PX, MIN_FIELD_WIDTH_PX),
-        maxWidth: `${MAX_FIELD_WIDTH_VW}vw`,
+        maxWidth: 'calc(100% - 16px)',
         marginTop: '24px',
         marginLeft: '8px',
         marginRight: '8px',
@@ -3060,7 +3062,12 @@ export default ({ request = {}, onClose }) => {
               {(optionList).map((text, tIndex) => (
                 <FormControlLabel
                   className={classes.formControlDays}
-                  style={props.optionRowStyle || undefined}
+                  style={{
+                    ...props.optionRowStyle,
+                    maxWidth: '100%',
+                    height: 'auto',
+                    alignItems: 'flex-start',
+                  }}
                   key={`${props.prop}_${tIndex}_${text.value}`}
                   control={
                     <Checkbox
@@ -3068,6 +3075,7 @@ export default ({ request = {}, onClose }) => {
                       name={`${props.prop}_${tIndex}`}
                       key={`${props.groupKeyPrefix || 'CheckGroup'}__${props.prop}_${tIndex}`}
                       size='small'
+                      style={{ flexShrink: 0 }}
                       disabled={isDisabled}
                       checked={text.remove_all ? false : isSelectionOptionSelected({
                         selectedValue: fieldRec.value,
@@ -3131,7 +3139,7 @@ export default ({ request = {}, onClose }) => {
                       inputProps={{ 'aria-labelledby': `${props.ariaPrefix || 'message_routing'}_${tIndex}` }}
                     />
                   }
-                  label={<Typography className={classes.radioDays} style={{ whiteSpace: 'nowrap' }}>{text.display}</Typography>}
+                  label={<Typography className={classes.radioDays} style={{ whiteSpace: 'normal', overflowWrap: 'anywhere', minWidth: 0 }}>{text.display}</Typography>}
                   labelPlacement='end'
                 />
               ))}
@@ -3143,14 +3151,14 @@ export default ({ request = {}, onClose }) => {
               {(props.withPrompt) &&
                 <FormControlLabel
                   className={classes.formControlDays}
-        //          style={{ height: 'auto' }}
+                  style={{ maxWidth: '100%', height: 'auto', alignItems: 'flex-start' }}
                   key={`${props.prop}_other`}
                   control={
                     <Checkbox
                       checked={!!fieldRec.bonusText}
                       disabled={isDisabled}
                       size='small'
-                      style={{ padding: '4px' }}
+                      style={{ padding: '4px', flexShrink: 0 }}
                       onChange={(e) => {
                         if (e.target.checked) {
                           const defaultText = toInlineFieldText(props.withPrompt || '');
@@ -3215,13 +3223,13 @@ export default ({ request = {}, onClose }) => {
                         style: {
                           fontSize: `${reactData.user_fontSize * 0.85}rem`,
                           padding: '0 2px 2px',
-                          width: '400px',
+                          width: '100%',
                           whiteSpace: 'pre-wrap',
                           overflowWrap: 'anywhere',
                           wordBreak: 'break-word'
                         }
                       }}
-                      style={{ marginRight: '16px', marginTop: '5px' }}
+                      style={{ width: '400px', minWidth: 0, maxWidth: 'calc(100% - 32px)', marginRight: '16px', marginTop: '5px' }}
                     />
                   }
                   labelPlacement='end'
@@ -3390,7 +3398,7 @@ export default ({ request = {}, onClose }) => {
     }
   };
 
-  const validateForm = () => {
+  const validateForm = ({ updateStage = true } = {}) => {
     // Validates all fields in the form and returns error information
     // Used by both handleReview and handleToggleLock
     let messageList = ['There are problems with this form'];
@@ -3401,10 +3409,12 @@ export default ({ request = {}, onClose }) => {
       if (!form_stageStatus.hasOwnProperty(stage_name)) {
         form_stageStatus[stage_name] = {
           errors_in_stage: 0,
+          visible_sections: 0,
         };
       }
       if (okToShowSection(sectionObj) &&
           !(sectionObj.occurrence_template && sectionObj.occurrence_number > (reactData.activeSectionOccurrences?.[sectionObj.occurrence_template] ?? 1))) {
+        form_stageStatus[stage_name].visible_sections++;
         const applicableFields = [];
         for (const this_field of sectionObj.fields) {
           // this_field may be a plain string or an object with a field_name property
@@ -3517,10 +3527,12 @@ export default ({ request = {}, onClose }) => {
     if (!current_form_stage) {
       current_form_stage = 'complete';
     }
-    updateReactData({
-      current_formStage: current_form_stage,
-      form_stageStatus: form_stageStatus
-    }, false);
+    if (updateStage) {
+      updateReactData({
+        current_formStage: current_form_stage,
+        form_stageStatus: form_stageStatus
+      }, false);
+    }
 
     return {
       messageList,
@@ -3847,6 +3859,12 @@ export default ({ request = {}, onClose }) => {
         document_id: document_id || reactData.document_id
       };
     }
+
+    // Save/Continue and timeout saves do not review the form first. Determine group eligibility
+    // from current validation without changing the transition baseline used by other actions.
+    const groupValidation = reactData.formRec.stages?.some(stage => stage.on_complete_groups)
+      ? validateForm({ updateStage: false })
+      : null;
 
     // assure that peopleRec and sessionRec are available
     if (!reactData.peopleRec.hasOwnProperty(reactData.pertains_to)) {
@@ -4197,7 +4215,7 @@ export default ({ request = {}, onClose }) => {
     //     showIf: [<test>, ...],       // optional, same rules as above
     //     ignoreIf: [<test>, ...],     // optional, same rules as above
     //     add: ['<group_id>', ...],    // optional - group_id(s) to add pertains_to to
-    //     remove: ['<group_id>', ...]  // optional - group_id(s) to remove pertains_to from
+    //     remove: ['<group_id>', ...]  // optional - remove pertains_to from these groups and descendants
     //   }
     //   Unlike messages, on_complete_groups/on_complete_tasks are cumulative: every completed/
     //   changed stage's instructions apply, in ascending stage order. If the same group_id is
@@ -4239,7 +4257,28 @@ export default ({ request = {}, onClose }) => {
     // stageLabel (optional) identifies which stage's on_complete_groups/on_entry_groups is being
     // applied, for debugging.
     const groupDispositions = new Map();
-    const applyGroupInstructionsToDispositions = (groupInstructionsRaw, stageLabel) => {
+    const baselineGroupValues = reactData.docRec?.field_values || {};
+    const savedStageIndex = reactData.formRec.stages.findIndex(stage => stage.stage_name === reactData.previous_formStage);
+    const completedGroupStages = new Set(reactData.docRec?.group_completed_stages ||
+      (reactData.docRec?.document_id ? reactData.formRec.stages
+        .filter((stage, index) => index < savedStageIndex || (stage.stage_name === 'complete' && reactData.previous_formStage === 'complete'))
+        .map(stage => stage.stage_name) : []));
+    const groupRuleFieldChanged = instruction => {
+      const tests = [...makeArray(instruction.showIf), ...makeArray(instruction.ignoreIf)];
+      return tests.some(test => {
+        if (!test?.field) { return false; }
+        const field = reactData.fields?.[test.field];
+        const normalize = value => {
+          if (Array.isArray(value)) { return value.map(normalize).sort(); }
+          return JSON.stringify(value ?? '');
+        };
+        const comparable = value => JSON.stringify(normalize(
+          ['select', 'drop', 'select&text'].includes(field?.type) ? makeArray(value) : value
+        ));
+        return comparable(field?.value) !== comparable(baselineGroupValues[test.field]);
+      });
+    };
+    const applyGroupInstructionsToDispositions = (groupInstructionsRaw, stageLabel, firstCompletion = true) => {
       const instructionList = [groupInstructionsRaw].flat().filter(Boolean);
       instructionList.forEach((this_instruction, idx) => {
         const showIgnoreTest = this_instruction.showIf
@@ -4253,6 +4292,10 @@ export default ({ request = {}, onClose }) => {
             (gatePassed ? ` -> add=${JSON.stringify(this_instruction.add || [])}, remove=${JSON.stringify(this_instruction.remove || [])}` : ' -> contributes nothing'));
         }
         if (!gatePassed) { return; }
+        if (!firstCompletion && !groupRuleFieldChanged(this_instruction)) {
+          cl(`[on_complete_groups] ${stageLabel} instruction #${idx}: skipped - referenced field values unchanged (or no field condition); stage already completed.`);
+          return;
+        }
         for (const this_group of [this_instruction.remove].flat().filter(Boolean)) {
           if (stageLabel && groupDispositions.has(this_group) && groupDispositions.get(this_group) !== 'remove') {
             cl(`[on_complete_groups] ${stageLabel}: group "${this_group}" disposition overwritten - was "${groupDispositions.get(this_group)}", now "remove" (last mention wins)`);
@@ -4273,9 +4316,8 @@ export default ({ request = {}, onClose }) => {
     // different outcome than evaluating them against the live, about-to-be-saved field values
     // (liveFieldValues). This is what lets an already-finished stage (one the document moved past
     // in a prior, already-closed save) be reconsidered when a user edits a field it depends on -
-    // see changedStageIndices below - without re-firing on every repeat save when nothing relevant
-    // has actually changed. stageLabel (optional) identifies the stage in the console for
-    // debugging.
+    // see changedStageIndices below. This gates messages, notifications, and tasks only;
+    // group rules use first completion or changes in their referenced field values.
     const stageHasMaterialChange = (stageDef, baselineFieldValues, liveFieldValues, stageLabel) => {
       const sameSet = (a, b) => {
         const normalize = (arr) => [...new Set(arr)].sort().join('\u0001');
@@ -4294,7 +4336,7 @@ export default ({ request = {}, onClose }) => {
         const baseResult = resolveGroupInstructions(stageDef.on_complete_groups, baselineFieldValues, stageLabel ? `${stageLabel} (baseline)` : undefined);
         const groupsChanged = !sameSet(liveResult.additions, baseResult.additions) || !sameSet(liveResult.removals, baseResult.removals);
         if (stageLabel) {
-          cl(`[on_complete_groups] ${stageLabel}: groups outcome ${groupsChanged ? 'CHANGED' : 'unchanged'} vs baseline` +
+          cl(`[on_complete_groups] ${stageLabel}: groups outcome ${groupsChanged ? 'CHANGED' : 'unchanged'} vs baseline (used only for message/notify/task eligibility)` +
             ` (live: add=${JSON.stringify(liveResult.additions)} remove=${JSON.stringify(liveResult.removals)};` +
             ` baseline: add=${JSON.stringify(baseResult.additions)} remove=${JSON.stringify(baseResult.removals)})`);
         }
@@ -4335,7 +4377,7 @@ export default ({ request = {}, onClose }) => {
         const newlyCrossed = stage_we_finished >= previous_stageIndex;
         const materiallyChanged = !newlyCrossed && stageHasMaterialChange(stageDef, baselineFieldValues, field_values, stageLabel);
         const eligible = newlyCrossed || materiallyChanged;
-        cl(`[on_complete_groups] ${stageLabel}: newlyCrossed=${newlyCrossed}, materiallyChanged=${materiallyChanged} -> ${eligible ? 'ELIGIBLE this save' : 'skipped (nothing changed)'}`);
+        cl(`[on_complete_groups] ${stageLabel}: message/notify/task eligibility: newlyCrossed=${newlyCrossed}, materiallyChanged=${materiallyChanged} -> ${eligible ? 'ELIGIBLE this save' : 'skipped (nothing changed)'}`);
         if (eligible) {
           changedStageIndices.push(stage_we_finished);
         }
@@ -4355,21 +4397,21 @@ export default ({ request = {}, onClose }) => {
         const completeStageLabel = `stage #${this_stageIndex} "${completeStageDef.stage_name}" (complete)`;
         const materiallyChanged = wasAlreadyComplete && stageHasMaterialChange(completeStageDef, baselineFieldValues, field_values, completeStageLabel);
         const eligible = !wasAlreadyComplete || materiallyChanged;
-        cl(`[on_complete_groups] ${completeStageLabel}: wasAlreadyComplete=${wasAlreadyComplete}, materiallyChanged=${materiallyChanged} -> ${eligible ? 'ELIGIBLE this save' : 'skipped (nothing changed)'}`);
+        cl(`[on_complete_groups] ${completeStageLabel}: message/notify/task eligibility: wasAlreadyComplete=${wasAlreadyComplete}, materiallyChanged=${materiallyChanged} -> ${eligible ? 'ELIGIBLE this save' : 'skipped (nothing changed)'}`);
         if (eligible) {
           changedStageIndices.push(this_stageIndex);
         }
       }
 
       if (changedStageIndices.length > 0) {
-        cl(`Form ${document_id}: stages with completed/changed on_complete_* instructions this save: ${changedStageIndices.map(i => reactData.formRec.stages[i].stage_name).join(', ')}`);
+        cl(`Form ${document_id}: stages eligible for completion messages/notifications/tasks this save: ${changedStageIndices.map(i => reactData.formRec.stages[i].stage_name).join(', ')}`);
       }
       else {
-        cl(`[on_complete_groups] Form ${document_id}: no stages eligible this save - on_complete_groups/message/notify/tasks will not fire.`);
+        cl(`[on_complete_groups] Form ${document_id}: no changed stages - completion messages/notifications/tasks will not fire; group rules use independent field-change checks.`);
       }
 
       // Only the highest (most-advanced) changed stage's on_complete_message is sent - see the
-      // shape-reference note above. Groups and tasks remain cumulative across the whole set.
+      // shape-reference note above. Tasks remain cumulative across the changed stages.
       const highestChangedIndex = changedStageIndices.length > 0 ? Math.max(...changedStageIndices) : -1;
       for (const stage_we_finished of changedStageIndices) {
         const stageDef = reactData.formRec.stages[stage_we_finished];
@@ -4379,12 +4421,28 @@ export default ({ request = {}, onClose }) => {
         if (stageDef.on_complete_notify && (stage_we_finished === highestChangedIndex)) {
           await send_stageNotify(stageDef.on_complete_notify, stageDef.stage_name); // post stage complete notification
         }
-        if (stageDef.on_complete_groups) {
-          cl(`[on_complete_groups] Applying stage #${stage_we_finished} "${stageDef.stage_name}" on_complete_groups:`);
-          applyGroupInstructionsToDispositions(stageDef.on_complete_groups, `stage #${stage_we_finished} "${stageDef.stage_name}" on_complete_groups`);
-        }
         if (stageDef.on_complete_tasks) {
           await createTasksFromTemplates(stageDef.on_complete_tasks);
+        }
+      }
+
+      // Group completion is independent of the first incomplete stage.
+      for (let stageIndex = 0; stageIndex < reactData.formRec.stages.length; stageIndex++) {
+        const stageDef = reactData.formRec.stages[stageIndex];
+        if (stageDef.on_complete_groups) {
+          const stageLabel = `stage #${stageIndex} "${stageDef.stage_name}" on_complete_groups`;
+          const stageStatus = groupValidation?.form_stageStatus[stageDef.stage_name];
+          const eligible = stageDef.stage_name === 'complete'
+            ? groupValidation?.current_formStage === 'complete'
+            : stageStatus?.visible_sections > 0 && stageStatus.errors_in_stage === 0;
+          if (!eligible) {
+            cl(`[on_complete_groups] Skipping ${stageLabel}: visible sections=${stageStatus?.visible_sections || 0}, validation errors=${stageStatus?.errors_in_stage || 0}, overall stage="${groupValidation?.current_formStage}"`);
+            continue;
+          }
+          const firstCompletion = !completedGroupStages.has(stageDef.stage_name);
+          cl(`[on_complete_groups] Evaluating ${stageLabel}: firstCompletion=${firstCompletion}; otherwise requires a referenced field change.`);
+          applyGroupInstructionsToDispositions(stageDef.on_complete_groups, stageLabel, firstCompletion);
+          completedGroupStages.add(stageDef.stage_name);
         }
       }
     }
@@ -4403,15 +4461,16 @@ export default ({ request = {}, onClose }) => {
       if (groupInstructions_onStageEntry) {
         const entryStageLabel = `stage #${this_stageIndex} "${reactData.formRec.stages[this_stageIndex].stage_name}" on_entry_groups`;
         cl(`[on_complete_groups] Applying ${entryStageLabel}:`);
-        applyGroupInstructionsToDispositions(groupInstructions_onStageEntry, entryStageLabel);
+        applyGroupInstructionsToDispositions(groupInstructions_onStageEntry, entryStageLabel,
+          !reactData.docRec?.document_id || reactData.current_formStage !== (reactData.docRec.form_stage || reactData.previous_formStage));
       }
       // lock the form?
       if (reactData.formRec.stages[this_stageIndex].on_entry_lock) { formLocked = true; }
     }
 
     // Split the resolved per-group dispositions into final add/remove lists - every group_id
-    // appears in exactly one (last-mention-wins already resolved any conflict), so call order
-    // between removeMember/addMember below no longer matters for correctness.
+    // appears in exactly one (last-mention-wins already resolved exact-ID conflicts).
+    // Subtree removals must finish before additions restore selected children and ancestors.
     const pendingGroupRemovals = [];
     const pendingGroupAdditions = [];
     for (const [group_id, disposition] of groupDispositions) {
@@ -4428,6 +4487,8 @@ export default ({ request = {}, onClose }) => {
 
     let response = { goodPut: true };
     let peopleUpdated = false;
+    // Reuse post-removal membership state; getPerson may return a pre-removal cached record.
+    const personGroups = new Map();
     // save any changes to peopleRec and sessionRec that were indicated to be
     // done with the fields in the form
     if (needsUpdate.peopleRec || reactData.newPerson) {
@@ -4449,14 +4510,24 @@ export default ({ request = {}, onClose }) => {
     // These run after the saveAs People put so addMember reads the freshest record.
     // addMember/removeMember handle hierarchy, PeopleGroups, and onAdd/onRemove rule firing.
     if (pendingGroupRemovals.length > 0) {
-      await removeMember(reactData.pertains_to, state.session.client_id, pendingGroupRemovals);
+      try {
+        await removeMember(reactData.pertains_to, state.session.client_id, pendingGroupRemovals, { includeDescendants: true, _personGroups: personGroups });
+      } catch (error) {
+        cl('Failed to remove form group memberships:', error);
+        const putError = `Unable to remove group memberships: ${error.message || error}`;
+        updateReactData({ saveInProcess: false, alert: { severity: 'error', title: 'Unable to save', message: putError } }, true);
+        return { goodPut: false, putError };
+      }
       cl(`[on_complete_groups] removeMember completed for ${reactData.pertains_to}: ${JSON.stringify(pendingGroupRemovals)}`);
     }
     if (pendingGroupAdditions.length > 0) {
-      await addMember(reactData.pertains_to, state.session.client_id, pendingGroupAdditions);
+      await addMember(reactData.pertains_to, state.session.client_id, pendingGroupAdditions, { _personGroups: personGroups });
       cl(`[on_complete_groups] addMember completed for ${reactData.pertains_to}: ${JSON.stringify(pendingGroupAdditions)}`);
     }
     if (peopleUpdated || pendingGroupRemovals.length > 0 || pendingGroupAdditions.length > 0) {
+      if (personGroups.has(reactData.pertains_to)) {
+        reactData.peopleRec[reactData.pertains_to].groups = personGroups.get(reactData.pertains_to);
+      }
       syncPersonToSessionCaches({
         state,
         dispatch,
@@ -4489,6 +4560,7 @@ export default ({ request = {}, onClose }) => {
       formLocked: formLocked !== undefined ? formLocked : (reactData.docRec?.formLocked || false),
       history: reactData.docRec?.history || [],
       form_stage: reactData.current_formStage,
+      group_completed_stages: [...completedGroupStages],
       // Persist print snapshot only during save cycle (never from print-only flows).
       print_snapshot: buildPrintSnapshotPayload()
     };
@@ -4573,10 +4645,20 @@ export default ({ request = {}, onClose }) => {
         if (!conditionMet) { continue; }
         // Use removeMember/addMember so hierarchy, PeopleGroups, and onAdd/onRemove rules all fire.
         if (rule.remove) {
-          await removeMember(reactData.pertains_to, state.session.client_id, [rule.remove].flat());
+          try {
+            await removeMember(reactData.pertains_to, state.session.client_id, [rule.remove].flat(), { includeDescendants: true, _personGroups: personGroups });
+          } catch (error) {
+            cl('Failed to remove final-save group memberships:', error);
+            const putError = `The document was saved, but group memberships could not be removed: ${error.message || error}`;
+            updateReactData({ saveInProcess: false, alert: { severity: 'error', title: 'Group update failed', message: putError } }, true);
+            return { goodPut: false, putError };
+          }
         }
         if (rule.add) {
-          await addMember(reactData.pertains_to, state.session.client_id, [rule.add].flat());
+          await addMember(reactData.pertains_to, state.session.client_id, [rule.add].flat(), { _personGroups: personGroups });
+        }
+        if (personGroups.has(reactData.pertains_to)) {
+          reactData.peopleRec[reactData.pertains_to].groups = personGroups.get(reactData.pertains_to);
         }
         syncPersonToSessionCaches({
           state,
@@ -5586,7 +5668,7 @@ export default ({ request = {}, onClose }) => {
     const containerStyle = {
       width: resolvedMinWidth,
       minWidth: clampRequestedWidthToContainer(MIN_FIELD_WIDTH_PX, MIN_FIELD_WIDTH_PX),
-      maxWidth: `${MAX_FIELD_WIDTH_VW}vw`,
+      maxWidth: 'calc(100% - 16px)',
       marginTop: '24px',
       marginLeft: '8px',
       marginRight: '8px',

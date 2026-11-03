@@ -38,6 +38,13 @@ entry to preview its target and params, or select it to populate the editable
 fields. Copying does not change title, color, or access. Function creation is
 master-only; the new card's `available_to` rules determine who can see it.
 
+## Responsive Form Prompts
+
+FormFillB treats configured prompt widths as preferred sizes, capped by the
+available container width (including field margins). Selection labels wrap
+within their prompt boxes on narrow screens; wider screens retain the requested
+size when space permits.
+
 ## Form Stage Locking
 
 FormBuilder's section padlock toggles `on_entry_lock` on the following stage,
