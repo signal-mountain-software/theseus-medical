@@ -3212,24 +3212,6 @@ export default ({ onClose, directForm }) => {
                                     {(kind === 'on_complete_groups') &&
                                         <React.Fragment>
                                             <Box>
-                                                <Typography style={AVATextStyle({ size: 0.8 })}>{'Add to these groups:'}</Typography>
-                                                <Box display='flex' flexDirection='row' flexWrap='wrap' style={{ gap: '4px', marginTop: '4px' }}>
-                                                    {(currentEdit.add || []).map((g) => (
-                                                        <Chip key={g} label={state.groups?.groupNames?.[g] || g} size='small' onDelete={() => patchEdit({ add: currentEdit.add.filter((x) => x !== g) })} />
-                                                    ))}
-                                                </Box>
-                                                <Button
-                                                    size='small'
-                                                    style={{ marginTop: '4px' }}
-                                                    onClick={() => updateReactData({
-                                                        showRuleGroupsSearch: 'add',
-                                                        selections: (currentEdit.add || []).map((g) => ({ group_id: g, group_name: state.groups?.groupNames?.[g] || g })),
-                                                    }, true)}
-                                                >
-                                                    {'+ Add Group'}
-                                                </Button>
-                                            </Box>
-                                            <Box>
                                                 <Typography style={AVATextStyle({ size: 0.8 })}>{'Remove from these groups:'}</Typography>
                                                 <Box display='flex' flexDirection='row' flexWrap='wrap' style={{ gap: '4px', marginTop: '4px' }}>
                                                     {(currentEdit.remove || []).map((g) => (
@@ -3265,6 +3247,24 @@ export default ({ onClose, directForm }) => {
                                                         </Button>
                                                     }
                                                 </Box>
+                                            </Box>
+                                            <Box>
+                                                <Typography style={AVATextStyle({ size: 0.8 })}>{'Add to these groups:'}</Typography>
+                                                <Box display='flex' flexDirection='row' flexWrap='wrap' style={{ gap: '4px', marginTop: '4px' }}>
+                                                    {(currentEdit.add || []).map((g) => (
+                                                        <Chip key={g} label={state.groups?.groupNames?.[g] || g} size='small' onDelete={() => patchEdit({ add: currentEdit.add.filter((x) => x !== g) })} />
+                                                    ))}
+                                                </Box>
+                                                <Button
+                                                    size='small'
+                                                    style={{ marginTop: '4px' }}
+                                                    onClick={() => updateReactData({
+                                                        showRuleGroupsSearch: 'add',
+                                                        selections: (currentEdit.add || []).map((g) => ({ group_id: g, group_name: state.groups?.groupNames?.[g] || g })),
+                                                    }, true)}
+                                                >
+                                                    {'+ Add Group'}
+                                                </Button>
                                             </Box>
                                         </React.Fragment>
                                     }

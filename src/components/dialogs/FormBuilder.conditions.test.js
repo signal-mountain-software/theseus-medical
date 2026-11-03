@@ -402,6 +402,10 @@ it.each([
   fireEvent.click(await screen.findByTitle(new RegExp(iconTitle)));
   const kindLabel = label[0].toUpperCase() + label.slice(1);
   const dialog = within(screen.getByText(`${scope === 'form' ? 'Form Complete: ' : ''}${kindLabel} Rule`).closest('[role="dialog"]'));
+  if (label === 'groups') {
+    expect(dialog.getByText('Remove from these groups:').compareDocumentPosition(dialog.getByText('Add to these groups:')))
+      .toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  }
   fireEvent.click(dialog.getByLabelText('Delete completion rule'));
   expect(putDb).not.toHaveBeenCalled();
   fireEvent.click(screen.getByText('Keep rule'));
