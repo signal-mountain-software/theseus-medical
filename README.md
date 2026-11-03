@@ -113,6 +113,18 @@ type. URL and login-preauthorization entry points retain their existing
 verification requirements, and authorization must name the supplied
 `account_type`. An absent or null prop preserves the existing selection flow.
 
+## Login Account-Creation Authorization
+
+LoginModuleV2 always opens the authorization-code step for new accounts.
+When `client_style.preAuth.require_pre_auth` is truthy, a code must be entered
+manually, and the instructions name the client to contact for help.
+When that setting is missing or falsy, the user can enter a code or tap **Skip**
+beside **Continue**. Skip validates `client_style.preAuth.default_code` within
+the current client's PreAuthorization records and passes the matched code to
+QuickAdd through the existing `login_preauth` flow. It does not create an
+account without a valid code. Missing or unrecognized defaults show a warning
+and leave the user at the prompt to enter a valid code.
+
 ## Available Scripts
 
 In the project directory, you can run:
