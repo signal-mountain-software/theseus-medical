@@ -13,6 +13,7 @@ const GATED_SECTIONS = [
   { key: 'checkout', label: 'Check-in/Check-out History' },
   { key: 'documents', label: 'Archived Documents' },
   { key: 'forms', label: 'Forms & Documents' },
+  { key: 'current', label: 'Current Forms' },
   { key: 'activities', label: 'Events & Participation' },
   { key: 'task_manager', label: 'Daily Activities & Tasks' },
 ];
@@ -30,8 +31,8 @@ export default ({ currentValues, updateField }) => {
         {'Profile Section Visibility'}
       </Typography>
       <Typography style={AVATextStyle({ size: 0.8, margin: { bottom: 1 } })}>
-        {'Master accounts always see every section, and Admin accounts always see Password & Tech Stuff. '
-          + 'Toggle the switches below to control whether other staff can see each section on a person\u2019s profile.'}
+        {'Toggle the switches below to control profile section visibility, including for master accounts. '
+          + 'Other access restrictions still apply. An explicit sectionList supplied when opening a profile takes precedence.'}
       </Typography>
       {GATED_SECTIONS.map(({ key, label }) => {
         // a gate that has never been set defaults to visible

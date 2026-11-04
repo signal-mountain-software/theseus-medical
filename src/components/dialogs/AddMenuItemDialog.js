@@ -4,6 +4,7 @@ import useSession from '../../hooks/useSession';
 import { recordExists, cl, dbClient, deepCopy, s3 } from '../../util/AVAUtilities';
 import { AVATextStyle, AVAclasses } from '../../util/AVAStyles';
 import QuickSearch from '../sections/QuickSearch';
+import MenuFunctionFields, { parseMenuFunctionCall } from './MenuFunctionFields';
 
 import {
   Box, Typography, Dialog, Button, TextField, FormControlLabel, IconButton,
@@ -266,6 +267,8 @@ const initialDialogState = () => ({
   saving: false,
   targets: [],
   phone: '',
+  functionTarget: '',
+  functionParamsText: '{}',
   availableTo: [],
   color: null,
   accessReviewed: false,
@@ -298,6 +301,7 @@ export default ({ open, client_id, parentMenuId, onClose }) => {
   const { state } = useSession();
   const AVAClass = AVAclasses();
   const is_support = !!(state.user?.account_class && ['master', 'support', 'admin'].includes(state.user.account_class));
+  const isMaster = state.user?.account_class === 'master';
 
   const uploadInputRef = React.useRef(null);
   const [dlg, setDlg] = React.useState(initialDialogState);
@@ -410,6 +414,17 @@ export default ({ open, client_id, parentMenuId, onClose }) => {
     if (!titleText) {
       updateDlg({ alert: { severity: 'warning', title: 'Missing title', message: 'Please provide a title for the new card.' } });
       return;
+    }
+    let functionCall;
+    if (itemType === 'function') {
+      try {
+        functionCall = parseMenuFunctionCall({
+          accountClass: state.user?.account_class, target: dlg.functionTarget, paramsText: dlg.functionParamsText,
+        });
+      } catch (error) {
+        updateDlg({ alert: { severity: 'warning', title: 'Invalid Function', message: error.message } });
+        return;
+      }
     }
     if ((itemType === 'link') && (linkSource === 'url') && !urlText) {
       updateDlg({ alert: { severity: 'warning', title: 'Missing URL', message: 'Please provide a URL when the card type is Link.' } });
@@ -546,6 +561,7 @@ export default ({ open, client_id, parentMenuId, onClose }) => {
     else if (itemType === 'message_target') {
       newMenuRec.call = { target: 'MessageForm', params: { options: { newMessage: true, recipients: deepCopy(messageTargets) } } };
     }
+    else if (itemType === 'function') { newMenuRec.call = functionCall; }
     else {
       newMenuRec.children = ['add_item_instructions'];
       if (Object.prototype.hasOwnProperty.call(parentRec.Item, 'allow_add')) {
@@ -553,19 +569,23 @@ export default ({ open, client_id, parentMenuId, onClose }) => {
       }
     }
 
-    await dbClient.put({ TableName: 'MenuV3', Item: newMenuRec }).promise()
-      .catch(error => { cl({ 'AddMenuItemDialog: error creating new MenuV3 record': error }); });
-
     const updatedChildren = [...(parentRec.Item.children || [])];
     if (!updatedChildren.includes(newMenuId)) { updatedChildren.unshift(newMenuId); }
 
-    await dbClient.update({
-      TableName: 'MenuV3',
-      Key: { client_id, menu_id: parentMenuId },
-      UpdateExpression: 'set #c = :c',
-      ExpressionAttributeNames: { '#c': 'children' },
-      ExpressionAttributeValues: { ':c': updatedChildren }
-    }).promise().catch(error => { cl({ 'AddMenuItemDialog: error updating parent MenuV3 children': error }); });
+    try {
+      await dbClient.put({ TableName: 'MenuV3', Item: newMenuRec }).promise();
+      await dbClient.update({
+        TableName: 'MenuV3',
+        Key: { client_id, menu_id: parentMenuId },
+        UpdateExpression: 'set #c = :c',
+        ExpressionAttributeNames: { '#c': 'children' },
+        ExpressionAttributeValues: { ':c': updatedChildren }
+      }).promise();
+    } catch (error) {
+      cl({ 'AddMenuItemDialog: error saving menu item': error });
+      updateDlg({ saving: false, alert: { severity: 'error', title: 'Unable to add card', message: 'Unable to finish adding the menu item. Please try again.' } });
+      return;
+    }
 
     onClose({ success: true, parentMenuId, createdItems: [{ menu_id: newMenuId, menuItemRec: newMenuRec }] });
   }
@@ -611,8 +631,22 @@ export default ({ open, client_id, parentMenuId, onClose }) => {
                 <FormControlLabel value='link' control={<Radio color='primary' />} label='Document, Video, Picture, or Link' />
                 <FormControlLabel value='message_target' control={<Radio color='primary' />} label='One-tap Message' />
                 <FormControlLabel value='phone_dial' control={<Radio color='primary' />} label='Auto-dial Phone' />
+                {isMaster && <FormControlLabel value='function' control={<Radio color='primary' />} label='Function' />}
               </RadioGroup>
             </React.Fragment>
+          }
+
+          {isMaster && dlg.type === 'function' &&
+            <MenuFunctionFields
+              client_id={client_id}
+              target={dlg.functionTarget}
+              paramsText={dlg.functionParamsText}
+              disabled={dlg.saving}
+              onChange={patch => updateDlg({
+                ...(patch.target !== undefined ? { functionTarget: patch.target } : {}),
+                ...(patch.paramsText !== undefined ? { functionParamsText: patch.paramsText } : {}),
+              })}
+            />
           }
 
           {(dlg.type === 'link' || !is_support) &&

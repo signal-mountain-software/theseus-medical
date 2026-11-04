@@ -145,6 +145,18 @@ export default ({ options, defaults, onClose, onAbort }) => {
       }
     }
 
+    // Display depth depends on included ancestors, not omitted levels in the client's tree.
+    // Level 1 is reserved for the Public/Private headers; group roots start at level 2.
+    const displayedAncestors = [];
+    for (const entry of groups.adminHierarchy || []) {
+      while (displayedAncestors.length && displayedAncestors[displayedAncestors.length - 1].level >= entry.level) {
+        displayedAncestors.pop();
+      }
+      if (response[entry.id]?.group_type !== 'admin') { continue; }
+      response[entry.id].level = displayedAncestors.length + 2;
+      displayedAncestors.push(entry);
+    }
+
     return response;
   };
 

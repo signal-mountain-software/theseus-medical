@@ -18,7 +18,7 @@ import LockOpenIcon from '@material-ui/icons/LockOpen';
 
 import FormFillB from '../forms/FormFillB';
 
-export default ({ currentValues, reactData, updateReactData }) => {
+export default ({ currentValues, reactData, updateReactData, currentOnly = false }) => {
 
   const { state } = useSession();
   const isMounted = React.useRef(false);
@@ -133,7 +133,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
             for (let this_form of this_group.forms) {
               let view_only = false;
               const formRec = await getForm(this_form);
-              if (formRec) {
+              if (formRec && (!currentOnly || formRec.current === true)) {
                 if (formRec?.options?.restricted_access && !reactData.administrative_account) {
                   if (formRec.options.restricted_access === 'admin_only') {
                     continue;
@@ -186,6 +186,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
             if (!myFormListObj.hasOwnProperty(this_doc.form_type)) {
               let view_only = false;
               const formRec = await getForm(this_doc.form_type);
+              if (currentOnly && formRec?.current !== true) { continue; }
               if (formRec?.options?.restricted_access && !reactData.administrative_account) {
                 if (formRec.options.restricted_access === 'admin_only') {
                   continue;

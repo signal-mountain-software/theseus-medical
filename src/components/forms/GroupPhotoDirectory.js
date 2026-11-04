@@ -33,6 +33,13 @@ const INITIAL_RENDER_COUNT = 30;
 const RENDER_BATCH_COUNT = 30;
 const PERSON_LOAD_BATCH_SIZE = 20;
 
+// Mirrors the card renderer's name logic - records without a displayable name render no card.
+const hasDisplayName = (person) => {
+    const first = (person?.name?.first || '').trim();
+    const last = ((person?.name?.last || '').split('~')[0] || '').trim();
+    return Boolean(`${first} ${last}`.trim() || (person?.display_name || '').trim());
+};
+
 const useStyles = makeStyles(theme => ({
     wrapper: {
         width: '100%',
@@ -153,6 +160,13 @@ const useStyles = makeStyles(theme => ({
     },
     contactIcon: {
         fontSize: '0.85rem',
+    },
+    moreCard: {
+        minHeight: 98,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderStyle: 'dashed',
+        opacity: 0.7,
     },
     emptyState: {
         padding: theme.spacing(4),
@@ -435,6 +449,10 @@ export default function GroupPhotoDirectory({ options = {}, onReset = () => { } 
             .filter((personRec) => personRec?.directory_option !== 'exclude');
 
         records.sort((a, b) => {
+            // Records still loading (no name yet) sort last so they don't consume early render slots.
+            const aNamed = hasDisplayName(a);
+            const bNamed = hasDisplayName(b);
+            if (aNamed !== bNamed) { return aNamed ? -1 : 1; }
             const aLast = (a?.name?.last || '').toLowerCase();
             const bLast = (b?.name?.last || '').toLowerCase();
             if (aLast < bLast) { return -1; }
@@ -497,9 +515,34 @@ export default function GroupPhotoDirectory({ options = {}, onReset = () => { } 
         setRenderCount(INITIAL_RENDER_COUNT);
     }, [searchValue, directoryPeople.length]);
 
+    const displayablePeople = React.useMemo(() => {
+        return directoryPeople.filter(hasDisplayName);
+    }, [directoryPeople]);
+
     const visiblePeople = React.useMemo(() => {
-        return directoryPeople.slice(0, renderCount);
-    }, [directoryPeople, renderCount]);
+        return displayablePeople.slice(0, renderCount);
+    }, [displayablePeople, renderCount]);
+
+    const hasMorePeople = renderCount < displayablePeople.length;
+
+    const showNextBatch = React.useCallback(() => {
+        setRenderCount((previousCount) => Math.min(previousCount + RENDER_BATCH_COUNT, displayablePeople.length));
+    }, [displayablePeople.length]);
+
+    // Keep adding batches until the grid overflows its scroller - otherwise a short first batch
+    // leaves no scrollbar and therefore no scroll event to load the rest.
+    React.useEffect(() => {
+        if (showSuperSize || !hasMorePeople) { return undefined; }
+        const fillIfShort = () => {
+            const scroller = gridScrollerRef.current;
+            if (scroller && (scroller.scrollHeight <= scroller.clientHeight + 120)) {
+                showNextBatch();
+            }
+        };
+        fillIfShort();
+        window.addEventListener('resize', fillIfShort);
+        return () => window.removeEventListener('resize', fillIfShort);
+    }, [visiblePeople.length, hasMorePeople, showSuperSize, showNextBatch]);
 
     function makeContactLines(pMessaging, pPreference, pPerson) {
         let returnArray = [];
@@ -574,10 +617,8 @@ export default function GroupPhotoDirectory({ options = {}, onReset = () => { } 
     function handleGridScroll(event) {
         const target = event.currentTarget;
         const nearBottom = (target.scrollTop + target.clientHeight) >= (target.scrollHeight - 120);
-        if (nearBottom && (renderCount < directoryPeople.length)) {
-            setRenderCount((previousCount) => {
-                return Math.min(previousCount + RENDER_BATCH_COUNT, directoryPeople.length);
-            });
+        if (nearBottom && hasMorePeople) {
+            showNextBatch();
         }
     }
 
@@ -881,6 +922,18 @@ export default function GroupPhotoDirectory({ options = {}, onReset = () => { } 
                                 </Grid>
                             );
                         })}
+                        {hasMorePeople &&
+                            <Grid item key='__more__' xs={12} sm={6} md={6} lg={4} xl={3}>
+                                <Paper
+                                    variant='outlined'
+                                    className={`${classes.card} ${classes.moreCard}`}
+                                    title={`${displayablePeople.length - renderCount} more - scroll or tap to show`}
+                                    onClick={showNextBatch}
+                                >
+                                    <Typography className={classes.cardName}>{'more...'}</Typography>
+                                </Paper>
+                            </Grid>
+                        }
                     </Grid>
                 </Box>
             }

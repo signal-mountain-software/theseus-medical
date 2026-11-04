@@ -1565,19 +1565,39 @@ export async function removeMember(pPerson, pClient, pGroup, options = {}) {
   /*
     pGroup may be a single group_id string or an array of group_ids.
     removeMember will:
-      1. Remove the specified leaf groups from People.groups[] and mark their PeopleGroups rows inactive.
+      1. Remove the specified groups from People.groups[] and mark their PeopleGroups rows inactive.
+         options.includeDescendants === true also removes active memberships throughout their
+         subtrees, using a fresh, fully paginated hierarchy. Direct read/write failures reject
+         the call in this mode; legacy callers retain their existing behavior.
       2. For each removed group's ancestor chain, check if the person still has any OTHER active leaf
          membership that still reaches that ancestor. If not, also remove the ancestor row (orphan cleanup).
-      3. Fire onRemove group_rules for each leaf group removed (unless options._ruleDepth > 0).
+      3. Fire onRemove group_rules for each removed group, including orphaned ancestors.
   */
-  const leafGroupsToRemove = makeArray(pGroup);
+  const requestedGroups = makeArray(pGroup);
+  const includeDescendants = options.includeDescendants === true;
 
   // Ensure hierarchy cache is available
-  if (!cachedHierarchy) {
+  let hierarchy;
+  if (includeDescendants) {
+    const groups = await queryAllPages({
+      TableName: 'Groups',
+      KeyConditionExpression: 'client_id = :c',
+      ExpressionAttributeValues: { ':c': pClient }
+    }, { throwOnError: true });
+    const parent_of = {};
+    const adminHierarchy = groups.map(g => {
+      const parent = g.belongs_to || '__TOP__';
+      if (!parent_of[parent]) { parent_of[parent] = []; }
+      parent_of[parent].push(g.group_id);
+      return { id: g.group_id, belongs_to: parent };
+    });
+    hierarchy = { adminHierarchy, parent_of };
+    cachedHierarchy = hierarchy;
+  } else if (!cachedHierarchy) {
     const h = await getGroupHierarchy(pClient, { sort: true });
     cachedHierarchy = { adminHierarchy: h.hierarchy, parent_of: h.parent_of };
   }
-  const { adminHierarchy, parent_of } = cachedHierarchy;
+  const { adminHierarchy, parent_of } = hierarchy || cachedHierarchy;
 
   // Build parent lookup: child_id → parent_id
   const parentOf = {};
@@ -1585,8 +1605,10 @@ export async function removeMember(pPerson, pClient, pGroup, options = {}) {
 
   const ancestorChain = (groupId) => {
     const chain = [];
+    const visited = new Set([groupId]);
     let current = parentOf[groupId];
-    while (current) {
+    while (current && !visited.has(current)) {
+      visited.add(current);
       chain.push(current);
       current = parentOf[current];
     }
@@ -1594,13 +1616,18 @@ export async function removeMember(pPerson, pClient, pGroup, options = {}) {
   };
 
   // Load the person's current active groups from PeopleGroups (authoritative source via person-index GSI)
-  const pgResult = await dbClient.query({
+  const membershipQuery = {
     TableName: 'PeopleGroups',
     IndexName: 'person-index',
     KeyConditionExpression: 'person_id = :p AND membership_status = :s',
     ExpressionAttributeValues: { ':p': pPerson, ':s': 'active' }
-  }).promise().catch(error => { clt({ 'Bad query on PeopleGroups in removeMember': error }); });
-  const currentGroups = (pgResult?.Items || [])
+  };
+  const pgRows = includeDescendants
+    ? await queryAllPages(membershipQuery, { throwOnError: true })
+    : (await dbClient.query(membershipQuery).promise().catch(error => {
+      clt({ 'Bad query on PeopleGroups in removeMember': error });
+    }))?.Items || [];
+  const currentGroups = pgRows
     .filter(row => row.client_group_id.startsWith(pClient + '~'))
     .map(row => row.client_group_id.split('~')[1]);
 
@@ -1609,30 +1636,36 @@ export async function removeMember(pPerson, pClient, pGroup, options = {}) {
   const personRecs = options._personRecs || new Map();
   const effectiveGroups = personGroups.has(pPerson) ? personGroups.get(pPerson) : currentGroups;
 
+  const groupsToRemove = new Set(requestedGroups);
+  if (includeDescendants) {
+    const subtree = new Set(requestedGroups);
+    for (const group of subtree) {
+      for (const child of parent_of[group] || []) { subtree.add(child); }
+    }
+    for (const group of effectiveGroups) {
+      if (subtree.has(group)) { groupsToRemove.add(group); }
+    }
+  }
+
   // The remaining leaf groups after this removal (used for orphan ancestor check)
   const remainingLeafs = effectiveGroups.filter(g => {
     // A group is a leaf if it has no children
-    return !parent_of?.[g]?.length && !leafGroupsToRemove.includes(g);
+    return !parent_of?.[g]?.length && !groupsToRemove.has(g);
   });
 
   // For each ancestor of each removed group, check if any remaining leaf still reaches it
   const orphanedAncestors = new Set();
-  for (const g of leafGroupsToRemove) {
+  for (const g of groupsToRemove) {
     for (const ancestor of ancestorChain(g)) {
       // Does any remaining leaf group have this ancestor in its own chain?
       const stillReached = remainingLeafs.some(remainingLeaf => {
-        let current = parentOf[remainingLeaf];
-        while (current) {
-          if (current === ancestor) { return true; }
-          current = parentOf[current];
-        }
-        return false;
+        return ancestorChain(remainingLeaf).includes(ancestor);
       });
       if (!stillReached) { orphanedAncestors.add(ancestor); }
     }
   }
 
-  const allGroupsToRemove = [...leafGroupsToRemove, ...orphanedAncestors];
+  const allGroupsToRemove = [...new Set([...groupsToRemove, ...orphanedAncestors])];
 
   // Single People update: remove all affected groups in one write
   // ConditionExpression guards against accidentally creating a stub People record for a non-existent person
@@ -1651,6 +1684,7 @@ export async function removeMember(pPerson, pClient, pGroup, options = {}) {
       if (error?.code !== 'ConditionalCheckFailedException') {
         clt({ 'Bad update to People in removeMember - caught error is': error });
       }
+      if (includeDescendants) { throw error; }
     });
 
   // Keep cascade context current so subsequent rule-triggered calls for this person are accurate
@@ -1667,7 +1701,10 @@ export async function removeMember(pPerson, pClient, pGroup, options = {}) {
         TableName: 'PeopleGroups'
       })
       .promise()
-      .catch(error => { clt({ 'Bad update to PeopleGroups in removeMember - caught error is': error }); });
+      .catch(error => {
+        clt({ 'Bad update to PeopleGroups in removeMember - caught error is': error });
+        if (includeDescendants) { throw error; }
+      });
   }
 
   // Fire onRemove rules for each group removed — leaf + orphaned ancestors.
@@ -1758,12 +1795,16 @@ export async function findOrphanedGroupMembers(client_id, group_id) {
 }
 
 /** Runs a DynamoDB query to completion, following LastEvaluatedKey across pages. */
-async function queryAllPages(params) {
+async function queryAllPages(params, { throwOnError = false } = {}) {
   let items = [];
   let lastKey;
   do {
     const p = lastKey ? { ...params, ExclusiveStartKey: lastKey } : params;
-    const result = await dbClient.query(p).promise().catch(error => { clt({ 'Bad query in queryAllPages': error }); return null; });
+    const result = await dbClient.query(p).promise().catch(error => {
+      clt({ 'Bad query in queryAllPages': error });
+      if (throwOnError) { throw error; }
+      return null;
+    });
     items = items.concat(result?.Items || []);
     lastKey = result?.LastEvaluatedKey;
   } while (lastKey);

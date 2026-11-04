@@ -61,6 +61,8 @@ const LoginModuleV2 = ({
   const [pendingMatchClientId, setPendingMatchClientId] = React.useState(null);
   const [showCreateAccount, setShowCreateAccount] = React.useState(false);
   const [preauthInput, setPreauthInput] = React.useState('');
+  const [preauthChecking, setPreauthChecking] = React.useState(false);
+  const [preauthWarning, setPreauthWarning] = React.useState('');
   const [quickAddOptions, setQuickAddOptions] = React.useState(null);
   const [clientStyle, setClientStyle] = React.useState(branding.clientStyle || state?.session?.client_style || {});
   const bootStateRef = React.useRef({});
@@ -385,10 +387,10 @@ const LoginModuleV2 = ({
     };
   };
 
-  // Duplicate/rogue accounts have been a real problem, so account creation always requires a valid
-  // pre-authorization code - no client-id shortcut bypasses this anymore.
+  // Account creation still requires a valid code; optional pre-auth can use the client's default.
   const handleCreateAccount = () => {
     setAlertMessage('');
+    setPreauthWarning('');
     setPreauthInput('');
     setStep('preauth');
   };
@@ -400,39 +402,62 @@ const LoginModuleV2 = ({
       || resolvedPerson?.client_id || resolvedSession?.client_id
       || pendingMatchClientId
       || savedClientCookie?.client || savedClientCookie?.client_id
+      || state?.session?.client_id
       || null;
   };
 
-  const handleSubmitPreAuthCode = async () => {
-    const normalizedCode = String(preauthInput || '').trim();
+  const preauthRequired = !!clientStyle?.preAuth?.require_pre_auth;
+  const handleSubmitPreAuthCode = async (useDefault = false) => {
+    if (loading || preauthChecking || (useDefault && preauthRequired)) { return; }
+    setPreauthWarning('');
+    setAlertMessage('');
+    const normalizedCode = String((useDefault ? clientStyle?.preAuth?.default_code : preauthInput) || '').trim();
+    if (useDefault && !normalizedCode) {
+      setPreauthWarning(`No default authorization code is configured for ${clientName}. Please enter a valid authorization code to continue.`);
+      return;
+    }
     if (!normalizedCode) return;
     const knownClientId = getKnownClientIdForPreAuth();
+    if (useDefault && !knownClientId) {
+      setPreauthWarning('Unable to determine the client for the default authorization code. Please enter a valid authorization code to continue.');
+      return;
+    }
     const matchesCode = (item) => String(item?.preauth_key || '').toLowerCase() === normalizedCode.toLowerCase();
 
     let matchedRec = null;
-    if (knownClientId) {
-      const recs = await dbClient
-        .query({
-          KeyConditionExpression: 'client_id = :c',
-          ExpressionAttributeValues: { ':c': knownClientId },
-          TableName: 'PreAuthorization'
-        })
-        .promise()
-        .catch(() => null);
-      matchedRec = (recs?.Items || []).find(matchesCode) || null;
-    }
-    else {
-      // No established client context yet - scan for the first record anywhere with this code, and
-      // adopt its client_id, since pre-auth codes are otherwise scoped by client.
-      const scanRecs = await dbClient
-        .scan({ TableName: 'PreAuthorization' })
-        .promise()
-        .catch(() => null);
-      matchedRec = (scanRecs?.Items || []).find(matchesCode) || null;
+    setPreauthChecking(true);
+    try {
+      let lastKey;
+      do {
+        const request = {
+          TableName: 'PreAuthorization',
+          ...(lastKey ? { ExclusiveStartKey: lastKey } : {}),
+        };
+        // Without client context, manual codes retain the existing cross-client lookup.
+        const response = knownClientId
+          ? await dbClient.query({
+            ...request,
+            KeyConditionExpression: 'client_id = :c',
+            ExpressionAttributeValues: { ':c': knownClientId },
+          }).promise()
+          : await dbClient.scan(request).promise();
+        matchedRec = (response?.Items || []).find(matchesCode) || null;
+        lastKey = response?.LastEvaluatedKey;
+      } while (!matchedRec && lastKey);
+    } catch (error) {
+      console.error('Unable to validate authorization code:', error);
+      setAlertMessage('Unable to check the authorization code right now. Please try again.');
+      return;
+    } finally {
+      setPreauthChecking(false);
     }
 
     if (!matchedRec) {
-      setAlertMessage('That authorization code was not recognized. Please check it and try again.');
+      if (useDefault) {
+        setPreauthWarning(`The default authorization code for ${clientName} is not valid. Please enter a valid authorization code to continue.`);
+      } else {
+        setAlertMessage('That authorization code was not recognized. Please check it and try again.');
+      }
       return;
     }
 
@@ -1719,14 +1744,16 @@ const LoginModuleV2 = ({
                   Enter your authorization code
                 </Typography>
                 <Typography style={{ marginLeft: 8, marginBottom: 8 }}>
-                  New accounts require an authorization code. Please check with your provider if you don't have one.
+                  {preauthRequired
+                    ? `New accounts require an authorization code. Please check with ${clientName} if you don't have one.`
+                    : `Authorization Codes are optional.  If you have one, you may enter it here, or you can tap Skip to continue without a code.`}
                 </Typography>
                 <TextField
                   label='Authorization code'
                   value={preauthInput}
                   onChange={(event) => setPreauthInput(event.target.value)}
                   onKeyDown={(event) => {
-                    if (event.key === 'Enter' && preauthInput && !loading) {
+                    if (event.key === 'Enter' && preauthInput && !loading && !preauthChecking) {
                       event.preventDefault();
                       handleSubmitPreAuthCode();
                     }
@@ -1734,7 +1761,7 @@ const LoginModuleV2 = ({
                   fullWidth
                   variant='outlined'
                   margin='normal'
-                  disabled={loading}
+                  disabled={loading || preauthChecking}
                   autoFocus
                 />
                 {alertMessage && (
@@ -1744,6 +1771,7 @@ const LoginModuleV2 = ({
                     </Alert>
                   </Box>
                 )}
+                {preauthWarning && <Box mt={1}><Alert severity='warning'>{preauthWarning}</Alert></Box>}
                 <Box mt={2} display='flex' justifyContent='space-between' width='100%'>
                   <Button
                     className={AVAClass.AVAButton}
@@ -1751,20 +1779,33 @@ const LoginModuleV2 = ({
                     onClick={() => {
                       setPreauthInput('');
                       setAlertMessage('');
+                      setPreauthWarning('');
                       setStep('user');
                     }}
-                    disabled={loading}
+                    disabled={loading || preauthChecking}
                   >
                     Back
                   </Button>
-                  <Button
-                    className={AVAClass.AVAButton}
-                    variant='outlined'
-                    onClick={handleSubmitPreAuthCode}
-                    disabled={loading || !preauthInput}
-                  >
-                    Continue
-                  </Button>
+                  <Box display='flex' style={{ gap: '8px' }}>
+                    {!preauthRequired &&
+                      <Button
+                        className={AVAClass.AVAButton}
+                        variant='outlined'
+                        onClick={() => handleSubmitPreAuthCode(true)}
+                        disabled={loading || preauthChecking}
+                      >
+                        Skip
+                      </Button>
+                    }
+                    <Button
+                      className={AVAClass.AVAButton}
+                      variant='outlined'
+                      onClick={() => handleSubmitPreAuthCode()}
+                      disabled={loading || preauthChecking || !preauthInput.trim()}
+                    >
+                      Continue
+                    </Button>
+                  </Box>
                 </Box>
               </Box>
             </Box>

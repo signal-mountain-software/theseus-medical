@@ -30,6 +30,7 @@ import { useIdleTimer } from 'react-idle-timer';
 import useSession from '../../hooks/useSession';
 import SwitchPatientDialog from '../dialogs/SwitchPatientDialog';
 import PeopleMaintenance from '../dialogs/PeopleMaintenance';
+import MenuFunctionFields, { parseMenuFunctionCall } from '../dialogs/MenuFunctionFields';
 
 import Box from '@material-ui/core/Box';
 import Avatar from '@material-ui/core/Avatar';
@@ -254,6 +255,8 @@ export default ({ start_at }) => {
     addMenuDialogLevel: null,
     addMenuDialogParent: null,
     addMenuDialogType: null,
+    addMenuDialogFunctionTarget: '',
+    addMenuDialogFunctionParamsText: '{}',
     addMenuDialogLinkSource: 'url',
     addMenuDialogTitle: '',
     addMenuDialogUrl: '',
@@ -277,6 +280,9 @@ export default ({ start_at }) => {
     editDescriptionLong: '',
     editDescriptionShorthand: '',
     editDescriptionAvailableTo: [],
+    editDescriptionAllowAdd: [],
+    editDescriptionAllowAddDenyMode: false,
+    editDescriptionAccessField: 'editDescriptionAvailableTo',
     editDescriptionColor: null,
     editDescriptionParent: null,
     editDescriptionCanDelete: false,
@@ -2551,11 +2557,13 @@ export default ({ start_at }) => {
     let saveWorked = true;
     const colorExpr = editDescriptionColor ? ', color = :c' : ' REMOVE color';
     const urlExpr = editDescriptionHasUrl ? ', #u = :u' : '';
+    const allowAddExpr = editDescriptionItemType === 'menu' ? ', allow_add = :allowAdd' : '';
     const exprValues = {
       ':d': { short: editDescriptionShort, long: editDescriptionLong, shorthand: editDescriptionShorthand },
       ':a': editDescriptionAvailableTo || []
     };
     if (editDescriptionColor) { exprValues[':c'] = editDescriptionColor; }
+    if (editDescriptionItemType === 'menu') { exprValues[':allowAdd'] = reactData.editDescriptionAllowAdd || []; }
     if (editDescriptionHasUrl) { exprValues[':u'] = editDescriptionUrl || ''; }
     await dbClient
       .update({
@@ -2564,7 +2572,7 @@ export default ({ start_at }) => {
           client_id: state.session.client_id,
           menu_id: editDescriptionMenuId
         },
-        UpdateExpression: `set #d = :d, available_to = :a${colorExpr}${urlExpr}`,
+        UpdateExpression: `set #d = :d, available_to = :a${allowAddExpr}${colorExpr}${urlExpr}`,
         ExpressionAttributeNames: { '#d': 'description', ...(editDescriptionHasUrl ? { '#u': 'url' } : {}) },
         ExpressionAttributeValues: exprValues
       })
@@ -2610,6 +2618,9 @@ export default ({ start_at }) => {
             cell.menuItemRec.description = { short: editDescriptionShort, long: editDescriptionLong, shorthand: editDescriptionShorthand };
             cell.menuItemRec.available_to = editDescriptionAvailableTo || [];
             cell.available_to = editDescriptionAvailableTo || [];
+            if (editDescriptionItemType === 'menu') {
+              cell.menuItemRec.allow_add = reactData.editDescriptionAllowAdd || [];
+            }
             if (editDescriptionColor) { cell.menuItemRec.color = editDescriptionColor; }
             else { delete cell.menuItemRec.color; }
             if (editDescriptionHasUrl) { cell.menuItemRec.url = editDescriptionUrl || ''; }
@@ -2631,6 +2642,9 @@ export default ({ start_at }) => {
       editDescriptionLong: '',
       editDescriptionShorthand: '',
       editDescriptionAvailableTo: [],
+      editDescriptionAllowAdd: [],
+      editDescriptionAllowAddDenyMode: false,
+      editDescriptionAccessField: 'editDescriptionAvailableTo',
       editDescriptionColor: null,
       editDescriptionParent: null,
       editDescriptionCanDelete: false,
@@ -3282,6 +3296,20 @@ export default ({ start_at }) => {
       return;
     }
 
+    let functionCall;
+    if (itemType === 'function') {
+      try {
+        functionCall = parseMenuFunctionCall({
+          accountClass: state.user?.account_class,
+          target: reactData.addMenuDialogFunctionTarget,
+          paramsText: reactData.addMenuDialogFunctionParamsText,
+        });
+      } catch (error) {
+        updateReactData({ alert: { severity: 'warning', title: 'Invalid Function', message: error.message } }, true);
+        return;
+      }
+    }
+
     if ((itemType === 'link') && (linkSource === 'url') && !urlText) {
       updateReactData({
         alert: {
@@ -3460,6 +3488,8 @@ export default ({ start_at }) => {
         addMenuDialogLevel: null,
         addMenuDialogParent: null,
         addMenuDialogType: null,
+        addMenuDialogFunctionTarget: '',
+        addMenuDialogFunctionParamsText: '{}',
         addMenuDialogLinkSource: 'url',
         addMenuDialogTitle: '',
         addMenuDialogUrl: '',
@@ -3539,6 +3569,9 @@ export default ({ start_at }) => {
       };
       newMenuRec.call = callObj;
     }
+    else if (itemType === 'function') {
+      newMenuRec.call = functionCall;
+    }
     else {
       newMenuRec.children = ['add_item_instructions'];
       if (Object.prototype.hasOwnProperty.call(parentRec.Item, 'allow_add')) {
@@ -3546,23 +3579,14 @@ export default ({ start_at }) => {
       }
     }
 
-    await dbClient
-      .put({
-        TableName: 'MenuV3',
-        Item: newMenuRec
-      })
-      .promise()
-      .catch((error) => {
-        cl({ 'Error creating new MenuV3 record': error });
-      });
-
     const updatedChildren = [...(parentRec.Item.children || [])];
     if (!updatedChildren.includes(newMenuId)) {
       updatedChildren.unshift(newMenuId);
     }
 
-    await dbClient
-      .update({
+    try {
+      await dbClient.put({ TableName: 'MenuV3', Item: newMenuRec }).promise();
+      await dbClient.update({
         TableName: 'MenuV3',
         Key: {
           client_id: state.session.client_id,
@@ -3575,11 +3599,15 @@ export default ({ start_at }) => {
         ExpressionAttributeValues: {
           ':c': updatedChildren
         }
-      })
-      .promise()
-      .catch((error) => {
-        cl({ 'Error updating parent MenuV3 children': error });
-      });
+      }).promise();
+    } catch (error) {
+      cl({ 'Error saving menu item': error });
+      updateReactData({
+        addMenuDialogSaving: false,
+        alert: { severity: 'error', title: 'Unable to add card', message: 'Unable to finish adding the menu item. Please try again.' }
+      }, true);
+      return;
+    }
 
     const updatedMenuHierarchy = [...reactData.menu_hierarchy];
     const targetLevel = reactData.addMenuDialogLevel;
@@ -3600,6 +3628,8 @@ export default ({ start_at }) => {
       addMenuDialogLevel: null,
       addMenuDialogParent: null,
       addMenuDialogType: null,
+      addMenuDialogFunctionTarget: '',
+      addMenuDialogFunctionParamsText: '{}',
       addMenuDialogLinkSource: 'url',
       addMenuDialogTitle: '',
       addMenuDialogUrl: '',
@@ -5060,10 +5090,11 @@ export default ({ start_at }) => {
                   description_long: this_item.description?.long || '',
                   description_shorthand: this_item.description?.shorthand || '',
                   available_to: deepCopy(this_item.available_to || []),
+                  allow_add: deepCopy(this_item.allow_add || []),
                   color: this_item.color || null,
                   parent: this_cell.parent || null,
                   can_delete: canDeleteThisCard,
-                  item_type: (this_item.call?.target === 'MessageForm' && Array.isArray(this_item.call?.params?.options?.recipients) && this_item.call.params.options.recipients.length > 0) ? 'message_target' : null,
+                  item_type: this_item.menu_itemType === 'menu' ? 'menu' : ((this_item.call?.target === 'MessageForm' && Array.isArray(this_item.call?.params?.options?.recipients) && this_item.call.params.options.recipients.length > 0) ? 'message_target' : this_item.menu_itemType),
                   targets: deepCopy(this_item.call?.params?.options?.recipients || []),
                   url: (typeof this_item.url === 'string') ? this_item.url : '',
                 }
@@ -5305,6 +5336,8 @@ export default ({ start_at }) => {
                     addMenuDialogLevel: level_index + 1,
                     addMenuDialogParent: this_item.menu_id,
                     addMenuDialogType: null,
+                    addMenuDialogFunctionTarget: '',
+                    addMenuDialogFunctionParamsText: '{}',
                     addMenuDialogLinkSource: 'url',
                     addMenuDialogTitle: '',
                     addMenuDialogUrl: '',
@@ -5954,6 +5987,8 @@ export default ({ start_at }) => {
                           addMenuDialogLevel: level_index,
                           addMenuDialogParent: parentMenuId,
                           addMenuDialogType: null,
+                          addMenuDialogFunctionTarget: '',
+                          addMenuDialogFunctionParamsText: '{}',
                           addMenuDialogLinkSource: 'url',
                           addMenuDialogTitle: '',
                           addMenuDialogUrl: '',
@@ -6393,7 +6428,9 @@ export default ({ start_at }) => {
               reactData={reactData}
               updateReactData={updateReactData}
               options={{
-                title: 'Who Can See This Menu Item?',
+                title: reactData.editDescriptionAccessField === 'editDescriptionAllowAdd'
+                  ? `Who can add items under "${reactData.editDescriptionShort}"?`
+                  : 'Who Can See This Menu Item?',
                 withGroups: true,
                 showGroupList: true,
                 showAll: true,
@@ -6407,9 +6444,10 @@ export default ({ start_at }) => {
               }}
               onClose={(selections) => {
                 const cleanSelections = ([selections].flat()).filter(s => s && (s.person_id || s.group_id));
-                const isDenyMode = !!reactData.editDescriptionDenyMode;
+                const accessField = reactData.editDescriptionAccessField;
+                const isDenyMode = !!reactData[accessField === 'editDescriptionAllowAdd' ? 'editDescriptionAllowAddDenyMode' : 'editDescriptionDenyMode'];
                 const knownStarValues = new Set(['*all', '*admin', '*support']);
-                const keptRules = (reactData.editDescriptionAvailableTo || []).filter(r =>
+                const keptRules = (reactData[accessField] || []).filter(r =>
                   isDenyMode
                     ? !r.startsWith('!')
                     : r.startsWith('!') || (!r.startsWith('group:') && !r.startsWith('person:') && !knownStarValues.has(r))
@@ -6426,7 +6464,7 @@ export default ({ start_at }) => {
                   : [...keptRules, ...mappedSelections];
                 updateReactData({
                   showAccessToSearch: false,
-                  editDescriptionAvailableTo: newAvailableTo,
+                  [accessField]: newAvailableTo,
                   selections: cleanSelections,
                 }, true);
               }}
@@ -6665,6 +6703,8 @@ export default ({ start_at }) => {
                     addMenuDialogLevel: null,
                     addMenuDialogParent: null,
                     addMenuDialogType: null,
+                    addMenuDialogFunctionTarget: '',
+                    addMenuDialogFunctionParamsText: '{}',
                     addMenuDialogLinkSource: 'url',
                     addMenuDialogTitle: '',
                     addMenuDialogUrl: '',
@@ -6730,8 +6770,24 @@ export default ({ start_at }) => {
                       <FormControlLabel value='link' control={<Radio color='primary' />} label='Document, Video, Picture, or Link' />
                       <FormControlLabel value='message_target' control={<Radio color='primary' />} label='One-tap Message' />
                       <FormControlLabel value='phone_dial' control={<Radio color='primary' />} label='Auto-dial Phone' />
+                      {state.user?.account_class === 'master' &&
+                        <FormControlLabel value='function' control={<Radio color='primary' />} label='Function' />
+                      }
                     </RadioGroup>
                   </React.Fragment>
+                }
+
+                {state.user?.account_class === 'master' && reactData.addMenuDialogType === 'function' &&
+                  <MenuFunctionFields
+                    client_id={state.session.client_id}
+                    target={reactData.addMenuDialogFunctionTarget}
+                    paramsText={reactData.addMenuDialogFunctionParamsText}
+                    disabled={reactData.addMenuDialogSaving}
+                    onChange={patch => updateReactData({
+                      ...(patch.target !== undefined ? { addMenuDialogFunctionTarget: patch.target } : {}),
+                      ...(patch.paramsText !== undefined ? { addMenuDialogFunctionParamsText: patch.paramsText } : {}),
+                    }, true)}
+                  />
                 }
 
                 {(reactData.addMenuDialogType === 'link' || !reactData.is_support) &&
@@ -7016,6 +7072,8 @@ export default ({ start_at }) => {
                           addMenuDialogLevel: null,
                           addMenuDialogParent: null,
                           addMenuDialogType: null,
+                          addMenuDialogFunctionTarget: '',
+                          addMenuDialogFunctionParamsText: '{}',
                           addMenuDialogLinkSource: 'url',
                           addMenuDialogTitle: '',
                           addMenuDialogUrl: '',
@@ -7095,6 +7153,10 @@ export default ({ start_at }) => {
                       editDescriptionLong: edit.description_long,
                       editDescriptionShorthand: edit.description_shorthand || '',
                       editDescriptionAvailableTo: deepCopy(edit.available_to || []),
+                      editDescriptionAllowAdd: deepCopy(edit.allow_add || []),
+                      editDescriptionDenyMode: false,
+                      editDescriptionAllowAddDenyMode: false,
+                      editDescriptionAccessField: 'editDescriptionAvailableTo',
                       editDescriptionColor: edit.color || null,
                       editDescriptionParent: edit.parent || null,
                       editDescriptionCanDelete: !!edit.can_delete,
@@ -7280,11 +7342,12 @@ export default ({ start_at }) => {
           open={reactData.editDescriptionDialog}
           onClose={() => updateReactData({ editDescriptionDialog: false, editDescriptionDenyMode: false, editDescriptionColor: null, editDescriptionItemType: null, editDescriptionTargets: [], editDescriptionUrl: '', editDescriptionHasUrl: false }, true)}
           classes={{ paper: classes.clientPopUp }}
+          PaperProps={{ style: { overflow: 'hidden' } }}
           fullWidth
         >
-          <Box p={3} display='flex' flexDirection='column'>
+          <Box p={3} display='flex' flexDirection='column' style={{ minHeight: 0, overflow: 'hidden' }}>
             {/* Title row: "Edit Menu Item" + optional trash-can delete button */}
-            <Box display='flex' alignItems='center' justifyContent='space-between' style={{ marginBottom: 16 }}>
+            <Box display='flex' alignItems='center' justifyContent='space-between' style={{ marginBottom: 8, flexShrink: 0 }}>
               <Typography variant='h6'>Edit Menu Item</Typography>
               {reactData.editDescriptionCanDelete &&
                 <IconButton
@@ -7307,6 +7370,8 @@ export default ({ start_at }) => {
                 </IconButton>
               }
             </Box>
+            {/* Scrollable body between the fixed title row and the fixed button row */}
+            <Box style={{ flex: '1 1 auto', minHeight: 0, overflowY: 'auto', overflowX: 'hidden', paddingTop: 8, paddingRight: 4 }}>
             <TextField
               label='Short description'
               value={reactData.editDescriptionShort}
@@ -7376,21 +7441,39 @@ export default ({ start_at }) => {
                 </Button>
               }
             </Box>
-            <Box display='flex' alignItems='flex-start' justifyContent='space-between' style={{ marginBottom: 16 }}>
-              <Box display='flex' flexDirection='column'>
-                <Typography variant='caption' style={{ color: 'gray' }}>{'Who can see this item'}</Typography>
+            {[
+              { field: 'editDescriptionAvailableTo', denyField: 'editDescriptionDenyMode', prompt: 'Who can see this item' },
+              ...(reactData.editDescriptionItemType === 'menu'
+                ? [{ field: 'editDescriptionAllowAdd', denyField: 'editDescriptionAllowAddDenyMode', prompt: `Who can add items under "${reactData.editDescriptionShort}"?` }]
+                : [])
+            ].map(({ field, denyField, prompt }) => (
+            <Box
+              key={field}
+              display='flex'
+              alignItems='flex-start'
+              justifyContent='space-between'
+              style={{
+                marginBottom: 12,
+                padding: '10px 14px',
+                borderRadius: 16,
+                backgroundColor: '#f5f7fa',
+                border: '1px solid #e0e4ea'
+              }}
+            >
+              <Box display='flex' flexDirection='column' style={{ minWidth: 0, paddingRight: 8 }}>
+                <Typography variant='caption' style={{ color: 'gray' }}>{prompt}</Typography>
                 <Typography variant='body2'>
-                  {describeAvailableTo(reactData.editDescriptionAvailableTo)}
+                  {describeAvailableTo(reactData[field])}
                 </Typography>
               </Box>
               <Box display='flex' flexDirection='column' alignItems='flex-end'>
                 <Button
                   className={AVAClass.AVAButton}
-                  style={{ marginLeft: 8, backgroundColor: reactData.editDescriptionDenyMode ? '#ffcdd2' : '#c8e6c9' }}
+                  style={{ marginLeft: 8, backgroundColor: reactData[denyField] ? '#ffcdd2' : '#c8e6c9' }}
                   size='small'
                   onClick={() => {
-                    const isDenyMode = !!reactData.editDescriptionDenyMode;
-                    const existingSelections = (reactData.editDescriptionAvailableTo || [])
+                    const isDenyMode = !!reactData[denyField];
+                    const existingSelections = (reactData[field] || [])
                       .filter(r => isDenyMode ? r.startsWith('!') : (r.startsWith('group:') || r.startsWith('person:') || r.startsWith('*')))
                       .map(r => {
                         const raw = isDenyMode ? r.slice(1) : r;
@@ -7403,6 +7486,7 @@ export default ({ start_at }) => {
                       });
                     updateReactData({
                       showAccessToSearch: true,
+                      editDescriptionAccessField: field,
                       groupInfo: null,
                       linkedPersonFilter: { raw: '', lower: '' },
                       selections: existingSelections,
@@ -7410,21 +7494,22 @@ export default ({ start_at }) => {
                     }, true);
                   }}
                 >
-                  {reactData.editDescriptionDenyMode ? 'Edit Exclusions' : 'Edit Access'}
+                  {reactData[denyField] ? 'Edit Exclusions' : 'Edit Access'}
                 </Button>
                 <FormControlLabel
-                  style={{ marginTop: 4 }}
+                  style={{ marginTop: 4, marginRight: 0 }}
                   control={
                     <Switch
                       size='small'
-                      checked={!!reactData.editDescriptionDenyMode}
-                      onChange={(e) => updateReactData({ editDescriptionDenyMode: e.target.checked }, true)}
+                      checked={!!reactData[denyField]}
+                      onChange={(e) => updateReactData({ [denyField]: e.target.checked }, true)}
                     />
                   }
-                  label={<Typography variant='caption'>{reactData.editDescriptionDenyMode ? 'Deny access' : 'Allow access'}</Typography>}
+                  label={<Typography variant='caption'>{reactData[denyField] ? 'Deny access' : 'Allow access'}</Typography>}
                 />
               </Box>
             </Box>
+            ))}
             {reactData.editDescriptionItemType === 'message_target' &&
               <Box display='flex' alignItems='center' justifyContent='space-between' style={{ marginBottom: 16 }}>
                 <Box display='flex' flexDirection='column'>
@@ -7448,8 +7533,9 @@ export default ({ start_at }) => {
                 </Button>
               </Box>
             }
+            </Box>
             {/* Bottom row: Move to End + Cancel (left), Save (right) */}
-            <Box display='flex' justifyContent='space-between' alignItems='center'>
+            <Box display='flex' justifyContent='space-between' alignItems='center' style={{ flexShrink: 0, paddingTop: 12 }}>
               <Box display='flex' style={{ gap: 8 }}>
                 {reactData.editDescriptionParent &&
                   <Button

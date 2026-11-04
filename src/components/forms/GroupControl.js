@@ -4,12 +4,13 @@ import useSession from '../../hooks/useSession';
 
 import { createNewGroup, getGroupMembers, getMemberList, addMember, removeMember, getRole, getPersonGroups } from '../../util/AVAGroups';
 import { dbClient, isObject, listFromArray, cl, recordExists } from '../../util/AVAUtilities';
-import { occurrenceData } from '../../util/AVACalendars';
+import { occurrenceData, writeSlot } from '../../util/AVACalendars';
 import { makeDate } from '../../util/AVADateTime';
 import PeopleMaintenance from '../dialogs/PeopleMaintenance';
 import GroupMaintenance from '../dialogs/GroupMaintenance';
 import AVAConfirm from './AVAConfirm';
 import { getPerson } from '../../util/AVAPeople';
+import { readSpreadsheetFile, parseCreatePeopleRows, matchExistingPerson, loadClientIdStyle, createPersonAccount } from '../../util/AVAPeopleImport';
 
 import { Snackbar, Paper, TextField, Box, Dialog, DialogActions, Button, Typography, Checkbox, FormControlLabel, LinearProgress, Tooltip, Avatar, Menu, MenuList, MenuItem, CircularProgress } from '@material-ui/core';
 import { Alert, AlertTitle } from '@material-ui/lab/';
@@ -49,6 +50,8 @@ import SaveIcon from '@material-ui/icons/Save';
 import BuildIcon from '@material-ui/icons/Build';
 import OpenWithIcon from '@material-ui/icons/OpenWith';
 import EventIcon from '@material-ui/icons/Event';
+import EditIcon from '@material-ui/icons/Edit';
+import CloudUploadIcon from '@material-ui/icons/CloudUpload';
 
 import { SET_GROUPS, SET_ACCESSLIST } from '../../contexts/Session/actions';
 
@@ -151,6 +154,49 @@ const useStyles = makeStyles(theme => ({
 // Persists expand/collapse state across GroupControl mounts within the same session
 let _savedLevelHidden = null;
 
+// Picks the slot a person dropped onto an event occurrence should occupy: participant-style
+// sign-ups use the person_id as the slot name; time/seats sign-ups take the first open slot
+// (same rule as CalendarForm's handleAllocateSlot). occ is AVACalendars.occurrenceData output.
+export const chooseEventSlot = (occ, person_id) => {
+  const slots = occ?.slots || {};
+  const isParticipantSignup = !['time', 'seats'].includes(occ?.signup_type);
+  if (isParticipantSignup) {
+    if (slots[person_id]?.owner) { return { alreadyAttending: true }; }
+    return { slot: person_id };
+  }
+  const alreadyIn = Object.keys(slots).find((s) => (s === person_id && slots[s]?.owner) || (slots[s]?.owner === person_id));
+  if (alreadyIn) { return { alreadyAttending: true }; }
+  const openSlot = Object.keys(slots).sort().find((s) => !slots[s]?.owner);
+  if (!openSlot) { return { full: true }; }
+  return { slot: openSlot };
+};
+
+export const getGroupDisplayDepths = (groups) => {
+  const depths = {};
+  const ancestors = [];
+  let headerType = null;
+  for (const [id, group] of Object.entries(groups)) {
+    if (group.group_type === 'header') {
+      depths[id] = 0;
+      ancestors.length = 0;
+      headerType = id === '__PUBLIC_GROUPS__' ? 'public' : id === '__PRIVATE_GROUPS__' ? 'private' : null;
+    }
+    else if (group.group_type === 'admin') {
+      headerType = null;
+      while (ancestors.length && ancestors[ancestors.length - 1] >= group.level) {
+        ancestors.pop();
+      }
+      depths[id] = ancestors.length;
+      ancestors.push(group.level);
+    }
+    else {
+      ancestors.length = 0;
+      depths[id] = group.group_type === headerType ? 1 : 0;
+    }
+  }
+  return depths;
+};
+
 export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedGroup = null, preSelectedFunction = null, directoryGroupIds = null, onCancel = () => { }, onRefresh = () => { }, renderAsDialog = true }) => {
 
   const isMounted = React.useRef(false);
@@ -161,6 +207,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
   const personRowShiftAnchorRef = React.useRef(null); // last ctrl/shift-clicked row index, for shift-range selection
   const familyDataCacheRef = React.useRef({});
   const skipExtrasRecomputeRef = React.useRef(false); // set by a ctrl-click intersection that already narrowed extraPeople itself
+  const uploadInputRef = React.useRef(null);
   const [selectedFieldDropTargetIndex, setSelectedFieldDropTargetIndex] = React.useState(null);
   const [selectedFieldDragIndex, setSelectedFieldDragIndex] = React.useState(null);
   // Admin Mode "Add group" inline input - which row it's open for, its uncommitted text,
@@ -189,6 +236,12 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
   // eventsExpanded holds node keys: event_id, `${event_id}::upcoming`, `${event_id}::past`, or the
   // '__EVENTS_ROOT__' sentinel for the top-level "Events" header itself.
   const [eventsExpanded, setEventsExpanded] = React.useState(() => new Set());
+  // Person-onto-event-occurrence drag/drop: pending confirmation and the row currently hovered.
+  const [eventDropConfirm, setEventDropConfirm] = React.useState(null);
+  const [eventDropHoverKey, setEventDropHoverKey] = React.useState(null);
+  const [eventRemoveConfirm, setEventRemoveConfirm] = React.useState(null);
+  // Upload: matched/unmatched rows awaiting the "create new accounts?" decision.
+  const [uploadCreateConfirm, setUploadCreateConfirm] = React.useState(null);
 
   const { dispatch, state } = useSession();
 
@@ -282,7 +335,11 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
     eventsLoading: false,
     selectedEventOccurrence: false,
     selectedEventAttendees: [],
-    loadingEventAttendees: false
+    loadingEventAttendees: false,
+
+    // Upload section (left list) - spreadsheet-sourced people list, session-only.
+    uploadedList: false, // { fileName, members, issues, summary: { rows, matched, created, skipped } }
+    uploadBusy: false // progress text while reading/matching/creating
   });
   const [refreshTrigger, setRefreshTrigger] = React.useState(false);
   const updateReactData = (newData, force = false) => {
@@ -502,6 +559,44 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
   const handleDragStart = (ev, id) => {
     ev.dataTransfer.effectAllowed = 'move';
     ev.dataTransfer.setData('id', JSON.stringify(id));
+    if ((id?.bulk?.length > 1) && ev.dataTransfer.setDragImage) {
+      setBulkDragImage(ev, id.bulk);
+    }
+  };
+
+  // The browser's default drag ghost is just the row the drag started on; for a multi-name drag,
+  // build a temporary stacked "card" listing the names and use that as the ghost instead.
+  const setBulkDragImage = (ev, people) => {
+    const names = people.map((p) => (p.display_name || `${(p.name?.first || '').trim()} ${(p.name?.last || '').trim()}`.trim() || p.person_id));
+    const maxShown = 6;
+    const ghost = document.createElement('div');
+    Object.assign(ghost.style, {
+      position: 'absolute', top: '-1000px', left: '-1000px',
+      padding: '8px 12px', borderRadius: '10px',
+      background: '#ffffff', border: '1px solid #90caf9',
+      boxShadow: '4px 4px 0 #bbdefb, 8px 8px 0 #e3f2fd',
+      fontFamily: getComputedStyle(ev.currentTarget || document.body).fontFamily,
+      fontSize: '14px', color: '#0d47a1', lineHeight: '1.4', whiteSpace: 'nowrap', zIndex: 9999
+    });
+    const header = document.createElement('div');
+    header.style.fontWeight = 'bold';
+    header.textContent = `${names.length} people`;
+    ghost.appendChild(header);
+    for (const name of names.slice(0, maxShown)) {
+      const line = document.createElement('div');
+      line.textContent = name;
+      ghost.appendChild(line);
+    }
+    if (names.length > maxShown) {
+      const more = document.createElement('div');
+      more.style.fontStyle = 'italic';
+      more.textContent = `+ ${names.length - maxShown} more`;
+      ghost.appendChild(more);
+    }
+    document.body.appendChild(ghost);
+    ev.dataTransfer.setDragImage(ghost, 12, 12);
+    // The browser snapshots the ghost synchronously, so it can be removed right away.
+    setTimeout(() => { ghost.remove(); }, 0);
   };
 
   const handleDragOver = (ev) => {
@@ -540,7 +635,30 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
       // Move is not allowed when the source group is the top-level ("ALL") group —
       // removing it would leave the person with no group assignment at all.
       const topLevelGroup = state.groups.adminHierarchy.find(h => h.level === 0);
-      const sourceIsTopLevel = topLevelGroup && (draggedFrom.personGroup === topLevelGroup.id);
+      // No single source group (multi-group selection or uploaded spreadsheet list) - there's
+      // nothing to move them out of, so only Copy is offered.
+      const sourceIsTopLevel = !draggedFrom.personGroup || (topLevelGroup && (draggedFrom.personGroup === topLevelGroup.id));
+      const bulkPeople = draggedBulk(draggedFrom);
+      if (bulkPeople) {
+        updateReactData({
+          alert: {
+            severity: 'info',
+            title: 'Move or Copy?',
+            message: `${bulkPeople.length} people → ${groupsManagedObject[droppedOn.group_id].group_name}`,
+            action: [
+              {
+                text: 'Copy',
+                function: async () => { await startBulkGroupOp('copy', draggedFrom, droppedOn); }
+              },
+              ...(sourceIsTopLevel ? [] : [{
+                text: 'Move',
+                function: async () => { await startBulkGroupOp('move', draggedFrom, droppedOn); }
+              }])
+            ]
+          }
+        }, true);
+        return;
+      }
       updateReactData({
         alert: {
           severity: 'info',
@@ -568,14 +686,36 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
     };
   };
 
-  const executeDrop_copyPerson = async (draggedFrom, droppedOn) => {
+  // Shared accessList cache patch. Takes a {person_id: groups} map so a bulk operation can apply
+  // every person's change in ONE dispatch (separate dispatches would each start from the same
+  // stale state.accessList and overwrite one another).
+  const applyAccessListGroupUpdates = (groupsByPerson) => {
+    const cid = pSession.client_id;
+    if (!state.accessList?.[cid]?.list || (Object.keys(groupsByPerson).length === 0)) { return; }
+    dispatch({
+      type: SET_ACCESSLIST,
+      payload: {
+        ...state.accessList,
+        [cid]: {
+          ...state.accessList[cid],
+          list: state.accessList[cid].list.map(p =>
+            groupsByPerson[p.person_id] ? { ...p, groups: groupsByPerson[p.person_id] } : p
+          )
+        }
+      }
+    });
+  };
+
+  // quiet: used by the checkbox bulk path - the caller has already run the authorization/inactive
+  // checks once for the whole batch, and will do the accessList patch, roster refresh and alert itself.
+  const executeDrop_copyPerson = async (draggedFrom, droppedOn, { quiet = false } = {}) => {
     const person_id = draggedFrom.personObj.person_id;
     const firstName = (draggedFrom.personObj.name?.first || '').trim() || 'This person';
 
-    if (!(await guardGroupAuthorization(droppedOn.group_id))) { return; }
+    if (!quiet && !(await guardGroupAuthorization(droppedOn.group_id))) { return; }
 
     // guard against dropping on an inactive group
-    if (state.session.group_assignments?.inactive?.includes(droppedOn.group_id)) {
+    if (!quiet && state.session.group_assignments?.inactive?.includes(droppedOn.group_id)) {
       updateReactData({
         alert: {
           severity: 'error',
@@ -600,6 +740,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
     const addedGroups = addGroupList.filter(g => !currentGroups.includes(g));
 
     if (addedGroups.length === 0) {
+      if (quiet) { return { status: 'already', person_id, firstName }; }
       updateReactData({
         alert: {
           severity: 'info',
@@ -615,24 +756,12 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
 
     // update in-memory accessList cache (immutable)
     const updatedGroupList = [...currentGroups, ...addedGroups];
-    if (state.accessList?.[pSession.client_id]?.list) {
-      dispatch({
-        type: SET_ACCESSLIST,
-        payload: {
-          ...state.accessList,
-          [pSession.client_id]: {
-            ...state.accessList[pSession.client_id],
-            list: state.accessList[pSession.client_id].list.map(p =>
-              p.person_id === person_id ? { ...p, groups: updatedGroupList } : p
-            )
-          }
-        }
-      });
-    }
     // if this change affects the current patient, update memberGroupIds
     if (person_id === state.session.patient_id && newGroupList) {
       dispatch({ type: SET_GROUPS, payload: Object.assign({}, state.groups, { memberGroupIds: newGroupList }) });
     }
+    if (quiet) { return { status: 'added', person_id, firstName, groups: updatedGroupList }; }
+    applyAccessListGroupUpdates({ [person_id]: updatedGroupList });
 
     // Refresh the current group's member list live (catches rule-triggered side effects)
     let reactUpdObj = {
@@ -653,14 +782,14 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
     updateReactData(reactUpdObj, true);
   };
 
-  const executeMovePerson = async (draggedFrom, droppedOn, extraGroupIds = []) => {
+  const executeMovePerson = async (draggedFrom, droppedOn, extraGroupIds = [], { quiet = false } = {}) => {
     const person_id = draggedFrom.personObj.person_id;
     const firstName = (draggedFrom.personObj.name?.first || '').trim() || 'This person';
 
-    if (!(await guardGroupAuthorization(draggedFrom.personGroup))) { return; }
-    if (!(await guardGroupAuthorization(droppedOn.group_id))) { return; }
+    if (!quiet && !(await guardGroupAuthorization(draggedFrom.personGroup))) { return; }
+    if (!quiet && !(await guardGroupAuthorization(droppedOn.group_id))) { return; }
 
-    if (state.session.group_assignments?.inactive?.includes(droppedOn.group_id)) {
+    if (!quiet && state.session.group_assignments?.inactive?.includes(droppedOn.group_id)) {
       updateReactData({
         alert: {
           severity: 'error',
@@ -695,25 +824,12 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
       .filter(g => !freshGroupList.includes(g))
       .map(g => groupsManagedObject[g]?.group_name || g);
 
-    // update accessList cache (immutable)
-    if (state.accessList?.[pSession.client_id]?.list) {
-      dispatch({
-        type: SET_ACCESSLIST,
-        payload: {
-          ...state.accessList,
-          [pSession.client_id]: {
-            ...state.accessList[pSession.client_id],
-            list: state.accessList[pSession.client_id].list.map(p =>
-              p.person_id === person_id ? { ...p, groups: freshGroupList } : p
-            )
-          }
-        }
-      });
-    }
     // if this change affects the current patient, update memberGroupIds
     if (person_id === state.session.patient_id && newGroupList) {
       dispatch({ type: SET_GROUPS, payload: Object.assign({}, state.groups, { memberGroupIds: newGroupList }) });
     }
+    if (quiet) { return { status: 'moved', person_id, firstName, groups: freshGroupList }; }
+    applyAccessListGroupUpdates({ [person_id]: freshGroupList });
 
     // Refresh the current group's member list live (catches rule-triggered side effects)
     const freshMembersAfterMove = reactData.selectedGroup_id
@@ -733,11 +849,11 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
     }, true);
   };
 
-  const executeRemovePersonFromGroup = async (draggedFrom, extraGroupIds = []) => {
+  const executeRemovePersonFromGroup = async (draggedFrom, extraGroupIds = [], { quiet = false } = {}) => {
     const person_id = draggedFrom.personObj.person_id;
     const firstName = (draggedFrom.personObj.name?.first || '').trim() || 'This person';
 
-    if (!(await guardGroupAuthorization(draggedFrom.personGroup))) { return; }
+    if (!quiet && !(await guardGroupAuthorization(draggedFrom.personGroup))) { return; }
 
     // get current groups from accessList for alert diff
     const accessEntry = state.accessList?.[pSession.client_id]?.list?.find(p => p.person_id === person_id);
@@ -754,25 +870,12 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
       .filter(g => !freshGroupList.includes(g))
       .map(g => groupsManagedObject[g]?.group_name || g);
 
-    // update accessList cache (immutable)
-    if (state.accessList?.[pSession.client_id]?.list) {
-      dispatch({
-        type: SET_ACCESSLIST,
-        payload: {
-          ...state.accessList,
-          [pSession.client_id]: {
-            ...state.accessList[pSession.client_id],
-            list: state.accessList[pSession.client_id].list.map(p =>
-              p.person_id === person_id ? { ...p, groups: freshGroupList } : p
-            )
-          }
-        }
-      });
-    }
     // if this change affects the current patient, update memberGroupIds
     if (person_id === state.session.patient_id && newGroupList) {
       dispatch({ type: SET_GROUPS, payload: Object.assign({}, state.groups, { memberGroupIds: newGroupList }) });
     }
+    if (quiet) { return { status: 'removed', person_id, firstName, groups: freshGroupList }; }
+    applyAccessListGroupUpdates({ [person_id]: freshGroupList });
 
     // Refresh the current group's member list live (catches rule-triggered side effects)
     const freshMembersAfterRemove = reactData.selectedGroup_id
@@ -787,6 +890,90 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
       } : false,
       selectedGroupMembers: reactData.selectedGroup_id ? freshMembersAfterRemove : reactData.selectedGroupMembers,
       sortedGroupMembers: sortGroupMembers(reactData.selectedGroup_id ? freshMembersAfterRemove : reactData.selectedGroupMembers),
+      showFamilyMembers: false,
+      showPrimaryCaregivers: false,
+    }, true);
+  };
+
+  // ---- Checkbox bulk path (Admin Mode): a drag started on a checked name carries every checked
+  // name as draggedFrom.bulk, and each drop target runs the single-person action per person. ----
+  const draggedBulk = (draggedFrom) => ((draggedFrom?.bulk?.length > 1) ? draggedFrom.bulk : null);
+  const personDisplayName = (personObj) => `${(personObj?.name?.first || '').trim()} ${(personObj?.name?.last || '').trim()}`.trim() || personObj?.person_id;
+
+  // Batch-level checks (authorization, inactive target, sub-group conflicts) run once up front,
+  // then either run the batch or hand off to the removeConflict confirm.
+  const startBulkGroupOp = async (action, draggedFrom, droppedOn) => {
+    const people = draggedBulk(draggedFrom);
+    if ((action !== 'copy') && !(await guardGroupAuthorization(draggedFrom.personGroup))) { return; }
+    if (action !== 'remove') {
+      if (!(await guardGroupAuthorization(droppedOn.group_id))) { return; }
+      if (state.session.group_assignments?.inactive?.includes(droppedOn.group_id)) {
+        updateReactData({
+          alert: {
+            severity: 'error',
+            title: 'Dropped on Inactive Group',
+            message: `You dragged ${people.length} people to a group of Inactive accounts.  For safety, we don't allow that here.`
+          }
+        }, true);
+        return;
+      }
+    }
+    if (action !== 'copy') {
+      const conflictsByPerson = {};
+      const conflictLists = await Promise.all(people.map((p) => findActiveDescendantMemberships(p.person_id, draggedFrom.personGroup)));
+      people.forEach((p, i) => { if (conflictLists[i].length > 0) { conflictsByPerson[p.person_id] = conflictLists[i]; } });
+      if (Object.keys(conflictsByPerson).length > 0) {
+        setRemoveConflict({ bulk: true, draggedFrom, droppedOn, conflictsByPerson, action });
+        return;
+      }
+    }
+    await runBulkGroupOp(action, draggedFrom, droppedOn);
+  };
+
+  const runBulkGroupOp = async (action, draggedFrom, droppedOn, conflictsByPerson = {}) => {
+    const people = draggedBulk(draggedFrom);
+    const verb = { copy: 'Adding', move: 'Moving', remove: 'Removing' }[action];
+    updateReactData({ alert: { severity: 'info', title: 'Working...', message: `${verb} ${people.length} people...` } }, true);
+    const results = [];
+    for (const personObj of people) {
+      const single = { personGroup: draggedFrom.personGroup, personObj, intent: 'person' };
+      const extra = conflictsByPerson[personObj.person_id] || [];
+      let result;
+      try {
+        if (action === 'copy') { result = await executeDrop_copyPerson(single, droppedOn, { quiet: true }); }
+        else if (action === 'move') { result = await executeMovePerson(single, droppedOn, extra, { quiet: true }); }
+        else { result = await executeRemovePersonFromGroup(single, extra, { quiet: true }); }
+      }
+      catch (error) {
+        cl(`Bulk ${action} failed for ${personObj.person_id}: ${error}`);
+      }
+      results.push(result || { status: 'failed', person_id: personObj.person_id, firstName: personDisplayName(personObj) });
+    }
+    const groupsByPerson = {};
+    results.forEach((r) => { if (r.groups) { groupsByPerson[r.person_id] = r.groups; } });
+    applyAccessListGroupUpdates(groupsByPerson);
+
+    const names = (status) => results.filter((r) => (r.status === status)).map((r) => r.firstName);
+    const sourceName = groupsManagedObject[draggedFrom.personGroup]?.group_name || 'this group';
+    const targetName = droppedOn ? (groupsManagedObject[droppedOn.group_id]?.group_name || droppedOn.group_id) : '';
+    const doneCount = names({ copy: 'added', move: 'moved', remove: 'removed' }[action]).length;
+    const lines = [`${doneCount} of ${people.length} ${action === 'copy' ? `added to ${targetName}` : action === 'move' ? `moved from ${sourceName} to ${targetName}` : `removed from ${sourceName}`}.`];
+    if (names('already').length > 0) { lines.push(`Already members: ${listFromArray(names('already'))}.`); }
+    if (names('failed').length > 0) { lines.push(`Failed: ${listFromArray(names('failed'))}.`); }
+
+    const freshMembers = reactData.selectedGroup_id
+      ? await selectMembers(reactData.selectedGroup_id, { live: true })
+      : reactData.selectedGroupMembers;
+    updateReactData({
+      updatesMade: true,
+      alert: {
+        severity: (names('failed').length > 0) ? 'warning' : 'success',
+        title: (names('failed').length > 0) ? 'Partially complete' : 'Success!',
+        message: lines.join('  ')
+      },
+      selectedGroupMembers: freshMembers,
+      sortedGroupMembers: sortGroupMembers(freshMembers),
+      selectedPersonRowIds: [],
       showFamilyMembers: false,
       showPrimaryCaregivers: false,
     }, true);
@@ -818,8 +1005,10 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
   // is applied - source is the selected group's members, OR (when an event occurrence is selected
   // instead) that occurrence's attendees. Directory/export/report actions should work off this
   // regardless of which right-side panel is active.
-  function getVisibleRawPeopleList() {
-    const rowSelection = reactData.selectedPersonRowIds || [];
+  // overrideIds: used by drag-to-Directory/Export, where the dropped ids must apply immediately
+  // (the matching selectedPersonRowIds update won't be visible in reactData until the next render).
+  function getVisibleRawPeopleList(overrideIds = null) {
+    const rowSelection = overrideIds || reactData.selectedPersonRowIds || [];
 
     if (reactData.selectedEventOccurrence) {
       const filtered = eventAttendeeDisplayRows.filter((a) => ((rowSelection.length === 0) || rowSelection.includes(a.person_id)));
@@ -852,8 +1041,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
     };
   }
 
-  async function openFieldPicker() {
-    const { ids: visibleMemberIds } = getVisibleRawPeopleList();
+  async function openFieldPicker(overrideIds = null) {
+    const { ids: visibleMemberIds } = getVisibleRawPeopleList(overrideIds);
 
     if (visibleMemberIds.length === 0) {
       updateReactData({
@@ -900,8 +1089,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
     }, true);
   }
 
-  function getVisiblePeopleForDirectory() {
-    const { ids: visibleMemberIds } = getVisibleRawPeopleList();
+  function getVisiblePeopleForDirectory(overrideIds = null) {
+    const { ids: visibleMemberIds } = getVisibleRawPeopleList(overrideIds);
 
     // When explicit group IDs were requested (directoryGroupIds), bypass the accessList.list
     // filter — return raw person_id strings so GroupPhotoDirectory fetches any missing records
@@ -912,7 +1101,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
 
     // Event attendees aren't guaranteed to be in the viewer's own accessList (e.g. cross-group
     // signups) — pass raw person_id strings and let GroupPhotoDirectory fetch missing records.
-    if (reactData.selectedEventOccurrence) {
+    // Same for an uploaded spreadsheet list (which may include accounts created moments ago).
+    if (reactData.selectedEventOccurrence || reactData.selectedGroupRec?.upload) {
       return visibleMemberIds;
     }
 
@@ -920,8 +1110,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
       .filter((personKey) => visibleMemberIds.includes(personKey.person_id));
   }
 
-  function openPhotoDirectory() {
-    const visiblePeople = getVisiblePeopleForDirectory();
+  function openPhotoDirectory(overrideIds = null) {
+    const visiblePeople = getVisiblePeopleForDirectory(overrideIds);
     if (visiblePeople.length === 0) {
       updateReactData({
         alert: {
@@ -1402,6 +1592,22 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
     let draggedFrom = JSON.parse(ev.dataTransfer.getData('id'));
     console.log(draggedFrom);
     if (draggedFrom.hasOwnProperty('personGroup')) {
+      if (!draggedFrom.personGroup) {
+        updateReactData({
+          alert: {
+            severity: 'info',
+            title: 'Nothing to remove from',
+            message: (reactData.selectedGroupRec?.upload
+              ? 'These names came from an uploaded spreadsheet, not a single group.'
+              : 'These names come from more than one group.') + '  Select a single group to remove people from it.'
+          }
+        }, true);
+        return;
+      }
+      if (draggedBulk(draggedFrom)) {
+        await startBulkGroupOp('remove', draggedFrom, null);
+        return;
+      }
       const conflictGroupIds = await findActiveDescendantMemberships(draggedFrom.personObj.person_id, draggedFrom.personGroup);
       if (conflictGroupIds.length > 0) {
         setRemoveConflict({ draggedFrom, conflictGroupIds, action: 'remove' });
@@ -1875,11 +2081,67 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
   // Directory/export should be enabled whenever anything real (base row or tier-2 extra) is
   // visible - tier-3 placeholder owner rows are context-only and don't count.
   const hasExportablePeople = personListDisplayRows.some((row) => !row.isPhantomOwner);
+  // Bold-only, matching how selected groups are shown on the left.
   const personRowSelectedStyle = (person_id) => (reactData.selectedPersonRowIds || []).includes(person_id) ? {
-    backgroundColor: reactData.isDarkMode ? '#0d47a1' : '#90caf9',
-    color: reactData.isDarkMode ? '#ffffff' : '#0d47a1',
     fontWeight: 'bold',
   } : {};
+
+  // Admin Mode checkboxes drive the same selectedPersonRowIds as ctrl/shift-click; shift-clicking a
+  // checkbox selects the range, same as shift-clicking a name.
+  const showPersonCheckboxes = !!(reactData.adminMode && canDragManage);
+  const renderPersonRowCheckbox = (person_id, rowIndex, displayRows) => (
+    <Checkbox
+      size='small'
+      color='primary'
+      checked={(reactData.selectedPersonRowIds || []).includes(person_id)}
+      style={{ padding: 0, marginRight: '8px', verticalAlign: 'middle' }}
+      inputProps={{ 'aria-label': `select_${person_id}` }}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (e.shiftKey) {
+          handlePersonRowSelectClick(e, { person_id }, rowIndex, displayRows);
+          return;
+        }
+        personRowShiftAnchorRef.current = rowIndex;
+        const current = reactData.selectedPersonRowIds || [];
+        updateReactData({
+          selectedPersonRowIds: current.includes(person_id)
+            ? current.filter((id) => (id !== person_id))
+            : [...current, person_id]
+        }, true);
+      }}
+      onChange={() => { }}
+    />
+  );
+  // A drag that starts on a checked row carries every checked row; an unchecked row drags alone.
+  const checkedBulkFor = (person_id, sourceById) => {
+    const checked = reactData.selectedPersonRowIds || [];
+    if (!checked.includes(person_id)) { return []; }
+    return checked.map((id) => sourceById(id)).filter(Boolean);
+  };
+
+  // Drop onto the Directory / Export icons: the dropped name(s) become the row selection (so the
+  // export's later download step, which re-reads the selection, uses the same people) and the
+  // action opens immediately against those ids.
+  const handleDrop_peopleOnListAction = (ev, openAction) => {
+    ev.preventDefault();
+    let draggedFrom;
+    try { draggedFrom = JSON.parse(ev.dataTransfer.getData('id')); }
+    catch { return; }
+    const single = draggedFrom?.personObj || draggedFrom?.attendeeObj;
+    const isPersonDrag = ['person', 'eventAttendee'].includes(draggedFrom?.intent) && single?.person_id;
+    if (!isPersonDrag) {
+      updateReactData({
+        alert: { severity: 'error', title: `You can't drop that there!`, message: 'Only names from the list on the right can be dropped here.' }
+      }, true);
+      return;
+    }
+    const ids = [...new Set((draggedBulk(draggedFrom) || [single]).map((p) => p.person_id))];
+    // No force here: updateReactData's force flips a refresh boolean, and openAction forces again in
+    // this same event batch - two flips cancel out and React skips the re-render entirely.
+    updateReactData({ selectedPersonRowIds: ids });
+    openAction(ids);
+  };
 
   // Events section (left list) - split the flat, already-sorted (ascending) occurrence list into
   // Past (most-recent-first) and Upcoming (soonest-first) once per render.
@@ -2063,19 +2325,33 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
       return entries.map((entry) => {
         const isSelected = (reactData.selectedEventOccurrence?.event_id === entry.event_id && reactData.selectedEventOccurrence?.occurrence_date === entry.occurrence_date)
           || (reactData.intersectingEventKey === `${entry.event_id}_${entry.occurrence_date}`);
+        const isDropHover = canDragManage && (eventDropHoverKey === eventEntryKey(entry));
         return (
           <Typography
             key={`event_occ_${keyPrefix}_${entry.event_id}_${entry.occurrence_date}`}
             onClick={() => { selectEventOccurrence(entry.event_id, entry.occurrence_date, entry.description); }}
-            style={AVATextStyle({
-              size: 1.0,
-              overflow: 'visible',
-              userSelect: 'none',
-              cursor: 'pointer',
-              color: isSelected ? '#c62828' : null,
-              weight: isSelected ? 'bold' : null,
-              margin: { left: (depth + 2) * 1.5, top: 0.25, bottom: 0.25 },
-            })}
+            {...(canDragManage ? {
+              onDragOver: (e) => {
+                handleDragOver(e);
+                if (eventDropHoverKey !== eventEntryKey(entry)) { setEventDropHoverKey(eventEntryKey(entry)); }
+              },
+              onDragLeave: () => {
+                setEventDropHoverKey((prev) => ((prev === eventEntryKey(entry)) ? null : prev));
+              },
+              onDrop: (e) => { handleDrop_personOnEvent(e, entry); }
+            } : {})}
+            style={{
+              ...AVATextStyle({
+                size: 1.0,
+                overflow: 'visible',
+                userSelect: 'none',
+                cursor: 'pointer',
+                color: isSelected ? '#c62828' : null,
+                weight: isSelected ? 'bold' : null,
+                margin: { left: (depth + 2) * 1.5, top: 0.25, bottom: 0.25 },
+              }),
+              ...(isDropHover ? { backgroundColor: 'rgba(25, 118, 210, 0.12)', outline: '1px dashed #1976d2', borderRadius: 6 } : {})
+            }}
           >
             {`${makeDate(entry.occurrence_date).absolute} \u2013 ${entry.description}`}
           </Typography>
@@ -2144,6 +2420,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
         return {
           person_id: attendeePersonId,
           slot_id,
+          owner: slotInfo.owner,
           display_name: slotInfo.display_name || '',
           name: { first: parts[0] || '', last: parts.slice(1).join(' ') }
         };
@@ -2159,6 +2436,413 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
       },
       selectedEventAttendees: attendees,
       loadingEventAttendees: false
+    }, true);
+  }
+
+  // ---- Upload: a "Create new accounts"-format spreadsheet resolved to a list of people -------
+  // Each row is matched (client-scoped) to an existing account by email, then phone, then name;
+  // unmatched rows become new accounts only if the user confirms. The resulting list is shown on
+  // the right like any group's members and lasts for this GroupControl session only.
+  const openUploadPicker = () => {
+    if (reactData.uploadBusy || !uploadInputRef.current) { return; }
+    uploadInputRef.current.value = ''; // so choosing the same file again still fires onChange
+    uploadInputRef.current.click();
+  };
+
+  const uploadMember = (person_id, rec, row) => {
+    const first = (rec?.name?.first ?? row.firstName ?? '').trim();
+    const last = (rec?.name?.last ?? row.lastName ?? '').trim();
+    return {
+      person_id,
+      name: { first, last },
+      display_name: rec?.display_name || `${first} ${last}`.trim() || person_id,
+      search_data: rec?.search_data || `${first} ${last}`.toLowerCase(),
+    };
+  };
+
+  const showUploadedList = (list = reactData.uploadedList) => {
+    if (!list) { return; }
+    updateReactData({
+      uploadedList: list,
+      uploadBusy: false,
+      selectedGroupRec: { group_id: null, group_name: list.fileName, upload: true, multi: true },
+      selectedGroup_id: null,
+      selectedGroupIds: [],
+      selectedGroupMembersPerGroup: {},
+      selectedGroupMembers: (Object.keys(list.members).length > 0) ? list.members : false,
+      sortedGroupMembers: sortGroupMembers(list.members),
+      intersectionMode: false,
+      intersectingEventKey: false,
+      selectedPerson_id: false,
+      selectedPersonRec: false,
+      selectedPersonFirstName: false,
+      selectedPersonLastName: false,
+      selectedPersonRowIds: [],
+      showFamilyMembers: false,
+      showPrimaryCaregivers: false,
+      extraPeople: [],
+      selectedEventOccurrence: false,
+      selectedEventAttendees: [],
+    }, true);
+  };
+
+  const showUploadIssues = (list = reactData.uploadedList) => {
+    if (!list) { return; }
+    updateReactData({
+      alert: {
+        severity: (list.issues.length > 0) ? 'warning' : 'info',
+        title: list.fileName,
+        message: <div>
+          <div>{`${list.summary.rows} spreadsheet row${(list.summary.rows === 1) ? '' : 's'}: ${list.summary.matched} matched existing accounts, ${list.summary.created} new account${(list.summary.created === 1) ? '' : 's'} created, ${list.summary.skipped} skipped.`}</div>
+          {(list.issues.length > 0) &&
+            <ul style={{ margin: '8px 0 0 0', paddingLeft: '20px' }}>
+              {list.issues.map((msg, x) => <li key={`upl_issue_${x}`}>{msg}</li>)}
+            </ul>
+          }
+        </div>
+      }
+    }, true);
+  };
+
+  // Adds accounts created by an upload to the cached accessList (same entry shape as
+  // AVAGroups.accountAccess builds), so group drags, "already a member" checks and the rest of the
+  // app treat them like everyone else without a reload. One dispatch for the whole batch.
+  const addCreatedPeopleToAccessList = (peopleRecs) => {
+    const cid = pSession.client_id;
+    const clientRec = state.accessList?.[cid];
+    if (!clientRec?.list || (peopleRecs.length === 0)) { return; }
+    const existingIds = new Set(clientRec.list.map((p) => p.person_id));
+    const access = (['master', 'admin'].includes(state.user?.account_class)) ? 'proxy' : 'view';
+    const newEntries = peopleRecs
+      .filter((rec) => rec?.person_id && !existingIds.has(rec.person_id))
+      .map((rec) => ({
+        person_id: rec.person_id,
+        name: rec.name,
+        first: rec.name.first,
+        last: rec.name.last,
+        display_name: `${rec.name.first} ${rec.name.last}`,
+        preferred_method: rec.preferred_method,
+        id: rec.person_id,
+        access,
+        signature_key: null,
+        groups: rec.groups,
+        messaging: rec.messaging,
+        search_data: rec.search_data,
+      }));
+    if (newEntries.length === 0) { return; }
+    const byLastFirst = (a, b) => ((a.last > b.last) ? 1 : (a.last < b.last) ? -1 : (a.first > b.first) ? 1 : (a.first < b.first) ? -1 : 0);
+    const list = [...clientRec.list, ...newEntries].sort(byLastFirst);
+    const count = { ...(clientRec.count || {}) };
+    newEntries.forEach((p) => { count[access] = (count[access] || 0) + 1; });
+    const shortList = Array.isArray(clientRec.shortList)
+      ? [...clientRec.shortList, ...newEntries.map((p) => {
+        let searchString = [...Object.values(p.name), p.search_data].join(' ');
+        if (p.messaging) { searchString += Object.values(p.messaging).join(' '); }
+        return `${p.name.last}, ${p.name.first}:${p.person_id}:${searchString}`;
+      })]
+      : clientRec.shortList;
+    dispatch({
+      type: SET_ACCESSLIST,
+      payload: { ...state.accessList, [cid]: { ...clientRec, list, count, shortList } }
+    });
+  };
+
+  const finishUpload = async (pending, createNew) => {
+    const client_id = state.session.client_id;
+    const members = {};
+    const issues = [...pending.issues];
+    let matchedCount = 0;
+    let createdCount = 0;
+    const createdRecs = [];
+    for (const { row, person_id, personRec } of pending.matched) {
+      members[person_id] = uploadMember(person_id, personRec, row);
+      matchedCount++;
+    }
+    if (pending.unmatched.length > 0) {
+      if (createNew) {
+        updateReactData({ uploadBusy: `Creating ${pending.unmatched.length} account${(pending.unmatched.length === 1) ? '' : 's'}...` }, true);
+        const idStyle = await loadClientIdStyle(client_id);
+        const usedIds = new Set();
+        for (const row of pending.unmatched) {
+          const label = `Row ${row.rowNum} (${row.firstName} ${row.lastName})`;
+          try {
+            const created = await createPersonAccount({ client_id, idStyle, usedIds, ...row });
+            if (created.error) {
+              issues.push(`${label}: ${created.error} — skipped.`);
+            }
+            else if (members[created.user_id]) {
+              issues.push(`${label}: same account as an earlier row (${created.user_id}) — skipped.`);
+            }
+            else if (created.alreadyExists) {
+              members[created.user_id] = uploadMember(created.user_id, null, row);
+              matchedCount++;
+              issues.push(`${label}: matched existing account "${created.user_id}" by user ID.`);
+            }
+            else {
+              members[created.user_id] = uploadMember(created.user_id, created.peopleRecord, row);
+              createdRecs.push(created.peopleRecord);
+              createdCount++;
+            }
+          } catch (err) {
+            cl({ 'GroupControl upload: create account error': { row, err } });
+            issues.push(`${label}: ${err.message} — not created.`);
+          }
+        }
+      }
+      else {
+        for (const row of pending.unmatched) {
+          issues.push(`Row ${row.rowNum} (${row.firstName} ${row.lastName}): no matching account — not created.`);
+        }
+      }
+    }
+    const list = {
+      fileName: pending.fileName,
+      members,
+      issues,
+      summary: {
+        rows: pending.rowCount,
+        matched: matchedCount,
+        created: createdCount,
+        skipped: pending.rowCount - Object.keys(members).length,
+      }
+    };
+    showUploadedList(list);
+    if (createdCount > 0) {
+      addCreatedPeopleToAccessList(createdRecs);
+      updateReactData({ updatesMade: true });
+    }
+  };
+
+  const handleUploadFileChosen = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) { return; }
+    updateReactData({ uploadBusy: `Reading ${file.name}...` }, true);
+    let parsed, rowCount;
+    try {
+      const { headers, rows } = await readSpreadsheetFile(file);
+      rowCount = rows.length;
+      parsed = parseCreatePeopleRows(headers, rows);
+    } catch (err) {
+      cl({ 'GroupControl upload: read error': err });
+      updateReactData({ uploadBusy: false, alert: { severity: 'error', title: `Couldn't read ${file.name}`, message: err.message || 'The file could not be read as a spreadsheet.' } }, true);
+      return;
+    }
+    if (parsed.columnError || (parsed.people.length === 0)) {
+      updateReactData({
+        uploadBusy: false,
+        alert: {
+          severity: 'error',
+          title: `Nothing to upload from ${file.name}`,
+          message: parsed.columnError
+            || <div>
+              <div>{'No usable rows were found.'}</div>
+              <ul style={{ margin: '8px 0 0 0', paddingLeft: '20px' }}>
+                {[...parsed.errors.map((er) => er.message), ...parsed.warnings].map((msg, x) => <li key={`upl_err_${x}`}>{msg}</li>)}
+              </ul>
+            </div>
+        }
+      }, true);
+      return;
+    }
+    const client_id = state.session.client_id;
+    const peopleCache = {};
+    const matched = [];
+    const unmatched = [];
+    const issues = [...parsed.errors.map((er) => er.message), ...parsed.warnings];
+    const matchedIds = new Set();
+    for (let x = 0; x < parsed.people.length; x++) {
+      const row = parsed.people[x];
+      updateReactData({ uploadBusy: `Matching ${x + 1} of ${parsed.people.length}...` }, true);
+      const found = await matchExistingPerson({ client_id, peopleCache, ...row });
+      if (!found) {
+        unmatched.push(row);
+        continue;
+      }
+      const label = `Row ${row.rowNum} (${row.firstName} ${row.lastName})`;
+      if (matchedIds.has(found.person_id)) {
+        issues.push(`${label}: same account as an earlier row (${found.person_id}) — skipped.`);
+        continue;
+      }
+      matchedIds.add(found.person_id);
+      matched.push({ row, ...found });
+      if (found.note) { issues.push(`${label}: ${found.note}.`); }
+    }
+    const pending = { fileName: file.name, rowCount, matched, unmatched, issues };
+    if (unmatched.length > 0) {
+      updateReactData({ uploadBusy: false }, true);
+      setUploadCreateConfirm(pending);
+      return;
+    }
+    await finishUpload(pending, false);
+  };
+
+  // ---- Drag a person (right-side member row) onto an event occurrence (left list) ----------
+  const eventEntryKey =  (entry) => `${entry.event_id}_${entry.occurrence_date}`;
+
+  const handleDrop_personOnEvent = (ev, entry) => {
+    ev.preventDefault();
+    setEventDropHoverKey(null);
+    let draggedFrom;
+    try { draggedFrom = JSON.parse(ev.dataTransfer.getData('id')); }
+    catch { return; }
+    if (!draggedFrom?.personObj?.person_id || (draggedFrom.intent !== 'person')) {
+      updateReactData({
+        alert: {
+          severity: 'error',
+          title: `You can't drop that there!`,
+          message: 'Only a person can be dragged onto an event.'
+        }
+      }, true);
+      return;
+    }
+    const people = (draggedBulk(draggedFrom) || [draggedFrom.personObj])
+      .map((p) => ({ person_id: p.person_id, person_name: personDisplayName(p) }));
+    setEventDropConfirm({ entry, people });
+  };
+
+  async function executeAddPeopleToEvent({ entry, people }) {
+    const eventLabel = `${entry.description} (${makeDate(entry.occurrence_date).absolute})`;
+    const single = (people.length === 1);
+    updateReactData({ alert: { severity: 'info', title: 'Adding...', message: `${single ? people[0].person_name : `${people.length} people`} \u2192 ${eventLabel}` } }, true);
+    const occ = await occurrenceData({ client_id: state.session.client_id, event_id: entry.event_id, occurrence_id: entry.occurrence_date }).catch(() => null);
+    if (!occ || !occ.slots) {
+      updateReactData({ alert: { severity: 'error', title: 'Event not found', message: `Could not read ${eventLabel}.` } }, true);
+      return;
+    }
+    const isPast = entry.occurrence_date < todayNumeric$;
+    const outcome = { added: [], already: [], full: [], failed: [] };
+    for (const { person_id, person_name } of people) {
+      const choice = chooseEventSlot(occ, person_id);
+      if (choice.alreadyAttending) { outcome.already.push(person_name); continue; }
+      if (choice.full) { outcome.full.push(person_name); continue; }
+      const result = await writeSlot({
+        client: state.session.client_id,
+        event: `${entry.event_id}#${entry.occurrence_date}`,
+        occurrence_date: entry.occurrence_date,
+        owner: person_id,
+        slot: choice.slot,
+        status: 'selected',
+        show_this_slot: true,
+        rejectDuplicate: true,
+        // Don't announce additions to an occurrence that has already happened.
+        no_messaging: isPast,
+        ...(occ.signup_type ? { signup_type: occ.signup_type } : {})
+      }).catch((error) => {
+        cl(`Error adding ${person_id} to ${entry.event_id}#${entry.occurrence_date}: ${error}`);
+        return { success: false, message: `${error}` };
+      });
+      if (result && (result.success === false)) {
+        outcome.failed.push(single ? `${person_name}: ${result.message || 'unknown error'}` : person_name);
+        continue;
+      }
+      // Keep the local slot map current so the next person in the batch gets the next open slot.
+      occ.slots[choice.slot] = { ...(occ.slots[choice.slot] || {}), owner: person_id };
+      outcome.added.push(person_name);
+    }
+    if (outcome.added.length > 0) {
+      localStorage.setItem('calendarChanged', true);
+      if ((reactData.selectedEventOccurrence?.event_id === entry.event_id) && (reactData.selectedEventOccurrence?.occurrence_date === entry.occurrence_date)) {
+        await selectEventOccurrence(entry.event_id, entry.occurrence_date, entry.description);
+      }
+    }
+    if (single) {
+      const name = people[0].person_name;
+      if (outcome.already.length > 0) {
+        updateReactData({ alert: { severity: 'warning', title: 'Already attending', message: `${name} is already signed up for ${eventLabel}.` } }, true);
+      }
+      else if (outcome.full.length > 0) {
+        updateReactData({ alert: { severity: 'error', title: 'No open slots', message: `${eventLabel} has no open slots for ${name}.` } }, true);
+      }
+      else if (outcome.failed.length > 0) {
+        updateReactData({ alert: { severity: 'error', title: 'Not added', message: `${name} was not added to ${eventLabel}: ${outcome.failed[0].split(': ').slice(1).join(': ')}` } }, true);
+      }
+      else {
+        updateReactData({ alert: { severity: 'success', title: 'Added', message: `${name} \u2192 ${eventLabel}` } }, true);
+      }
+      return;
+    }
+    const lines = [`${outcome.added.length} of ${people.length} added to ${eventLabel}.`];
+    if (outcome.already.length > 0) { lines.push(`Already attending: ${listFromArray(outcome.already)}.`); }
+    if (outcome.full.length > 0) { lines.push(`No open slot for: ${listFromArray(outcome.full)}.`); }
+    if (outcome.failed.length > 0) { lines.push(`Failed: ${listFromArray(outcome.failed)}.`); }
+    const allAdded = (outcome.added.length === people.length);
+    updateReactData({
+      alert: { severity: allAdded ? 'success' : 'warning', title: allAdded ? 'Added' : 'Partially added', message: lines.join('  ') },
+      ...(allAdded ? { selectedPersonRowIds: [] } : {})
+    }, true);
+  }
+
+  // ---- Drag an attendee (event right panel) onto the event trash can to release their slot ----
+  const handleDrop_removeEventAttendee = (ev) => {
+    ev.preventDefault();
+    let draggedFrom;
+    try { draggedFrom = JSON.parse(ev.dataTransfer.getData('id')); }
+    catch { return; }
+    const occ = reactData.selectedEventOccurrence;
+    if ((draggedFrom?.intent !== 'eventAttendee') || !draggedFrom.attendeeObj?.slot_id || !occ) {
+      updateReactData({
+        alert: {
+          severity: 'error',
+          title: `You can't drop that there!`,
+          message: 'Only an attendee of this event can be dragged here.'
+        }
+      }, true);
+      return;
+    }
+    if ((draggedFrom.event_id !== occ.event_id) || (draggedFrom.occurrence_date !== occ.occurrence_date)) { return; }
+    setEventRemoveConfirm({
+      entry: { event_id: occ.event_id, occurrence_date: occ.occurrence_date, description: occ.description },
+      attendees: draggedBulk(draggedFrom) || [draggedFrom.attendeeObj]
+    });
+  };
+
+  async function executeRemoveAttendeesFromEvent({ entry, attendees }) {
+    const eventLabel = `${entry.description} (${makeDate(entry.occurrence_date).absolute})`;
+    const isPast = entry.occurrence_date < todayNumeric$;
+    const removed = [];
+    const failed = [];
+    for (const attendee of attendees) {
+      const person_name = attendee.display_name || attendee.person_id;
+      const result = await writeSlot({
+        client: state.session.client_id,
+        event: `${entry.event_id}#${entry.occurrence_date}`,
+        occurrence_date: entry.occurrence_date,
+        owner: attendee.owner || attendee.person_id,
+        slot: attendee.slot_id,
+        status: 'released',
+        show_this_slot: false,
+        // Don't announce removals from an occurrence that has already happened.
+        no_messaging: isPast
+      }).catch((error) => {
+        cl(`Error removing ${attendee.slot_id} from ${entry.event_id}#${entry.occurrence_date}: ${error}`);
+        return { success: false, message: `${error}` };
+      });
+      if (result && (result.success === false)) {
+        failed.push({ person_name, message: result.message || 'unknown error' });
+      }
+      else {
+        removed.push(person_name);
+      }
+    }
+    if (removed.length > 0) {
+      localStorage.setItem('calendarChanged', true);
+      await selectEventOccurrence(entry.event_id, entry.occurrence_date, entry.description);
+    }
+    if (attendees.length === 1) {
+      const person_name = attendees[0].display_name || attendees[0].person_id;
+      updateReactData({
+        alert: (failed.length > 0)
+          ? { severity: 'error', title: 'Not removed', message: `${person_name} was not removed from ${eventLabel}: ${failed[0].message}` }
+          : { severity: 'success', title: 'Removed', message: `${person_name} was removed from ${eventLabel}` }
+      }, true);
+      return;
+    }
+    updateReactData({
+      alert: {
+        severity: (failed.length > 0) ? 'warning' : 'success',
+        title: (failed.length > 0) ? 'Partially removed' : 'Removed',
+        message: `${removed.length} of ${attendees.length} removed from ${eventLabel}.${(failed.length > 0) ? `  Failed: ${listFromArray(failed.map((f) => f.person_name))}.` : ''}`
+      }
     }, true);
   }
 
@@ -2446,7 +3130,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                     justifyContent='flex-start'
                     alignItems='flex-start'
                   >
-                    {Object.keys(groupsManagedObject).map((listEntry, listIndex) => (
+                    {Object.entries(getGroupDisplayDepths(groupsManagedObject)).map(([listEntry, displayDepth], listIndex) => (
                       <React.Fragment key={`frag_${listIndex}`}>
                         {(((groupsManagedObject[listEntry].level - reactData.minimumGroupLevel) < 3) ||
                           !(reactData.levelHidden[listIndex] ?? reactData.defaultCollapsed)) &&
@@ -2514,6 +3198,15 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                                     newMembersPerGroup = {};
                                     if (Object.keys(filtered).length > 0) newMembersPerGroup[listEntry] = filtered;
                                     intersectingEventKey = `${reactData.selectedEventOccurrence.event_id}_${reactData.selectedEventOccurrence.occurrence_date}`;
+                                  } else if (currentIds.length === 0 && reactData.selectedGroupRec?.upload) {
+                                    // Current right-side list is an uploaded spreadsheet - intersect against it.
+                                    const uploadedIds = new Set(reactData.sortedGroupMembers || []);
+                                    const filtered = Object.fromEntries(
+                                      Object.entries(intersectPerGroup[listEntry] || {}).filter(([pid]) => uploadedIds.has(pid))
+                                    );
+                                    newMembersPerGroup = {};
+                                    if (Object.keys(filtered).length > 0) newMembersPerGroup[listEntry] = filtered;
+                                    intersectingEventKey = false;
                                   } else {
                                     const intersectPersonIds = new Set(Object.keys(intersectPerGroup[listEntry] || {}));
                                     // Filter each currently-selected group's member list to the intersection
@@ -2626,7 +3319,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                                 weight: (((reactData.selectedPersonRec && reactData.selectedPersonRec?.groups?.includes(listEntry)) || [listEntry, ...getDescendants(listEntry)].every(id => (reactData.selectedGroupIds || []).includes(id))) ? 'bold' : null),
                                 cursor: canDragManage ? 'grab' : null,
                                 userSelect: 'none',
-                                margin: { left: (groupsManagedObject[listEntry].level ? ((groupsManagedObject[listEntry].level - reactData.minimumGroupLevel) - 1) * 1.5 : 0), top: 0.35, bottom: 0.65, right: 0.8 },
+                                margin: { left: displayDepth * 1.5, top: 0.35, bottom: 0.65, right: 0.8 },
                               })}>
                               {groupsManagedObject[listEntry].group_name}
                             </Typography>
@@ -2643,6 +3336,20 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                                   if ((groupsManagedObject[listEntry].group_type !== 'header') && !(await guardGroupAuthorization(listEntry))) { return; }
                                   setAddGroupTarget(listEntry);
                                   setAddGroupName("");
+                                }}
+                              />
+                            }
+                            {/* Same as right-clicking the group name - opens Group Maintenance. */}
+                            {reactData.adminMode && canDragManage && (groupsManagedObject[listEntry].group_type !== 'header') &&
+                              <EditIcon
+                                style={{ fontSize: '1rem', marginRight: '0.4rem', cursor: 'pointer' }}
+                                aria-label="edit_group_icon"
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  if (!(await guardGroupAuthorization(listEntry))) { return; }
+                                  updateReactData({
+                                    viewGroupMaintenance: listEntry
+                                  }, true);
                                 }}
                               />
                             }
@@ -2714,7 +3421,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                               justifyContent='flex-start'
                               alignItems='center'
                               style={{
-                                marginLeft: `${(groupsManagedObject[listEntry].level - reactData.minimumGroupLevel) * 1.5}rem`,
+                                marginLeft: `${(displayDepth + 1) * 1.5}rem`,
                                 marginTop: 2, marginBottom: 2,
                               }}
                             >
@@ -2806,6 +3513,49 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                           );
                         })
                     )}
+
+                    {/* UPLOAD SECTION - a spreadsheet ("Create new accounts" format) resolved to a people
+                        list shown on the right. Tap: pick a file if none yet, otherwise show the list. */}
+                    <Tooltip title={reactData.uploadedList ? 'Show the uploaded list' : 'Upload a spreadsheet of people (Create new accounts format)'}>
+                      <Box
+                        display='flex' flexDirection='row'
+                        justifyContent='flex-start' alignItems='center'
+                        key='upload_section_header'
+                        style={{ marginTop: '12px', cursor: reactData.uploadBusy ? 'progress' : 'pointer' }}
+                        onClick={() => {
+                          if (reactData.uploadBusy) { return; }
+                          if (reactData.uploadedList) { showUploadedList(); }
+                          else { openUploadPicker(); }
+                        }}
+                      >
+                        <CloudUploadIcon style={{ fontSize: '1.1rem', marginRight: '0.4rem' }} />
+                        <Typography style={AVATextStyle({ size: 1.2, bold: true, overflow: 'visible', userSelect: 'none' })}>
+                          {'Upload'}
+                        </Typography>
+                        {reactData.uploadBusy && <CircularProgress size={14} style={{ marginLeft: '8px' }} />}
+                      </Box>
+                    </Tooltip>
+                    {reactData.uploadBusy &&
+                      <Typography key='upload_busy' style={AVATextStyle({ size: 0.9, color: 'textSecondary', margin: { left: 1.5 } })}>
+                        {reactData.uploadBusy}
+                      </Typography>
+                    }
+                    {!reactData.uploadBusy && reactData.uploadedList &&
+                      <Typography
+                        key='upload_file_row'
+                        onClick={() => { showUploadedList(); }}
+                        style={AVATextStyle({
+                          size: 1.2,
+                          overflow: 'visible',
+                          userSelect: 'none',
+                          cursor: 'pointer',
+                          bold: !!reactData.selectedGroupRec?.upload,
+                          margin: { left: 1.5, top: 0.35, bottom: 0.35 },
+                        })}
+                      >
+                        {`${reactData.uploadedList.fileName} (${Object.keys(reactData.uploadedList.members).length})`}
+                      </Typography>
+                    }
                   </Box>
                 </Paper>
               </Box>
@@ -2820,9 +3570,12 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                 marginLeft='16px'
                 paddingLeft={'32px'}
               >
+                <Tooltip title={reactData.selectedGroupRec.upload ? 'Tap to choose a different spreadsheet' : ''}>
                 <Typography
                   key={`g_name`}
-                  onClick={reactData.selectedGroupRec.multi ? undefined : async () => {
+                  onClick={reactData.selectedGroupRec.upload
+                    ? () => { openUploadPicker(); }
+                    : reactData.selectedGroupRec.multi ? undefined : async () => {
                     if (!(await guardGroupAuthorization(reactData.selectedGroupRec.group_id))) { return; }
                     updateReactData({
                       viewGroupMaintenance: reactData.selectedGroupRec.group_id
@@ -2833,21 +3586,29 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                     overflow: 'visible',
                     bold: true,
                     color: reactData.intersectionMode ? '#c62828' : null,
-                    cursor: reactData.selectedGroupRec.multi ? 'default' : null,
+                    cursor: reactData.selectedGroupRec.upload ? 'pointer' : (reactData.selectedGroupRec.multi ? 'default' : null),
                     margin: { top: 1, bottom: 0 },
                   })}>
+                  {reactData.selectedGroupRec.upload &&
+                    <CloudUploadIcon style={{ fontSize: '1.3rem', marginRight: '0.4rem', verticalAlign: 'middle' }} />
+                  }
                   {reactData.selectedGroupRec.group_name}
                 </Typography>
+                </Tooltip>
                 <Box display='flex' flexDirection='row' alignItems='center'>
                   <Typography
+                    onClick={reactData.selectedGroupRec.upload ? () => { showUploadIssues(); } : undefined}
                     style={AVATextStyle({
                       size: 0.9,
                       margin: { top: 0, bottom: (reactData.lower_people_filter ? 0 : 1.2) },
                       color: 'textSecondary',
+                      cursor: reactData.selectedGroupRec.upload ? 'pointer' : null,
                       overflow: 'visible'
                     })}
                   >
-                    {`${reactData.sortedGroupMembers?.length || 0} ${(reactData.selectedGroupIds || []).length > 1 ? 'people across selected groups' : 'people in the group'}${(reactData.extraPeople?.length > 0) ? ` (+${reactData.extraPeople.length} ${reactData.showFamilyMembers ? 'family members' : 'primary caregivers'})` : ''}`}
+                    {(reactData.selectedGroupRec.upload && reactData.uploadedList)
+                      ? `${reactData.sortedGroupMembers?.length || 0} people from spreadsheet (${reactData.uploadedList.summary.matched} matched, ${reactData.uploadedList.summary.created} new${(reactData.uploadedList.summary.skipped > 0) ? `, ${reactData.uploadedList.summary.skipped} skipped` : ''})${(reactData.uploadedList.issues.length > 0) ? ' - tap for details' : ''}`
+                      : `${reactData.sortedGroupMembers?.length || 0} ${(reactData.selectedGroupIds || []).length > 1 ? 'people across selected groups' : 'people in the group'}${(reactData.extraPeople?.length > 0) ? ` (+${reactData.extraPeople.length} ${reactData.showFamilyMembers ? 'family members' : 'primary caregivers'})` : ''}`}
                   </Typography>
                   {reactData.loadingExtraPeople &&
                     <CircularProgress size={14} style={{ marginLeft: '8px', marginBottom: (reactData.lower_people_filter ? 0 : '12px') }} />
@@ -3003,7 +3764,12 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                             handleDragStart(e, {
                               personGroup: reactData.selectedGroup_id,
                               personObj: reactData.selectedGroupMembers[this_row.person_id],
-                              intent: 'person'
+                              intent: 'person',
+                              // Slimmed to what the drop handlers use - keeps the dataTransfer payload small.
+                              bulk: checkedBulkFor(this_row.person_id, (id) => {
+                                const m = reactData.selectedGroupMembers?.[id];
+                                return m ? { person_id: m.person_id, name: { first: m.name?.first, last: m.name?.last } } : null;
+                              })
                             });
                           }}
                           onDragEnd={() => {
@@ -3013,6 +3779,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                             }, 150);
                           }}
                         >
+                          {showPersonCheckboxes && renderPersonRowCheckbox(this_row.person_id, cX, personListDisplayRows)}
                           {`${this_row.first} ${this_row.last}`}
                         </Typography>
                     ))}
@@ -3093,7 +3860,10 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                       e.preventDefault();
                       let draggedFrom = JSON.parse(e.dataTransfer.getData('id'));
                       let sendMessage = [];
-                      if (draggedFrom.hasOwnProperty('personObj')) {
+                      if (draggedBulk(draggedFrom)) {
+                        sendMessage.push(...draggedFrom.bulk.map((p) => ({ person_id: p.person_id, person_name: personDisplayName(p) })));
+                      }
+                      else if (draggedFrom.hasOwnProperty('personObj')) {
                         sendMessage.push({
                           person_id: draggedFrom.personObj.person_id,
                           person_name: `${(draggedFrom.personObj.name.first || '').trim()} ${(draggedFrom.personObj.name.last || '').trim()}`
@@ -3116,6 +3886,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                     size='medium'
                     style={{ marginRight: '12px', opacity: hasExportablePeople ? 1 : 0.4 }}
                     aria-label="open_photo_directory_icon"
+                    onDragOver={(e) => handleDragOver(e)}
+                    onDrop={(e) => { handleDrop_peopleOnListAction(e, (ids) => openPhotoDirectory(ids)); }}
                     onClick={() => {
                       if (hasExportablePeople) {
                         openPhotoDirectory();
@@ -3127,6 +3899,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                     size='medium'
                     style={{ marginRight: reactData.administrative_account ? '12px' : 0, opacity: hasExportablePeople ? 1 : 0.4 }}
                     aria-label="download_csv_icon"
+                    onDragOver={(e) => handleDragOver(e)}
+                    onDrop={(e) => { handleDrop_peopleOnListAction(e, (ids) => openFieldPicker(ids)); }}
                     onClick={() => {
                       if (hasExportablePeople) {
                         openFieldPicker();
@@ -3153,7 +3927,7 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
             }
 
             {/* RIGHT SIDE - Event occurrence attendees. Fully separate from the group right panel
-                above: no rename-on-click, no drag-to-remove - but Send/Directory/Export icons are
+                above: no rename-on-click; dragging a name to this panel's trash releases that slot. Send/Directory/Export icons are
                 shared via getVisibleRawPeopleList(), which reads attendees instead of group members. */}
             {reactData.selectedEventOccurrence && !reactData.selectedGroupRec &&
               <Box display='flex' style={{ width: isSmallScreen() ? '95%' : '50%', overflow: 'auto' }} flexDirection='column'
@@ -3218,7 +3992,18 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                               ...personRowSelectedStyle(attendee.person_id),
                             }}
                             onClick={(e) => { handlePersonRowSelectClick(e, attendee, aX, eventAttendeeDisplayRows); }}
+                            draggable={canDragManage}
+                            onDragStart={canDragManage
+                              ? (e) => handleDragStart(e, {
+                                intent: 'eventAttendee',
+                                attendeeObj: attendee,
+                                event_id: reactData.selectedEventOccurrence.event_id,
+                                occurrence_date: reactData.selectedEventOccurrence.occurrence_date,
+                                bulk: checkedBulkFor(attendee.person_id, (id) => reactData.selectedEventAttendees.find((a) => (a.person_id === id)))
+                              })
+                              : undefined}
                           >
+                            {showPersonCheckboxes && renderPersonRowCheckbox(attendee.person_id, aX, eventAttendeeDisplayRows)}
                             {attendee.display_name}
                           </Typography>
                         ))
@@ -3237,6 +4022,16 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                     size='medium'
                     style={{ marginRight: '12px', opacity: (reactData.selectedEventAttendees.length > 0) ? 1 : 0.4, cursor: (reactData.selectedEventAttendees.length > 0) ? 'pointer' : 'default' }}
                     aria-label="send_mail_icon_event"
+                    onDragOver={(e) => handleDragOver(e)}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      let draggedFrom;
+                      try { draggedFrom = JSON.parse(e.dataTransfer.getData('id')); }
+                      catch { return; }
+                      const people = draggedBulk(draggedFrom) || (draggedFrom?.attendeeObj ? [draggedFrom.attendeeObj] : (draggedFrom?.personObj ? [draggedFrom.personObj] : []));
+                      if (people.length === 0) { return; }
+                      updateReactData({ sendMessage: people.map((p) => ({ person_id: p.person_id, person_name: personDisplayName(p) })) }, true);
+                    }}
                     onClick={() => {
                       const rowSelection = reactData.selectedPersonRowIds || [];
                       const sourceAttendees = rowSelection.length > 0
@@ -3253,6 +4048,8 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                     size='medium'
                     style={{ marginRight: '12px', opacity: (reactData.selectedEventAttendees.length > 0) ? 1 : 0.4 }}
                     aria-label="open_photo_directory_icon_event"
+                    onDragOver={(e) => handleDragOver(e)}
+                    onDrop={(e) => { handleDrop_peopleOnListAction(e, (ids) => openPhotoDirectory(ids)); }}
                     onClick={() => {
                       if (reactData.selectedEventAttendees.length > 0) {
                         openPhotoDirectory();
@@ -3262,14 +4059,28 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
                   <GetAppIcon
                     classes={{ root: classes.rowButton }}
                     size='medium'
-                    style={{ opacity: (reactData.selectedEventAttendees.length > 0) ? 1 : 0.4 }}
+                    style={{ marginRight: canDragManage ? '12px' : 0, opacity: (reactData.selectedEventAttendees.length > 0) ? 1 : 0.4 }}
                     aria-label="download_csv_icon_event"
+                    onDragOver={(e) => handleDragOver(e)}
+                    onDrop={(e) => { handleDrop_peopleOnListAction(e, (ids) => openFieldPicker(ids)); }}
                     onClick={() => {
                       if (reactData.selectedEventAttendees.length > 0) {
                         openFieldPicker();
                       }
                     }}
                   />
+                  {canDragManage &&
+                    <Tooltip title='Drag a name here to remove them from this event'>
+                      <DeleteIcon
+                        classes={{ root: classes.rowButton }}
+                        size='medium'
+                        style={{ alignSelf: 'center' }}
+                        aria-label="trash_icon_event"
+                        onDragOver={(e) => handleDragOver(e)}
+                        onDrop={(e) => { handleDrop_removeEventAttendee(e); }}
+                      />
+                    </Tooltip>
+                  }
                 </Box>
               </Box>
             }
@@ -3957,6 +4768,70 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
           </DialogActions>
         </Dialog>
       }
+      {eventDropConfirm &&
+        <AVAConfirm
+          promptText={[
+            'Add to Event?',
+            `Add ${(eventDropConfirm.people.length === 1) ? eventDropConfirm.people[0].person_name : `${eventDropConfirm.people.length} people (${listFromArray(eventDropConfirm.people.map((p) => p.person_name))})`} to ${eventDropConfirm.entry.description} on ${makeDate(eventDropConfirm.entry.occurrence_date).absolute}?`,
+            ...((eventDropConfirm.entry.occurrence_date < todayNumeric$) ? ['This occurrence is in the past - no notification will be sent.'] : [])
+          ]}
+          cancelText={'Cancel'}
+          confirmText={'Add'}
+          onCancel={() => { setEventDropConfirm(null); }}
+          onConfirm={async () => {
+            const pending = eventDropConfirm;
+            setEventDropConfirm(null);
+            await executeAddPeopleToEvent(pending);
+          }}
+        />
+      }
+      {/* Upload's file picker - kept outside the left panel, which is hidden on small screens while the right side shows. */}
+      <input
+        type='file'
+        accept='.xlsx,.xls,.csv'
+        ref={uploadInputRef}
+        style={{ display: 'none' }}
+        onChange={handleUploadFileChosen}
+      />
+      {uploadCreateConfirm &&
+        <AVAConfirm
+          promptText={[
+            'Create new accounts?',
+            `${uploadCreateConfirm.fileName}: ${uploadCreateConfirm.matched.length} matched existing account${(uploadCreateConfirm.matched.length === 1) ? '' : 's'}.`,
+            `${uploadCreateConfirm.unmatched.length} ${(uploadCreateConfirm.unmatched.length === 1) ? 'row has' : 'rows have'} no matching account (by email, phone, or name): ${listFromArray(uploadCreateConfirm.unmatched.map((r) => `${r.firstName} ${r.lastName}`))}.`,
+            `Create ${(uploadCreateConfirm.unmatched.length === 1) ? 'an account for this person' : 'accounts for these people'}, or continue with matched people only?`
+          ]}
+          cancelText={'Matched only'}
+          confirmText={'Create'}
+          onCancel={async () => {
+            const pending = uploadCreateConfirm;
+            setUploadCreateConfirm(null);
+            await finishUpload(pending, false);
+          }}
+          onConfirm={async () => {
+            const pending = uploadCreateConfirm;
+            setUploadCreateConfirm(null);
+            await finishUpload(pending, true);
+          }}
+        />
+      }
+      {eventRemoveConfirm &&
+        <AVAConfirm
+          promptText={[
+            'Remove from Event?',
+            `Remove ${(eventRemoveConfirm.attendees.length === 1) ? (eventRemoveConfirm.attendees[0].display_name || eventRemoveConfirm.attendees[0].person_id) : `${eventRemoveConfirm.attendees.length} people (${listFromArray(eventRemoveConfirm.attendees.map((a) => a.display_name || a.person_id))})`} from ${eventRemoveConfirm.entry.description} on ${makeDate(eventRemoveConfirm.entry.occurrence_date).absolute}?`,
+            ...((eventRemoveConfirm.entry.occurrence_date < todayNumeric$) ? ['This occurrence is in the past - no notification will be sent.'] : [])
+          ]}
+          cancelText={'Cancel'}
+          confirmText={'Remove'}
+          onCancel={() => { setEventRemoveConfirm(null); }}
+          onConfirm={async () => {
+            const pending = eventRemoveConfirm;
+            setEventRemoveConfirm(null);
+            await executeRemoveAttendeesFromEvent(pending);
+          }}
+        />
+      }
       {deleteGroupConfirmTarget &&
         <AVAConfirm
           promptText={[
@@ -3973,7 +4848,24 @@ export default ({ defaults, pSession, groupsManagedObject, focusAt, preSelectedG
           }}
         />
       }
-      {removeConflict &&
+      {removeConflict && removeConflict.bulk &&
+        <AVAConfirm
+          promptText={[
+            'Still a Member of a Sub-Group',
+            `Some of these people are also still active members of sub-groups of ${groupsManagedObject[removeConflict.draggedFrom.personGroup]?.group_name || 'this group'}: ${Object.entries(removeConflict.conflictsByPerson).map(([pid, gids]) => `${personDisplayName(removeConflict.draggedFrom.bulk.find((p) => (p.person_id === pid)))} (${listFromArray(gids.map(g => groupsManagedObject[g]?.group_name || g))})`).join('; ')}.`,
+            `${removeConflict.action === 'move' ? 'Moving' : 'Removing'} them from here alone won't fully remove their access to this branch. Tap "Remove From All" to also remove them from those sub-groups at the same time.`
+          ]}
+          cancelText={'Cancel'}
+          confirmText={'Remove From All'}
+          onCancel={() => { setRemoveConflict(null); }}
+          onConfirm={async () => {
+            const { draggedFrom, droppedOn, conflictsByPerson, action } = removeConflict;
+            setRemoveConflict(null);
+            await runBulkGroupOp(action, draggedFrom, droppedOn, conflictsByPerson);
+          }}
+        />
+      }
+      {removeConflict && !removeConflict.bulk &&
         <AVAConfirm
           promptText={[
             'Still a Member of a Sub-Group',

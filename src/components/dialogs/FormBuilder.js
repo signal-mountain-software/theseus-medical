@@ -4,6 +4,7 @@ import useSession from '../../hooks/useSession';
 import { dbClient, recordExists, cl, getDb, putDb, deepCopy, uuid, titleCase } from '../../util/AVAUtilities';
 import { AVAclasses, AVATextStyle } from '../../util/AVAStyles';
 import { getEventMasterList } from '../../util/AVACalendars';
+import { isFormActive, findFormReferences, formHasReferences, softDeleteForm } from '../../util/AVAForms';
 import FormFillB from '../forms/FormFillB';
 import AVAConfirm from '../forms/AVAConfirm';
 import QuickSearch from '../sections/QuickSearch';
@@ -22,6 +23,8 @@ import {
     FormControl,
     FormControlLabel,
     Checkbox,
+    Radio,
+    RadioGroup,
     Box,
     Paper,
     Typography,
@@ -30,7 +33,9 @@ import {
     Snackbar,
     InputAdornment,
     Chip,
+    Tooltip,
 } from '@material-ui/core';
+import { withStyles } from '@material-ui/core/styles';
 import { Alert, Autocomplete } from '@material-ui/lab/';
 
 import AddIcon from '@material-ui/icons/Add';
@@ -43,6 +48,8 @@ import DragIndicatorIcon from '@material-ui/icons/DragIndicator';
 import MailOutlineIcon from '@material-ui/icons/MailOutline';
 import NotificationsNoneIcon from '@material-ui/icons/NotificationsNone';
 import GroupIcon from '@material-ui/icons/Group';
+import LockIcon from '@material-ui/icons/Lock';
+import FormatListNumberedIcon from '@material-ui/icons/FormatListNumbered';
 import WarningIcon from '@material-ui/icons/Warning';
 import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
 import ExpandLessIcon from '@material-ui/icons/ExpandLess';
@@ -192,6 +199,9 @@ const blankSection = () => ({
     conditionKind: 'field',
     conditionField: '',
     conditionValues: [],
+    answerMode: 'fields',
+    answerMin: '',
+    answerMax: '',
 });
 
 // The three privileged account_class values a section's audience restriction can target,
@@ -210,6 +220,46 @@ const STAGE_RULE_ICON_DEFS = [
     { kind: 'on_complete_notify', Icon: NotificationsNoneIcon, label: 'Notification' },
     { kind: 'on_complete_groups', Icon: GroupIcon, label: 'Groups' },
 ];
+
+const LockedRuleTooltip = withStyles({
+    tooltip: { maxWidth: 520, fontSize: 12, padding: '8px 12px' },
+})(Tooltip);
+
+const truncateJson = (obj, max = 400) => {
+    let s;
+    try { s = JSON.stringify(obj); } catch (e) { s = String(obj); }
+    return (s && s.length > max) ? `${s.slice(0, max)}…` : s;
+};
+
+// Hover content for the "Existing rule requires IT edit" indicator - lists every locked rule
+// (by stage + on_complete_<kind>[index] so IT can find it in the Forms record) with the
+// specific reasons FormBuilder couldn't model it, plus a truncated copy of the raw rule.
+const LockedRuleDetails = ({ ruleState, stageName, intro }) => {
+    const entries = STAGE_RULE_ICON_DEFS.flatMap(({ kind, label }) => (
+        (ruleState?.[kind]?.lockedDetails || []).map((d) => ({ kind, label, ...d }))
+    ));
+    return (
+        <Box>
+            {intro && <Typography style={{ fontSize: 12, marginBottom: 6 }}>{intro}</Typography>}
+            {entries.map(({ kind, label, index, block, reasons }) => (
+                <Box key={`${kind}-${index}`} style={{ marginBottom: 8 }}>
+                    <Typography style={{ fontSize: 12, fontWeight: 'bold' }}>
+                        {`${label} rule - ${stageName ? `stage "${stageName}", ` : ''}${kind}[${index}]`}
+                    </Typography>
+                    <ul style={{ margin: '2px 0 2px 16px', padding: 0 }}>
+                        {reasons.map((r, rIdx) => <li key={rIdx}>{r}</li>)}
+                    </ul>
+                    <Typography style={{ fontSize: 11, fontFamily: 'monospace', opacity: 0.85, wordBreak: 'break-all' }}>
+                        {truncateJson(block)}
+                    </Typography>
+                </Box>
+            ))}
+            <Typography style={{ fontSize: 11, fontStyle: 'italic' }}>
+                {'FormBuilder leaves these rules untouched on save - edit them directly in the Forms record if they need to change.'}
+            </Typography>
+        </Box>
+    );
+};
 
 // A short "The person this form is about" / "Group: Staff" label for a single recognized
 // recipient/available_to entry - shared by the message and notify rule editors.
@@ -269,6 +319,7 @@ const blankForm = (client_id) => {
         form_name: '',
         category: '',
         active: true,
+        current: false,
         sections: [initialSection],
         stages: ensureCompleteStage([{ stage_name }]),
     };
@@ -307,6 +358,10 @@ export default ({ onClose, directForm }) => {
         showRuleRecipientSearch: false, // true while QuickSearch is open, picking a single group or person for a message/notify rule's recipient
         showRuleGroupsSearch: null, // 'add' | 'remove' | null - which groups list a groups-rule QuickSearch picker is editing
         alert: false,
+        editingIsStored: false, // false while editing a brand-new form that has never been saved
+        deleteCheck: null, // null | { checking } | { refs, blocked } - drives the Delete dialogs
+        deleteTypedName: '',
+        deleting: false,
     });
     // A counter (not a boolean) - a boolean toggle would cancel itself out when `force` is
     // invoked twice in the same event/batch (e.g. Autocomplete fires both onChange and
@@ -349,6 +404,23 @@ export default ({ onClose, directForm }) => {
 
     // Which field's "Conditional Display" popup is open, if any.
     const [conditionEditorTarget, setConditionEditorTarget] = React.useState(null); // { sectionIdx, fieldIdx } - fieldIdx null means a section-level condition
+    const [confirmDeleteCondition, setConfirmDeleteCondition] = React.useState(false);
+    const [conditionDraft, setConditionDraft] = React.useState(null);
+    const [conditionError, setConditionError] = React.useState('');
+    const openConditionEditor = (sectionIdx, fieldIdx) => {
+        const section = reactData.editingForm.sections[sectionIdx];
+        const target = fieldIdx === null ? section : section.fields[fieldIdx];
+        setConditionDraft({
+            conditionType: target.conditionType,
+            conditionKind: target.conditionKind || 'field',
+            conditionField: target.conditionField || '',
+            conditionValues: [...(target.conditionValues || [])],
+            valueText: (target.conditionValues || []).filter(value => value !== '*').join('\n'),
+        });
+        setConditionError('');
+        setConfirmDeleteCondition(false);
+        setConditionEditorTarget({ sectionIdx, fieldIdx });
+    };
 
     // Which value's message/notify/groups rule popup is open, if any - see the "Per-value stage
     // rules" block below for classifyFieldStageRules/buildFieldStageRuleOutput.
@@ -357,10 +429,29 @@ export default ({ onClose, directForm }) => {
     // rule - or a blank defaultEditForKind(kind) - the moment the dialog opens. Every edit made
     // while the dialog is open only updates this draft; nothing is written back into
     // editingForm's stage array until the Save button (see the Rule Editor dialog body) is
-    // clicked. This is what lets Exit (the button, backdrop click, or Escape) and "Remove Rule"
-    // have the unambiguous meaning their names imply, instead of every keystroke already having
-    // half-committed a change you might then tap away from.
+    // clicked. Exit discards the draft; confirmed deletion removes only the existing rule.
     const [ruleEditorDraft, setRuleEditorDraft] = React.useState(null);
+    const [confirmDeleteRule, setConfirmDeleteRule] = React.useState(false);
+    const [answerLimitTarget, setAnswerLimitTarget] = React.useState(null);
+    const [answerLimitDraft, setAnswerLimitDraft] = React.useState(null);
+    const [answerLimitError, setAnswerLimitError] = React.useState('');
+    const [confirmDeleteAnswerLimits, setConfirmDeleteAnswerLimits] = React.useState(false);
+    const openAnswerLimits = (sectionIdx) => {
+        const section = reactData.editingForm.sections[sectionIdx];
+        setAnswerLimitDraft({
+            answerMode: section.answerMode,
+            answerMin: section.answerMin,
+            answerMax: section.answerMax,
+        });
+        setAnswerLimitError('');
+        setConfirmDeleteAnswerLimits(false);
+        setAnswerLimitTarget(sectionIdx);
+    };
+    const closeAnswerLimits = () => {
+        setAnswerLimitTarget(null);
+        setAnswerLimitDraft(null);
+        setConfirmDeleteAnswerLimits(false);
+    };
     // Transient UI-only toggle for the open rule editor's content source - deliberately NOT part
     // of the persisted edit (template_id/text must never both be set, including transiently as ''
     // - see the Rule Editor dialog body for why this stays separate from currentEdit).
@@ -399,7 +490,7 @@ export default ({ onClose, directForm }) => {
             : (fieldOptions.find((f) => f.field_name === target.conditionField)?.label || target.conditionField);
         const valuesText = isAudienceKind
             ? describeConditionAudience(target.conditionValues)
-            : (target.conditionValues || []).join(', ');
+            : (target.conditionValues || []).map((value) => value === '*' ? 'is not blank' : value).join(', ');
         return (
             <Typography
                 style={Object.assign(
@@ -528,7 +619,7 @@ export default ({ onClose, directForm }) => {
     // field-level checkIgnore doesn't support person/group/class restrictions - but parsing one back
     // defensively rather than dropping it costs nothing).
     const parseConditionTest = (obj) => {
-        const conditionRaw = obj.show_if || obj.ignore_if;
+        const conditionRaw = obj.show_if || obj.ignore_if || obj.clear_if;
         const conditionTest = conditionRaw ? (Array.isArray(conditionRaw) ? conditionRaw[0] : conditionRaw) : null;
         const isAudienceTest = !!(conditionTest?.currentUser_audience || conditionTest?.pertainsTo_memberOf);
         const conditionField = (conditionTest && !isAudienceTest)
@@ -547,7 +638,7 @@ export default ({ onClose, directForm }) => {
             conditionValues = conditionTest?.values ? (Array.isArray(conditionTest.values) ? conditionTest.values : [conditionTest.values]) : [];
         }
         return {
-            conditionType: obj.show_if ? 'show_if' : (obj.ignore_if ? 'ignore_if' : 'none'),
+            conditionType: obj.show_if ? 'show_if' : (obj.ignore_if ? 'ignore_if' : (obj.clear_if ? 'clear_if' : 'none')),
             conditionKind: isAudienceTest ? 'audience' : 'field',
             conditionField,
             conditionValues,
@@ -608,6 +699,9 @@ export default ({ onClose, directForm }) => {
                 belongs_to_stage: section.belongs_to_stage || '',
                 fields,
                 ...parseConditionTest(section),
+                answerMode: section.answer_limits?.mode || 'fields',
+                answerMin: section.answer_limits?.min === undefined ? '' : String(section.answer_limits.min),
+                answerMax: section.answer_limits?.max === undefined ? '' : String(section.answer_limits.max),
             };
         }));
 
@@ -631,7 +725,8 @@ export default ({ onClose, directForm }) => {
             form_id: cloned.form_id,
             form_name: cloned.form_name || '',
             category: cloned.category || '',
-            active: (cloned.active !== undefined) ? cloned.active : true,
+            active: isFormActive(cloned),
+            current: cloned.current === true,
             sections: resolvedSections,
             stages: ensureCompleteStage(stages),
         };
@@ -639,6 +734,7 @@ export default ({ onClose, directForm }) => {
             view: 'edit',
             editingForm: loadedForm,
             savedSnapshot: JSON.stringify(loadedForm),
+            editingIsStored: true,
             loading: false,
         }, true);
     };
@@ -649,6 +745,7 @@ export default ({ onClose, directForm }) => {
             view: 'edit',
             editingForm: newForm,
             savedSnapshot: JSON.stringify(newForm),
+            editingIsStored: false,
         }, true);
     };
 
@@ -737,6 +834,55 @@ export default ({ onClose, directForm }) => {
     const requestExit = () => {
         if (hasUnsavedChanges()) { updateReactData({ confirmExit: true }, true); return; }
         exitEditing();
+    };
+
+    const canDeleteForms = ['admin', 'support', 'master'].includes(state.user?.account_class);
+
+    // Step 1 of Delete: check every place that could still use this form. The dialog that
+    // follows either explains what blocks the delete or asks for the typed-name confirmation.
+    const requestDelete = async () => {
+        const { form_id } = reactData.editingForm;
+        updateReactData({ deleteCheck: { checking: true }, deleteTypedName: '' }, true);
+        const refs = await findFormReferences({ client_id, form_id })
+            .catch((error) => ({ documentCount: 0, groups: [], events: [], menus: [], errors: [`${error.message || error}`] }));
+        updateReactData({ deleteCheck: { refs, blocked: formHasReferences(refs) } }, true);
+    };
+
+    const cancelDelete = () => {
+        updateReactData({ deleteCheck: null, deleteTypedName: '', deleting: false }, true);
+    };
+
+    // Step 2: re-check references right before writing (something may have started using the
+    // form while the dialog was open), then move the stored record to the deleted-forms area.
+    const confirmDelete = async () => {
+        const { form_id, form_name } = reactData.editingForm;
+        updateReactData({ deleting: true }, true);
+        const refs = await findFormReferences({ client_id, form_id })
+            .catch((error) => ({ documentCount: 0, groups: [], events: [], menus: [], errors: [`${error.message || error}`] }));
+        if (formHasReferences(refs)) {
+            updateReactData({ deleting: false, deleteCheck: { refs, blocked: true } }, true);
+            return;
+        }
+        let archived;
+        try {
+            archived = await softDeleteForm({ client_id, form_id, deleted_by: state.session.user_id });
+        }
+        catch (error) {
+            cl(`Error deleting form ${form_id}: ${error}`);
+            updateReactData({
+                deleting: false,
+                alert: { severity: 'error', message: `"${form_name}" was NOT deleted: ${error.message || error}` },
+            }, true);
+            return;
+        }
+        updateReactData({ deleting: false, deleteCheck: null, deleteTypedName: '' }, true);
+        if (directEditMode) {
+            onClose && onClose(true, Object.assign({}, archived, { client_id }), { deleted: true });
+            return;
+        }
+        updateReactData({ view: 'list', editingForm: null }, true);
+        await loadFormList();
+        updateReactData({ alert: { severity: 'success', message: `"${form_name}" deleted.` } }, true);
     };
 
     const updateEditingForm = (changes) => {
@@ -952,6 +1098,7 @@ export default ({ onClose, directForm }) => {
         if (!test) { return {}; }
         if (obj.conditionType === 'show_if') { return { show_if: [test] }; }
         if (obj.conditionType === 'ignore_if') { return { ignore_if: [test] }; }
+        if (obj.conditionType === 'clear_if') { return { clear_if: [test] }; }
         return {};
     };
 
@@ -1132,6 +1279,96 @@ export default ({ onClose, directForm }) => {
         on_complete_notify: classifyUnconditionalNotifyRule,
     };
 
+    // Human-readable reasons a block was rejected by classify*Rule above - mirrors those checks
+    // (same recognized key/value sets) so the locked indicator's tooltip can say exactly what
+    // FormBuilder didn't understand. field_name null means the block was evaluated as an
+    // unconditional (section/complete-level) rule.
+    const explainLockedStageRule = (kind, block, { field_name = null, validValues = [], duplicate = false } = {}) => {
+        const reasons = [];
+        if (!block || typeof block !== 'object' || Array.isArray(block)) {
+            return ['Rule is not an object'];
+        }
+        const quote = (v) => JSON.stringify(v);
+        if (duplicate) {
+            reasons.push('Another unconditional rule of this kind already exists in this stage - FormBuilder models only one per kind');
+        }
+        if (field_name) {
+            if (block.ignoreIf) { reasons.push('Uses an "ignoreIf" condition - FormBuilder only models a single "showIf" test'); }
+            if (block.showIf !== undefined && !Array.isArray(block.showIf)) {
+                reasons.push('"showIf" is not a list');
+            }
+            else if (Array.isArray(block.showIf)) {
+                if (block.showIf.length === 0) { reasons.push('"showIf" is empty'); }
+                if (block.showIf.length > 1) {
+                    reasons.push(`Has ${block.showIf.length} "showIf" tests (an OR condition) - FormBuilder models exactly one`);
+                }
+                block.showIf.forEach((test, tIdx) => {
+                    const prefix = (block.showIf.length > 1) ? `showIf test #${tIdx + 1}: ` : '';
+                    if (!test || typeof test !== 'object') { reasons.push(`${prefix}test is not an object`); return; }
+                    if (test.currentUser_audience) { reasons.push(`${prefix}tests the current user's audience`); }
+                    if (test.memberOf) { reasons.push(`${prefix}tests group membership (memberOf)`); }
+                    if (test.pertainsTo_memberOf) { reasons.push(`${prefix}tests the subject's group membership (pertainsTo_memberOf)`); }
+                    if (test.field !== field_name) {
+                        reasons.push(`${prefix}tests field ${quote(test.field)} instead of ${quote(field_name)}`);
+                        return;
+                    }
+                    const values = Array.isArray(test.values) ? test.values : (test.values !== undefined ? [test.values] : []);
+                    if (values.length === 0) { reasons.push(`${prefix}has no "values" to match`); }
+                    if (values.length > 1) {
+                        reasons.push(`${prefix}fires on ${values.length} values (${values.map(quote).join(', ')}) - FormBuilder models one value per rule`);
+                    }
+                    const unknown = values.filter((v) => !validValues.includes(v));
+                    if (unknown.length) {
+                        reasons.push(`${prefix}matches ${unknown.map(quote).join(', ')}, which ${unknown.length > 1 ? 'are not' : 'is not'} one of this Item's current choices`);
+                    }
+                });
+            }
+        }
+        const extraKeys = Object.keys(block).filter((k) => !STAGE_RULE_RECOGNIZED_KEYS[kind].includes(k));
+        if (extraKeys.length) {
+            reasons.push(`Uses key(s) FormBuilder doesn't model: ${extraKeys.map(quote).join(', ')}`);
+        }
+        if (kind === 'on_complete_groups') {
+            ['add', 'remove'].forEach((k) => {
+                const v = block[k];
+                if (v !== undefined && !(Array.isArray(v) && v.every((g) => typeof g === 'string'))) {
+                    reasons.push(`"${k}" must be a list of group IDs`);
+                }
+            });
+        }
+        else {
+            if (block.template_id && block.text) { reasons.push('Has both "template_id" and "text" - FormBuilder uses one or the other'); }
+            if (!block.template_id && !block.text) { reasons.push('Has neither "template_id" nor "text"'); }
+            const textKey = (kind === 'on_complete_message') ? 'subject' : 'title';
+            if (block[textKey] !== undefined && typeof block[textKey] !== 'string') {
+                reasons.push(`"${textKey}" is not plain text`);
+            }
+            const recipKey = (kind === 'on_complete_message') ? 'recipientList' : 'available_to';
+            const recipCheck = (kind === 'on_complete_message') ? isRecognizedRecipientValue : isRecognizedAvailableToValue;
+            const recip = block[recipKey];
+            if (recip !== undefined) {
+                if (!Array.isArray(recip)) { reasons.push(`"${recipKey}" is not a list`); }
+                else {
+                    const bad = recip.filter((r) => !recipCheck(r));
+                    if (bad.length) { reasons.push(`"${recipKey}" has unrecognized entr${bad.length > 1 ? 'ies' : 'y'}: ${bad.map(quote).join(', ')}`); }
+                }
+            }
+            if (kind === 'on_complete_notify' && block.options !== undefined) {
+                if (typeof block.options !== 'object' || Array.isArray(block.options) || block.options === null) {
+                    reasons.push('"options" is not an object');
+                }
+                else {
+                    const badOpt = Object.keys(block.options).filter((k) => !STAGE_RULE_RECOGNIZED_NOTIFY_OPTION_KEYS.includes(k));
+                    if (badOpt.length) { reasons.push(`"options" has unsupported key(s): ${badOpt.map(quote).join(', ')}`); }
+                    const nested = Object.keys(block.options).filter((k) => typeof block.options[k] === 'object' && block.options[k] !== null);
+                    if (nested.length) { reasons.push(`"options" has nested value(s) in: ${nested.map(quote).join(', ')}`); }
+                }
+            }
+        }
+        if (!reasons.length) { reasons.push('Rule shape not recognized'); }
+        return reasons;
+    };
+
     // Scans one stage's on_complete_<kind> array for instructions that test field_name, split into
     // byValue (recognized - keyed by the value they fire on, each carrying its original array
     // index for buildFieldStageRuleOutput below) and lockedCount (instructions that mention this
@@ -1144,14 +1381,18 @@ export default ({ onClose, directForm }) => {
             const classifier = STAGE_RULE_CLASSIFIERS[kind];
             const byValue = {};
             let lockedCount = 0;
+            const lockedDetails = [];
             instructionList.forEach((block, index) => {
                 const mentionedTests = [...(block.showIf || []), ...(block.ignoreIf || [])];
                 if (!mentionedTests.some((t) => t?.field === field_name)) { return; } // unrelated to this field
                 const parsed = classifier(block, field_name, validValues);
                 if (parsed) { byValue[parsed.value] = { index, ...parsed }; }
-                else { lockedCount += 1; }
+                else {
+                    lockedCount += 1;
+                    lockedDetails.push({ index, block, reasons: explainLockedStageRule(kind, block, { field_name, validValues }) });
+                }
             });
-            result[kind] = { byValue, lockedCount };
+            result[kind] = { byValue, lockedCount, lockedDetails };
         }
         return result;
     };
@@ -1169,13 +1410,17 @@ export default ({ onClose, directForm }) => {
             const classifier = STAGE_RULE_UNCONDITIONAL_CLASSIFIERS[kind];
             let rule = null;
             let lockedCount = 0;
+            const lockedDetails = [];
             instructionList.forEach((block, index) => {
                 if (block.showIf || block.ignoreIf) { return; } // gated - classifyFieldStageRules' concern
                 const parsed = !rule && classifier(block);
                 if (parsed) { rule = { index, ...parsed }; }
-                else { lockedCount += 1; }
+                else {
+                    lockedCount += 1;
+                    lockedDetails.push({ index, block, reasons: explainLockedStageRule(kind, block, { duplicate: !!rule }) });
+                }
             });
-            result[kind] = { rule, lockedCount };
+            result[kind] = { rule, lockedCount, lockedDetails };
         }
         return result;
     };
@@ -1288,6 +1533,13 @@ export default ({ onClose, directForm }) => {
             section_name: section.section_name || '',
             belongs_to_stage: section.belongs_to_stage || '',
             ...buildConditionOutput(section),
+            ...((section.answerMin !== '' || section.answerMax !== '') ? {
+                answer_limits: {
+                    mode: section.answerMode || 'fields',
+                    ...(section.answerMin !== '' ? { min: Number(section.answerMin) } : {}),
+                    ...(section.answerMax !== '' ? { max: Number(section.answerMax) } : {}),
+                },
+            } : {}),
             fields: section.fields
                 .filter((field) => (field.field_name || '').trim())
                 .map((field) => {
@@ -1352,7 +1604,8 @@ export default ({ onClose, directForm }) => {
             form_id: editingForm.form_id,
             form_name: editingForm.form_name,
             category: editingForm.category || '',
-            active: editingForm.active,
+            active: isFormActive(editingForm),
+            current: editingForm.current === true,
             sections,
             fields,
             stages: editingForm.stages || [],
@@ -1361,7 +1614,21 @@ export default ({ onClose, directForm }) => {
 
     // Opens a live FormFillB overlay against the in-progress (possibly unsaved) form
     // definition - no DB write is involved, so there's nothing to clean up afterward.
+    const answerLimitsAreInvalid = (section) => (
+        !['fields', 'selections'].includes(section.answerMode)
+        || [section.answerMin, section.answerMax].some(value => value !== '' && (!/^\d+$/.test(value) || !Number.isSafeInteger(Number(value))))
+        || (section.answerMin !== '' && section.answerMax !== '' && Number(section.answerMin) > Number(section.answerMax))
+    );
+    const answerLimitValidationMessage = 'Answer limits must be non-negative whole numbers, with minimum no greater than maximum.';
+    const validateAnswerLimits = () => {
+        const invalid = reactData.editingForm.sections.find(answerLimitsAreInvalid);
+        if (!invalid) { return true; }
+        updateReactData({ alert: { severity: 'error', message: `Answer limits for "${invalid.section_name}" must be non-negative whole numbers, with minimum no greater than maximum.` } }, true);
+        return false;
+    };
+
     const previewForm = () => {
+        if (!validateAnswerLimits()) { return; }
         updateReactData({
             previewFormRec: buildFormRecord(Object.assign({}, reactData.editingForm, {
                 form_name: reactData.editingForm.form_name || 'Untitled Form',
@@ -1370,6 +1637,7 @@ export default ({ onClose, directForm }) => {
     };
 
     const saveForm = async () => {
+        if (!validateAnswerLimits()) { return; }
         const editingForm = reactData.editingForm;
 
         if (!(editingForm.form_name || '').trim()) {
@@ -1396,6 +1664,7 @@ export default ({ onClose, directForm }) => {
 
     // Writes the form like saveForm, but stays on the edit screen instead of exiting.
     const saveAndContinue = async () => {
+        if (!validateAnswerLimits()) { return; }
         const editingForm = reactData.editingForm;
 
         if (!(editingForm.form_name || '').trim()) {
@@ -1412,6 +1681,7 @@ export default ({ onClose, directForm }) => {
         updateReactData({
             saving: false,
             savedSnapshot: JSON.stringify(editingForm),
+            editingIsStored: true,
             alert: { severity: 'success', message: `"${finalForm.form_name}" saved.` },
         }, true);
     };
@@ -1482,6 +1752,110 @@ export default ({ onClose, directForm }) => {
         </React.Fragment>
     );
 
+    const renderDeleteDialog = () => {
+        const editingForm = reactData.editingForm;
+        const { checking, refs, blocked } = reactData.deleteCheck;
+        const formName = (editingForm.form_name || '').trim() || editingForm.form_id;
+        const nameMatches = !!formName.trim() && (reactData.deleteTypedName.trim() === formName.trim());
+        const fieldCount = (editingForm.sections || []).reduce((n, s) => n + (s.fields || []).length, 0);
+        const refLines = (label, list) => (list.length > 0) && (
+            <Box mb={1}>
+                <Typography style={AVATextStyle({ bold: true })}>{`${label} (${list.length})`}</Typography>
+                {list.slice(0, 10).map((r) => (
+                    <Typography key={r.id || r.name} style={AVATextStyle({ size: 0.9, margin: { left: 1 } })}>{r.name}</Typography>
+                ))}
+                {(list.length > 10) &&
+                    <Typography style={AVATextStyle({ size: 0.9, margin: { left: 1 }, color: 'textSecondary' })}>{`...and ${list.length - 10} more`}</Typography>
+                }
+            </Box>
+        );
+        return (
+            <Dialog open={true} onClose={() => { if (!reactData.deleting) { cancelDelete(); } }} maxWidth='sm' fullWidth>
+                <DialogTitle>{checking ? 'Checking form usage...' : (blocked ? 'This form cannot be deleted' : 'Delete this form?')}</DialogTitle>
+                <DialogContent>
+                    {checking &&
+                        <Box display='flex' justifyContent='center' p={2}><CircularProgress /></Box>
+                    }
+                    {!checking && blocked &&
+                        <React.Fragment>
+                            <Typography style={AVATextStyle({ margin: { bottom: 1 } })}>
+                                {`"${formName}" is still in use, so it cannot be deleted:`}
+                            </Typography>
+                            {(refs.documentCount > 0) &&
+                                <Typography style={AVATextStyle({ bold: true, margin: { bottom: 1 } })}>
+                                    {`${refs.documentCount} document${refs.documentCount === 1 ? '' : 's'} created from this form`}
+                                </Typography>
+                            }
+                            {refLines('Groups using this form', refs.groups)}
+                            {refLines('Events / templates using this form', refs.events)}
+                            {refLines('Menu items that may open this form', refs.menus)}
+                            {(refs.errors.length > 0) &&
+                                <Alert severity='warning' style={{ marginBottom: '8px' }}>
+                                    {`Usage could not be fully checked (${refs.errors.join('; ')}). Please try again later.`}
+                                </Alert>
+                            }
+                            <Typography style={AVATextStyle({ size: 0.9, color: 'textSecondary' })}>
+                                {'To retire this form without deleting it, check "Inactive Form?" and save.'}
+                            </Typography>
+                        </React.Fragment>
+                    }
+                    {!checking && !blocked &&
+                        <React.Fragment>
+                            <Alert severity='warning' style={{ marginBottom: '12px' }}>
+                                {'Deleting removes this form from every list. It is kept in an archive and can only be restored by a technician.'}
+                            </Alert>
+                            <Typography style={AVATextStyle({ bold: true })}>{formName}</Typography>
+                            <Typography style={AVATextStyle({ size: 0.9, color: 'textSecondary', margin: { bottom: 1 } })}>
+                                {`${editingForm.category || 'No Category'} - ${(editingForm.sections || []).length} section(s), ${fieldCount} field(s)`}
+                            </Typography>
+                            <Typography style={AVATextStyle({ size: 0.9, margin: { bottom: 1 } })}>
+                                {'No documents, groups, events, or menu items use this form.'}
+                            </Typography>
+                            {hasUnsavedChanges() &&
+                                <Typography style={AVATextStyle({ size: 0.9, color: 'red', margin: { bottom: 1 } })}>
+                                    {'You have unsaved changes - the last saved version is what will be deleted.'}
+                                </Typography>
+                            }
+                            <TextField
+                                fullWidth
+                                autoFocus
+                                label='Type the form name to confirm'
+                                value={reactData.deleteTypedName}
+                                onChange={(e) => updateReactData({ deleteTypedName: e.target.value }, true)}
+                                disabled={reactData.deleting}
+                                inputProps={{ 'aria-label': 'Type the form name to confirm' }}
+                            />
+                        </React.Fragment>
+                    }
+                </DialogContent>
+                <DialogActions>
+                    <Button
+                        className={AVAClass.AVAButton}
+                        variant='contained'
+                        color='primary'
+                        size='small'
+                        onClick={cancelDelete}
+                        disabled={reactData.deleting}
+                    >
+                        {blocked ? 'OK' : 'Cancel'}
+                    </Button>
+                    {!checking && !blocked &&
+                        <Button
+                            className={AVAClass.AVAButton}
+                            size='small'
+                            style={nameMatches && !reactData.deleting ? { backgroundColor: 'red', color: 'white' } : {}}
+                            startIcon={<DeleteIcon fontSize='small' />}
+                            onClick={confirmDelete}
+                            disabled={!nameMatches || reactData.deleting}
+                        >
+                            {reactData.deleting ? <CircularProgress size={18} /> : 'Delete Form'}
+                        </Button>
+                    }
+                </DialogActions>
+            </Dialog>
+        );
+    };
+
     const renderEditView = () => {
         const editingForm = reactData.editingForm;
         // Existing categories across every form for this client, offered as Autocomplete options -
@@ -1509,6 +1883,32 @@ export default ({ onClose, directForm }) => {
                             style={{ flexGrow: 1 }}
                             renderInput={(params) => <TextField {...params} label='Category' />}
                         />
+                        <Box display='flex' flexDirection='column'>
+                            <Tooltip title='Inactive forms stay in the system (and keep their documents) but are listed separately and not offered for new documents'>
+                                <FormControlLabel
+                                    style={{ marginRight: 0, whiteSpace: 'nowrap' }}
+                                    control={
+                                        <Checkbox
+                                            checked={!isFormActive(editingForm)}
+                                            onChange={(e) => updateEditingForm({ active: !e.target.checked })}
+                                        />
+                                    }
+                                    label='Inactive Form?'
+                                />
+                            </Tooltip>
+                            <Tooltip title="Include this form in the Current Forms section of a person's profile">
+                                <FormControlLabel
+                                    style={{ marginRight: 0, whiteSpace: 'nowrap' }}
+                                    control={
+                                        <Checkbox
+                                            checked={editingForm.current === true}
+                                            onChange={(e) => updateEditingForm({ current: e.target.checked })}
+                                        />
+                                    }
+                                    label='Current Form?'
+                                />
+                            </Tooltip>
+                        </Box>
                     </Box>
                     <Typography style={AVATextStyle({ size: 0.75, color: 'textSecondary', margin: { top: 1, bottom: 1 } })}>
                         {`Form ID: ${editingForm.form_id}`}
@@ -1556,15 +1956,58 @@ export default ({ onClose, directForm }) => {
                                                     );
                                                 })}
                                                 {totalLocked > 0 &&
-                                                    <WarningIcon
-                                                        fontSize='small'
-                                                        style={{ color: '#f44336' }}
-                                                        titleAccess={`${totalLocked} existing unconditional rule(s) on this section use a shape FormBuilder doesn't model - edit them directly in the Forms record if they need to change.`}
-                                                    />
+                                                    <LockedRuleTooltip
+                                                        interactive
+                                                        title={<LockedRuleDetails
+                                                            ruleState={unconditionalRuleState}
+                                                            stageName={stageDef.stage_name}
+                                                            intro={`${totalLocked} unconditional rule(s) on this section use a shape FormBuilder doesn't model:`}
+                                                        />}
+                                                    >
+                                                        <WarningIcon
+                                                            fontSize='small'
+                                                            style={{ color: '#f44336', cursor: 'help' }}
+                                                        />
+                                                    </LockedRuleTooltip>
                                                 }
                                             </React.Fragment>
                                         );
                                     })()}
+                                    {(() => {
+                                        // FormFillB always processes the complete stage last.
+                                        const stages = editingForm.stages || [];
+                                        const orderedStages = [
+                                            ...stages.filter(stage => stage.stage_name !== COMPLETE_STAGE_NAME),
+                                            ...stages.filter(stage => stage.stage_name === COMPLETE_STAGE_NAME),
+                                        ];
+                                        const stageIndex = orderedStages.findIndex(stage => stage.stage_name === section.belongs_to_stage);
+                                        const nextStage = stageIndex >= 0 ? orderedStages[stageIndex + 1] : null;
+                                        const locked = !!nextStage?.on_entry_lock;
+                                        return (
+                                            <IconButton
+                                                size='small'
+                                                aria-label={`Lock on entry to next stage for section ${section.section_name}`}
+                                                aria-pressed={locked}
+                                                disabled={!nextStage}
+                                                title={nextStage
+                                                    ? `${locked ? 'Disable' : 'Enable'} automatic lock on entry to stage "${nextStage.stage_name}". Only applies when that stage is reached during a save; stages may be skipped.`
+                                                    : 'No following stage available for automatic locking'}
+                                                style={{ color: locked ? '#1976d2' : '#bbb' }}
+                                                onClick={() => updateStage(nextStage.stage_name, { on_entry_lock: locked ? undefined : true })}
+                                            >
+                                                <LockIcon fontSize='small' />
+                                            </IconButton>
+                                        );
+                                    })()}
+                                    <IconButton
+                                        size='small'
+                                        aria-label='Section answer limits'
+                                        title={`${section.answerMin !== '' || section.answerMax !== '' ? 'Edit' : 'Add'} section answer limits`}
+                                        style={{ color: section.answerMin !== '' || section.answerMax !== '' ? '#1976d2' : '#bbb' }}
+                                        onClick={() => openAnswerLimits(sectionIdx)}
+                                    >
+                                        <FormatListNumberedIcon fontSize='small' />
+                                    </IconButton>
                                     <IconButton
                                         size='small'
                                         title='Move section up'
@@ -1601,14 +2044,13 @@ export default ({ onClose, directForm }) => {
                                 <Box display='flex' flexDirection='row' alignItems='center' style={{ gap: '8px', marginTop: '8px' }}>
                                     <Button
                                         size='small'
-                                        onClick={() => setConditionEditorTarget({ sectionIdx, fieldIdx: null })}
+                                        onClick={() => openConditionEditor(sectionIdx, null)}
                                         style={{ flexShrink: 0, whiteSpace: 'nowrap' }}
                                     >
                                         {section.conditionType === 'show_if' ? 'Show if…' : section.conditionType === 'ignore_if' ? 'Ignore if…' : 'Conditional?'}
                                     </Button>
                                     {renderConditionSummary(section, getConditionFieldOptions(sectionIdx, null))}
                                 </Box>
-
                                 {section.fields.map((field, fieldIdx) => {
                                     const isDragSource = (dragFieldOrigin?.sectionIdx === sectionIdx) && (dragFieldOrigin?.fieldIdx === fieldIdx);
                                     const isDropTarget = !isDragSource
@@ -1736,8 +2178,9 @@ export default ({ onClose, directForm }) => {
                                                     {field.type !== 'text' && field.type !== 'numeric' && requiredControl}
                                                     {WIDTH_ADJUSTABLE_TYPES.includes(field.type) &&
                                                         <FormControl style={{ minWidth: 140 }}>
-                                                            <InputLabel>{'Width'}</InputLabel>
+                                                            <InputLabel shrink>{'Width'}</InputLabel>
                                                             <Select
+                                                                displayEmpty
                                                                 value={field.promptWidth || ''}
                                                                 onChange={(e) => updateField(sectionIdx, fieldIdx, { promptWidth: e.target.value })}
                                                             >
@@ -1749,8 +2192,9 @@ export default ({ onClose, directForm }) => {
                                                     }
                                                     {field.type === 'text' &&
                                                         <FormControl style={{ minWidth: 140 }}>
-                                                            <InputLabel>{'Height'}</InputLabel>
+                                                            <InputLabel shrink>{'Height'}</InputLabel>
                                                             <Select
+                                                                displayEmpty
                                                                 value={field.promptRows || ''}
                                                                 onChange={(e) => updateField(sectionIdx, fieldIdx, { promptRows: e.target.value })}
                                                             >
@@ -1787,13 +2231,19 @@ export default ({ onClose, directForm }) => {
                                                                 {'Values to choose from:'}
                                                             </Typography>
                                                             {totalLocked > 0 &&
-                                                                <Typography
-                                                                    title={`${totalLocked} existing rule(s) on this Item use a condition FormBuilder doesn't model (e.g. more than one "show if" test) - edit them directly in the Forms record if they need to change.`}
-                                                                    style={AVATextStyle({ size: 0.75, color: 'error' })}
+                                                                <LockedRuleTooltip
+                                                                    interactive
+                                                                    title={<LockedRuleDetails
+                                                                        ruleState={stageRuleState}
+                                                                        stageName={stageDef?.stage_name}
+                                                                        intro={`${totalLocked} rule(s) on "${field.field_name}" use a condition FormBuilder doesn't model:`}
+                                                                    />}
                                                                 >
-                                                                    <WarningIcon fontSize='inherit' style={{ verticalAlign: 'middle', marginRight: '2px' }} />
-                                                                    {'Existing rule requires IT edit'}
-                                                                </Typography>
+                                                                    <Typography style={{ ...AVATextStyle({ size: 0.75, color: 'error' }), cursor: 'help' }}>
+                                                                        <WarningIcon fontSize='inherit' style={{ verticalAlign: 'middle', marginRight: '2px' }} />
+                                                                        {'Existing rule requires IT edit'}
+                                                                    </Typography>
+                                                                </LockedRuleTooltip>
                                                             }
                                                         </Box>
                                                         {field.selectionList.map((value, valueIdx) => (
@@ -2040,10 +2490,10 @@ export default ({ onClose, directForm }) => {
                                                     <Box display='flex' flexDirection='row' alignItems='center' style={{ gap: '8px', marginTop: '12px', minWidth: 0 }}>
                                                         <Button
                                                             size='small'
-                                                            onClick={() => setConditionEditorTarget({ sectionIdx, fieldIdx })}
+                                                            onClick={() => openConditionEditor(sectionIdx, fieldIdx)}
                                                             style={{ flexShrink: 0, whiteSpace: 'nowrap' }}
                                                         >
-                                                            {field.conditionType === 'show_if' ? 'Show if…' : field.conditionType === 'ignore_if' ? 'Ignore if…' : 'Conditional?'}
+                                                            {field.conditionType === 'show_if' ? 'Show if…' : field.conditionType === 'ignore_if' ? 'Ignore if…' : field.conditionType === 'clear_if' ? 'Clear if…' : 'Conditional?'}
                                                         </Button>
                                                         {renderConditionSummary(field, getConditionFieldOptions(sectionIdx, fieldIdx))}
                                                     </Box>
@@ -2155,13 +2605,19 @@ export default ({ onClose, directForm }) => {
                                         })}
                                     </Box>
                                     {totalLocked > 0 &&
-                                        <Typography
-                                            title={`${totalLocked} existing rule(s) on the form's "complete" stage use a shape FormBuilder doesn't model - edit them directly in the Forms record if they need to change.`}
-                                            style={AVATextStyle({ size: 0.75, color: 'error' })}
+                                        <LockedRuleTooltip
+                                            interactive
+                                            title={<LockedRuleDetails
+                                                ruleState={unconditionalRuleState}
+                                                stageName={COMPLETE_STAGE_NAME}
+                                                intro={`${totalLocked} rule(s) on the form's "complete" stage use a shape FormBuilder doesn't model:`}
+                                            />}
                                         >
-                                            <WarningIcon fontSize='inherit' style={{ verticalAlign: 'middle', marginRight: '2px' }} />
-                                            {'Existing rule requires IT edit'}
-                                        </Typography>
+                                            <Typography style={{ ...AVATextStyle({ size: 0.75, color: 'error' }), cursor: 'help', display: 'inline-block' }}>
+                                                <WarningIcon fontSize='inherit' style={{ verticalAlign: 'middle', marginRight: '2px' }} />
+                                                {'Existing rule requires IT edit'}
+                                            </Typography>
+                                        </LockedRuleTooltip>
                                     }
                                 </Paper>
                             );
@@ -2179,6 +2635,19 @@ export default ({ onClose, directForm }) => {
                     >
                         {'Exit'}
                     </Button>
+                    {canDeleteForms && reactData.editingIsStored &&
+                        <Button
+                            className={AVAClass.AVAButton}
+                            size='small'
+                            style={{ color: 'red' }}
+                            startIcon={<DeleteIcon fontSize='small' />}
+                            onClick={requestDelete}
+                            disabled={reactData.saving || reactData.deleting}
+                            title={hasUnsavedChanges() ? 'Deletes the last saved version of this form' : 'Delete this form'}
+                        >
+                            {'Delete'}
+                        </Button>
+                    }
                     <Button
                         className={AVAClass.AVAButton}
                         size='small'
@@ -2237,6 +2706,7 @@ export default ({ onClose, directForm }) => {
                         }}
                     />
                 }
+                {reactData.deleteCheck && renderDeleteDialog()}
             </React.Fragment>
         );
     };
@@ -2275,42 +2745,72 @@ export default ({ onClose, directForm }) => {
             {conditionEditorTarget && (() => {
                 const { sectionIdx, fieldIdx } = conditionEditorTarget;
                 const isSectionCondition = (fieldIdx === null || fieldIdx === undefined);
-                const target = isSectionCondition
-                    ? reactData.editingForm?.sections[sectionIdx]
-                    : reactData.editingForm?.sections[sectionIdx]?.fields[fieldIdx];
+                const target = conditionDraft;
                 if (!target) { return null; }
-                const applyChanges = (changes) => (
+                const commitChanges = (changes) => (
                     isSectionCondition ? updateSection(sectionIdx, changes) : updateField(sectionIdx, fieldIdx, changes)
                 );
+                const applyChanges = (changes) => {
+                    setConditionDraft(previous => ({
+                        ...previous,
+                        ...changes,
+                        ...(Object.prototype.hasOwnProperty.call(changes, 'conditionField') ? { valueText: '' } : {}),
+                    }));
+                    setConditionError('');
+                };
+                const closeConditionEditor = () => {
+                    setConfirmDeleteCondition(false);
+                    setConditionEditorTarget(null);
+                };
+                const saveCondition = () => {
+                    if (target.conditionType !== 'none') {
+                        if (target.conditionKind !== 'audience' && !target.conditionField) {
+                            setConditionError('Choose the other item whose value will be tested.');
+                            return;
+                        }
+                        if (!target.conditionValues.length) {
+                            setConditionError(target.conditionKind === 'audience'
+                                ? 'Choose at least one person, group, or account type, or cancel.'
+                                : 'Check "is not blank" or provide at least one value to test against.');
+                            return;
+                        }
+                    }
+                    const { valueText, ...condition } = target;
+                    commitChanges(condition);
+                    closeConditionEditor();
+                };
                 const fieldOptions = getConditionFieldOptions(sectionIdx, isSectionCondition ? null : fieldIdx);
                 const targetField = fieldOptions.find((f) => f.field_name === target.conditionField);
                 const targetNoun = isSectionCondition ? 'section' : 'item';
                 return (
                     <React.Fragment>
-                        <Dialog open={true} onClose={() => setConditionEditorTarget(null)} maxWidth='sm' fullWidth>
+                        <Dialog open={true} onClose={closeConditionEditor} maxWidth='sm' fullWidth>
                         <DialogTitle>{'Conditional Display'}</DialogTitle>
                         <DialogContent>
                             <Box display='flex' flexDirection='column' style={{ gap: '16px' }}>
-                                <Box display='flex' flexDirection='row' style={{ gap: '16px' }}>
+                                <RadioGroup
+                                    aria-label='Conditional rule action'
+                                    value={target.conditionType}
+                                    onChange={e => applyChanges({ conditionType: e.target.value })}
+                                >
                                     <FormControlLabel
-                                        control={
-                                            <Checkbox
-                                                checked={target.conditionType === 'show_if'}
-                                                onChange={(e) => applyChanges({ conditionType: e.target.checked ? 'show_if' : 'none' })}
-                                            />
-                                        }
+                                        value='show_if'
+                                        control={<Radio />}
                                         label={`Only show this ${targetNoun} when...`}
                                     />
                                     <FormControlLabel
-                                        control={
-                                            <Checkbox
-                                                checked={target.conditionType === 'ignore_if'}
-                                                onChange={(e) => applyChanges({ conditionType: e.target.checked ? 'ignore_if' : 'none' })}
-                                            />
-                                        }
+                                        value='ignore_if'
+                                        control={<Radio />}
                                         label={`Ignore this ${targetNoun} when...`}
                                     />
-                                </Box>
+                                    {!isSectionCondition &&
+                                        <FormControlLabel
+                                            value='clear_if'
+                                            control={<Radio />}
+                                            label='Clear this item when...'
+                                        />
+                                    }
+                                </RadioGroup>
                                 {target.conditionType !== 'none' && isSectionCondition &&
                                     <FormControl fullWidth>
                                         <InputLabel>{'Test based on'}</InputLabel>
@@ -2371,6 +2871,18 @@ export default ({ onClose, directForm }) => {
                                 }
                                 {(target.conditionType !== 'none') && target.conditionField &&
                                     <Box display='flex' flexDirection='column' style={{ gap: '8px' }}>
+                                        <FormControlLabel
+                                            control={
+                                                <Checkbox
+                                                    checked={(target.conditionValues || []).includes('*')}
+                                                    onChange={(e) => {
+                                                        const values = (target.conditionValues || []).filter((value) => value !== '*');
+                                                        applyChanges({ conditionValues: e.target.checked ? ['*', ...values] : values });
+                                                    }}
+                                                />
+                                            }
+                                            label={<Typography style={AVATextStyle({ size: 0.85, color: 'textSecondary' })}>{'...is not blank, or'}</Typography>}
+                                        />
                                         <Typography style={AVATextStyle({ size: 0.85, color: 'textSecondary' })}>
                                             {`...has ${(targetField?.type === 'yes/no' || isSelectType(targetField?.type)) ? 'one of these values' : 'a value in this list'}:`}
                                         </Typography>
@@ -2422,20 +2934,59 @@ export default ({ onClose, directForm }) => {
                                                 minRows={2}
                                                 variant='outlined'
                                                 placeholder='Enter each triggering value on its own line'
-                                                defaultValue={(target.conditionValues || []).join('\n')}
-                                                onBlur={(e) => applyChanges({
-                                                    conditionValues: e.target.value.split('\n').map((v) => v.trim()).filter((v) => v),
+                                                value={target.valueText}
+                                                onChange={(e) => applyChanges({
+                                                    valueText: e.target.value,
+                                                    conditionValues: [
+                                                        ...((target.conditionValues || []).includes('*') ? ['*'] : []),
+                                                        ...e.target.value.split('\n').map((v) => v.trim()).filter((v) => v && v !== '*'),
+                                                    ],
                                                 })}
                                             />
                                         }
                                     </Box>
                                 }
                             </Box>
+                            {conditionError && <Alert severity='error' style={{ marginTop: '16px' }}>{conditionError}</Alert>}
+                            {target.conditionType === 'clear_if' &&
+                                <Alert severity='info' style={{ marginTop: '12px' }}>
+                                    {'When a triggering answer changes, clear this item without hiding it. The newest edited answer wins. Existing saved answers are checked, not erased on opening.'}
+                                </Alert>
+                            }
                         </DialogContent>
                         <DialogActions>
-                            <Button onClick={() => setConditionEditorTarget(null)}>{'Done'}</Button>
+                            {target.conditionType !== 'none' &&
+                                <IconButton
+                                    aria-label='Delete conditional rule'
+                                    title='Delete conditional rule'
+                                    style={{ color: 'red' }}
+                                    onClick={() => setConfirmDeleteCondition(true)}
+                                >
+                                    <DeleteIcon />
+                                </IconButton>
+                            }
+                            <Box flexGrow={1} />
+                            <Button onClick={closeConditionEditor}>{'Cancel'}</Button>
+                            <Button onClick={saveCondition}>{'Save'}</Button>
                         </DialogActions>
                         </Dialog>
+                        {confirmDeleteCondition &&
+                            <AVAConfirm
+                                promptText={`Remove the conditional rule from this ${targetNoun}? This does not delete the ${targetNoun} or its answers.`}
+                                cancelText='Keep rule'
+                                confirmText='Delete rule'
+                                onCancel={() => setConfirmDeleteCondition(false)}
+                                onConfirm={() => {
+                                    commitChanges({
+                                        conditionType: 'none',
+                                        conditionKind: 'field',
+                                        conditionField: '',
+                                        conditionValues: [],
+                                    });
+                                    closeConditionEditor();
+                                }}
+                            />
+                        }
                         {reactData.showConditionAudienceSearch &&
                             <QuickSearch
                                 reactData={reactData}
@@ -2465,6 +3016,90 @@ export default ({ onClose, directForm }) => {
                                         selections: cleanSelections,
                                     }, true);
                                     applyChanges({ conditionValues: mappedValues });
+                                }}
+                            />
+                        }
+                    </React.Fragment>
+                );
+            })()}
+            {answerLimitTarget !== null && answerLimitDraft && (() => {
+                const section = reactData.editingForm.sections[answerLimitTarget];
+                const configured = section.answerMin !== '' || section.answerMax !== '';
+                const patchDraft = (changes) => {
+                    setAnswerLimitDraft({ ...answerLimitDraft, ...changes });
+                    setAnswerLimitError('');
+                };
+                return (
+                    <React.Fragment>
+                        <Dialog open={true} onClose={closeAnswerLimits} maxWidth='sm' fullWidth>
+                            <DialogTitle>{'Section Answer Limits'}</DialogTitle>
+                            <DialogContent>
+                                <Box display='flex' flexDirection='column' style={{ gap: '16px' }}>
+                                    <Typography style={AVATextStyle({ size: 0.85, color: 'textSecondary' })}>
+                                        {`Applies to section "${section.section_name}". Limits are checked when finishing or locking, without running counters.`}
+                                    </Typography>
+                                    <FormControl fullWidth>
+                                        <InputLabel>{'Count answers by'}</InputLabel>
+                                        <Select
+                                            value={answerLimitDraft.answerMode}
+                                            onChange={e => patchDraft({ answerMode: e.target.value })}
+                                        >
+                                            <MenuItem value='fields'>{'Answered fields'}</MenuItem>
+                                            <MenuItem value='selections'>{'Individual selections'}</MenuItem>
+                                        </Select>
+                                    </FormControl>
+                                    <TextField
+                                        label='Minimum answers'
+                                        value={answerLimitDraft.answerMin}
+                                        onChange={e => patchDraft({ answerMin: e.target.value })}
+                                        helperText='Optional section minimum'
+                                        inputProps={{ inputMode: 'numeric' }}
+                                    />
+                                    <TextField
+                                        label='Maximum answers'
+                                        value={answerLimitDraft.answerMax}
+                                        onChange={e => patchDraft({ answerMax: e.target.value })}
+                                        helperText='Optional section maximum'
+                                        inputProps={{ inputMode: 'numeric' }}
+                                    />
+                                    <Typography variant='caption' color='textSecondary'>
+                                        {'Answered fields counts each nonblank field once. Individual selections counts each selected option; other answers count once. Only visible, applicable fields count, including read-only answers. Limits apply separately to each repetition and do not replace individual field requirements.'}
+                                    </Typography>
+                                    {answerLimitError && <Alert severity='error'>{answerLimitError}</Alert>}
+                                </Box>
+                            </DialogContent>
+                            <DialogActions>
+                                {configured &&
+                                    <IconButton
+                                        aria-label='Delete section answer limits'
+                                        title='Delete section answer limits'
+                                        style={{ color: 'red' }}
+                                        onClick={() => setConfirmDeleteAnswerLimits(true)}
+                                    >
+                                        <DeleteIcon />
+                                    </IconButton>
+                                }
+                                <Box flexGrow={1} />
+                                <Button onClick={closeAnswerLimits}>{'Cancel'}</Button>
+                                <Button variant='contained' color='primary' onClick={() => {
+                                    if (answerLimitsAreInvalid(answerLimitDraft)) {
+                                        setAnswerLimitError(answerLimitValidationMessage);
+                                        return;
+                                    }
+                                    updateSection(answerLimitTarget, answerLimitDraft);
+                                    closeAnswerLimits();
+                                }}>{'Save'}</Button>
+                            </DialogActions>
+                        </Dialog>
+                        {confirmDeleteAnswerLimits &&
+                            <AVAConfirm
+                                promptText={`Remove the answer limits from section "${section.section_name}"? This does not delete the section or its answers. Save the form to persist this change.`}
+                                cancelText='Keep limits'
+                                confirmText='Delete limits'
+                                onCancel={() => setConfirmDeleteAnswerLimits(false)}
+                                onConfirm={() => {
+                                    updateSection(answerLimitTarget, { answerMode: 'fields', answerMin: '', answerMax: '' });
+                                    closeAnswerLimits();
                                 }}
                             />
                         }
@@ -2549,7 +3184,7 @@ export default ({ onClose, directForm }) => {
                 // it was. Used by the Exit button and by backdrop-click/Escape (the Dialog's
                 // onClose below), so every way of leaving without an explicit Save behaves
                 // identically.
-                const exitRuleEditor = () => { setRuleEditorTarget(null); setRuleEditorDraft(null); };
+                const exitRuleEditor = () => { setRuleEditorTarget(null); setRuleEditorDraft(null); setConfirmDeleteRule(false); };
 
                 const saveRule = () => { applyRuleEdit(currentEdit); exitRuleEditor(); };
 
@@ -2576,24 +3211,6 @@ export default ({ onClose, directForm }) => {
 
                                     {(kind === 'on_complete_groups') &&
                                         <React.Fragment>
-                                            <Box>
-                                                <Typography style={AVATextStyle({ size: 0.8 })}>{'Add to these groups:'}</Typography>
-                                                <Box display='flex' flexDirection='row' flexWrap='wrap' style={{ gap: '4px', marginTop: '4px' }}>
-                                                    {(currentEdit.add || []).map((g) => (
-                                                        <Chip key={g} label={state.groups?.groupNames?.[g] || g} size='small' onDelete={() => patchEdit({ add: currentEdit.add.filter((x) => x !== g) })} />
-                                                    ))}
-                                                </Box>
-                                                <Button
-                                                    size='small'
-                                                    style={{ marginTop: '4px' }}
-                                                    onClick={() => updateReactData({
-                                                        showRuleGroupsSearch: 'add',
-                                                        selections: (currentEdit.add || []).map((g) => ({ group_id: g, group_name: state.groups?.groupNames?.[g] || g })),
-                                                    }, true)}
-                                                >
-                                                    {'+ Add Group'}
-                                                </Button>
-                                            </Box>
                                             <Box>
                                                 <Typography style={AVATextStyle({ size: 0.8 })}>{'Remove from these groups:'}</Typography>
                                                 <Box display='flex' flexDirection='row' flexWrap='wrap' style={{ gap: '4px', marginTop: '4px' }}>
@@ -2630,6 +3247,24 @@ export default ({ onClose, directForm }) => {
                                                         </Button>
                                                     }
                                                 </Box>
+                                            </Box>
+                                            <Box>
+                                                <Typography style={AVATextStyle({ size: 0.8 })}>{'Add to these groups:'}</Typography>
+                                                <Box display='flex' flexDirection='row' flexWrap='wrap' style={{ gap: '4px', marginTop: '4px' }}>
+                                                    {(currentEdit.add || []).map((g) => (
+                                                        <Chip key={g} label={state.groups?.groupNames?.[g] || g} size='small' onDelete={() => patchEdit({ add: currentEdit.add.filter((x) => x !== g) })} />
+                                                    ))}
+                                                </Box>
+                                                <Button
+                                                    size='small'
+                                                    style={{ marginTop: '4px' }}
+                                                    onClick={() => updateReactData({
+                                                        showRuleGroupsSearch: 'add',
+                                                        selections: (currentEdit.add || []).map((g) => ({ group_id: g, group_name: state.groups?.groupNames?.[g] || g })),
+                                                    }, true)}
+                                                >
+                                                    {'+ Add Group'}
+                                                </Button>
                                             </Box>
                                         </React.Fragment>
                                     }
@@ -2773,12 +3408,29 @@ export default ({ onClose, directForm }) => {
                             </DialogContent>
                             <DialogActions>
                                 {existingRaw &&
-                                    <Button style={{ color: 'red' }} onClick={removeRule}>{'Remove Rule'}</Button>
+                                    <IconButton
+                                        aria-label='Delete completion rule'
+                                        title='Delete completion rule'
+                                        style={{ color: 'red' }}
+                                        onClick={() => setConfirmDeleteRule(true)}
+                                    >
+                                        <DeleteIcon />
+                                    </IconButton>
                                 }
+                                <Box flexGrow={1} />
                                 <Button onClick={exitRuleEditor}>{'Exit'}</Button>
                                 <Button variant='contained' color='primary' onClick={saveRule}>{'Save'}</Button>
                             </DialogActions>
                         </Dialog>
+                        {confirmDeleteRule &&
+                            <AVAConfirm
+                                promptText={`Remove this ${kindLabel.toLowerCase()} completion rule? This does not delete the form, section, or field. Save the form to persist this change.`}
+                                cancelText='Keep rule'
+                                confirmText='Delete rule'
+                                onCancel={() => setConfirmDeleteRule(false)}
+                                onConfirm={removeRule}
+                            />
+                        }
                         {reactData.showRuleGroupsSearch &&
                             <QuickSearch
                                 reactData={reactData}
