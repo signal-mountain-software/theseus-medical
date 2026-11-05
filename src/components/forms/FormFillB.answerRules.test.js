@@ -1,7 +1,7 @@
 import React from 'react';
 import { fireEvent, render, screen, wait } from '@testing-library/react';
 import FormFillB from './FormFillB';
-import { dbClient } from '../../util/AVAUtilities';
+import { dbClient, getDb } from '../../util/AVAUtilities';
 import { addMember, removeMember } from '../../util/AVAGroups';
 import { updateDocument } from '../../util/AVADocuments';
 import { sendMessages } from '../../util/AVAMessages';
@@ -22,8 +22,8 @@ jest.mock('use-sound', () => () => [jest.fn()]);
 jest.mock('react-idle-timer', () => ({ useIdleTimer: () => ({ start: jest.fn(), reset: jest.fn(), pause: jest.fn() }) }));
 jest.mock('../../util/AVAUtilities', () => ({
   dbClient: { get: jest.fn(() => ({ promise: async () => ({}) })) },
-  getDb: async ({ TableName }) => TableName === 'People'
-    ? { person_id: 'person', name: { first: 'Test', last: 'Person' }, groups: [] } : null,
+  getDb: jest.fn(async ({ TableName }) => TableName === 'People'
+    ? { person_id: 'person', name: { first: 'Test', last: 'Person' }, groups: [] } : null),
   cl: jest.fn(),
   deepCopy: value => JSON.parse(JSON.stringify(value)),
   isEmpty: value => value == null || value === '' || (Array.isArray(value) && !value.length),
@@ -70,6 +70,38 @@ const form = {
 
 const inputFor = (text, index = 0) => screen.getAllByText(text)[index].closest('p').parentElement.querySelector('input,textarea');
 
+it.each([
+  [false, true, false],
+  [true, false, true],
+  [undefined, true, true],
+  [undefined, false, false],
+])('honors form required=%s over Common_Fields required=%s', async (required, inherited, expected) => {
+  const originalGetDb = getDb.getMockImplementation();
+  getDb.mockImplementation(async params => params.TableName === 'Common_Fields'
+    ? { value: { required: inherited } }
+    : originalGetDb(params));
+  try {
+    const requiredForm = {
+      ...form,
+      sections: [{ section_name: 'Comments', fields: ['a'] }],
+      fields: { a: { type: 'text', prompt: 'Additional comments', ...(required !== undefined ? { required } : {}) } },
+    };
+    render(<FormFillB request={{ form_id: 'form', previewFormRec: requiredForm }} onClose={jest.fn()} />);
+    await screen.findByText('Additional comments');
+    expect(inputFor('Additional comments').required).toBe(expected);
+    const prompt = screen.getByText('Additional comments').closest('p');
+    expect(prompt.textContent.includes('*')).toBe(expected);
+    fireEvent.click(screen.getByText('Finish'));
+    if (expected) {
+      expect((await screen.findAllByText('Additional comments is required')).length).toBeGreaterThan(0);
+    } else {
+      expect(await screen.findByText('This form is complete!')).toBeInTheDocument();
+    }
+  } finally {
+    getDb.mockImplementation(originalGetDb);
+  }
+});
+
 it('caps configured prompt widths at the container and allows selection labels to wrap', async () => {
   const longOption = 'April 16–18 | Vascular Anomalies & Craniofacial Conditions';
   const widthForm = {
@@ -92,6 +124,8 @@ it('caps configured prompt widths at the container and allows selection labels t
   const label = screen.getByText(longOption);
   expect(label.style.whiteSpace).toBe('normal');
   expect(label.style.overflowWrap).toBe('anywhere');
+  expect(label.style.paddingTop).toBe('9px');
+  expect(label.style.lineHeight).toBe('20px');
   expect(label.closest('label').style.height).toBe('auto');
 });
 

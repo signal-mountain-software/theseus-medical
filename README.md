@@ -40,6 +40,11 @@ master-only; the new card's `available_to` rules determine who can see it.
 
 ## Responsive Form Prompts
 
+An explicit top-level `required` value in a form field overrides inherited
+legacy `value.required` settings, including `required: false`. When omitted,
+the inherited setting remains in effect. Selection minimums are independent
+constraints and can still require an answer.
+
 FormFillB treats configured prompt widths as preferred sizes, capped by the
 available container width (including field margins). Selection labels wrap
 within their prompt boxes on narrow screens; wider screens retain the requested

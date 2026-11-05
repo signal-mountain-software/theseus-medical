@@ -100,14 +100,14 @@ const useStyles = makeStyles(theme => ({
     margin: 0,
     marginLeft: '-8px',
     marginRight: '2px',
-    height: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: '10px',
-    marginBottom: '25px',
+    height: 'auto',
+    alignItems: 'flex-start',
+    justifyContent: 'flex-start',
+    marginTop: 0,
+    marginBottom: '4px',
   },
   radioDays: {
-    marginLeft: '-8px',
+    marginLeft: 0,
     marginRight: '16px',
     '&.MuiInputBase-input': {
       paddingBottom: '0px'
@@ -1492,7 +1492,9 @@ export default ({ request = {}, onClose }) => {
 
     // set options — spread field_variables.options first so extra properties (e.g. date_format) pass through
     returnObj.options = Object.assign({}, field_variables.options || {}, {
-      required: !!(field_variables.required || field_variables.value?.required || returnObj.value?.required),
+      required: field_variables.required !== undefined
+        ? !!field_variables.required
+        : !!(field_variables.value?.required || returnObj.value?.required),
       log_results: returnObj.value?.log_results || false,
       viewOnly: (returnObj.value?.edit === 'view'),
       hidden: (returnObj.value?.edit === 'hidden'),
@@ -3139,7 +3141,7 @@ export default ({ request = {}, onClose }) => {
                       inputProps={{ 'aria-labelledby': `${props.ariaPrefix || 'message_routing'}_${tIndex}` }}
                     />
                   }
-                  label={<Typography className={classes.radioDays} style={{ whiteSpace: 'normal', overflowWrap: 'anywhere', minWidth: 0 }}>{text.display}</Typography>}
+                  label={<Typography className={classes.radioDays} style={{ whiteSpace: 'normal', overflowWrap: 'anywhere', minWidth: 0, paddingTop: '9px', lineHeight: '20px' }}>{text.display}</Typography>}
                   labelPlacement='end'
                 />
               ))}
@@ -3254,9 +3256,6 @@ export default ({ request = {}, onClose }) => {
         useFamilySizing={false}
         groupKeyPrefix={'CheckGroup'}
         ariaPrefix={'message_routing'}
-        optionRowStyle={props.multiLine
-          ? { height: 'auto', alignItems: 'center', marginBottom: '20px', paddingBottom: '8px' }
-          : undefined}
       />
     );
   };
