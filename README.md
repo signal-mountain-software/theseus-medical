@@ -38,6 +38,15 @@ entry to preview its target and params, or select it to populate the editable
 fields. Copying does not change title, color, or access. Function creation is
 master-only; the new card's `available_to` rules determine who can see it.
 
+## Administrative Field Prompts
+
+Administrative section prompts support plain text or HTML strings for text,
+date, boolean, selection, and dropdown fields. For example,
+`<strong>Important</strong><br/>Additional instructions` renders formatted text
+instead of literal tags. HTML is sanitized with DOMPurify before rendering;
+scripts, event handlers, and unsafe links are removed. Field values and save
+behavior are unchanged.
+
 ## PowerPoint Daily Schedule Pagination
 
 `lambda/pptxTransformer.mjs` limits `{{event_schedule_today}}` to four events per
