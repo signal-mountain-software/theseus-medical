@@ -38,6 +38,14 @@ entry to preview its target and params, or select it to populate the editable
 fields. Copying does not change title, color, or access. Function creation is
 master-only; the new card's `available_to` rules determine who can see it.
 
+## Calendar Attendee Selection
+
+The calendar event's **Add someone** picker passes the selected `person_id`
+directly to slot allocation. Picker display/search metadata is not appended to
+the identity used for the slot owner or Calendar key. Existing slot-instance
+suffixes and legacy allocation formats are unchanged. This prevents new
+malformed IDs; it does not repair previously written Calendar records.
+
 ## Client Message Batching
 
 Client PostOffice writers use `src/util/AVAPostOffice.js`. Before posting, group
