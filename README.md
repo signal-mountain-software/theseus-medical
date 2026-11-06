@@ -38,6 +38,37 @@ entry to preview its target and params, or select it to populate the editable
 fields. Copying does not change title, color, or access. Function creation is
 master-only; the new card's `available_to` rules determine who can see it.
 
+## PowerPoint Daily Schedule Pagination
+
+`lambda/pptxTransformer.mjs` limits `{{event_schedule_today}}` to four events per
+slide by default. Larger lists are balanced across the minimum number of slides
+without changing event order: five events become 3 + 2, six become 3 + 3, and
+nine become 3 + 3 + 3. Blank paragraphs between events are added after pagination.
+The daily schedule's text box retains its template autofit settings and dimensions
+instead of being forced to grow. This is a count limit, not measured overflow
+detection; unusually long descriptions can still need a lower limit.
+
+Override the limit per transformation request to suit a client's template:
+
+```json
+{
+  "placeholder_page_sizes": {
+    "event_schedule_today": 4
+  }
+}
+```
+
+Limits must be positive integers. The same option supports `birthdays_this_month`
+(default seven); unknown keys or invalid limits fail explicitly. Weekly schedule
+grouping is unchanged. If a grouped placeholder shares a slide with a paginated
+flat list, the flat list is paginated within each group slide.
+
+No dedicated request builder for this Lambda exists in this application source;
+callers can include the option directly in their request body. Deploy the changed
+Lambda separately: the local `lambda` directory is ignored by this application's
+Git repository. Run the isolated transformer regressions with
+`node --test lambda\pptxTransformer.test.mjs`.
+
 ## Calendar Attendee Selection
 
 The calendar event's **Add someone** picker passes the selected `person_id`
