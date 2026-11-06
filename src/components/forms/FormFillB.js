@@ -12,6 +12,7 @@ import AVAUploadFile from '../../util/AVAUploadFile';
 
 import { printFromHTML, sendMessages, printDocumentHtmlB, printElementWysiwygB } from '../../util/AVAMessages';
 import { printEmptyDocument } from '../../util/AVAMessages';
+import { postPostOffice } from '../../util/AVAPostOffice';
 import SignatureCanvas from 'react-signature-canvas';
 import Select from "react-dropdown-select";
 import CloudUploadIcon from '@material-ui/icons/CloudUpload';
@@ -550,7 +551,7 @@ export default ({ request = {}, onClose }) => {
       newData
     )));
     if (force) {
-      setForceRedisplay(!forceRedisplay);
+      setForceRedisplay(value => !value);
     }
   };
 
@@ -4571,6 +4572,7 @@ export default ({ request = {}, onClose }) => {
       save_type: final ? 'save_final' : (timeout ? 'on_timeout' : 'in_process'),
     });
 
+    const messageErrors = [];
     // send messages or create new forms as indicated in formRec options upon final save
     if (final && reactData.formRec?.options?.messaging) {
       // conditional based on responses should be allowed here
@@ -4587,7 +4589,8 @@ export default ({ request = {}, onClose }) => {
             this_instruction.send_message.subject = await deepResolve(this_instruction.send_message.subject, reactData.peopleRec[reactData.pertains_to]);
           }
           this_instruction.send_message.text = await deepResolve(this_instruction.send_message.text, reactData.peopleRec[reactData.pertains_to]);
-          await sendMessage(this_instruction.send_message);
+          const messageResult = await sendMessage(this_instruction.send_message);
+          if (!messageResult.sent) { messageErrors.push(messageResult.error); }
         }
         if (this_instruction.hasOwnProperty('instruction') && (this_instruction.instruction === 'create_form')) {
           await createForm({        // finishing this form issues an instruction to create another form ("teacher recommendation" use case, for example)
@@ -4682,6 +4685,10 @@ export default ({ request = {}, onClose }) => {
       document_id: docData.document_id,
       recWritten
     });
+    if (messageErrors.length) {
+      response.goodPut = false;
+      response.putError = `The form was saved, but some messages could not be queued: ${messageErrors.join(' ')}`;
+    }
     return response;
   };
 
@@ -5032,13 +5039,13 @@ export default ({ request = {}, onClose }) => {
     if (send_instructions.attach) {
       PostOfficeRec.Item.attachments = [send_instructions.url];
     }
-    await dbClient
-      .put(PostOfficeRec)
-      .promise()
-      .catch(error => {
-        cl(`Error writing to Post Office; error is ${error}`);
-      });
-    return;
+    try {
+      await postPostOffice(PostOfficeRec);
+      return { sent: true };
+    } catch (error) {
+      cl(`Error writing to Post Office; error is ${error}`);
+      return { sent: false, error: error.message };
+    }
   }
 
   let preset_values = {};

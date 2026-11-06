@@ -38,6 +38,42 @@ entry to preview its target and params, or select it to populate the editable
 fields. Copying does not change title, color, or access. Function creation is
 master-only; the new card's `available_to` rules determine who can see it.
 
+## Client Message Batching
+
+Client PostOffice writers use `src/util/AVAPostOffice.js`. Before posting, group
+references (`GRP:group`, `GRP//group`, or group-addressed records) are expanded
+into person IDs. People and group hierarchy reads are fully paginated, following
+Mailman's existing `People.groups` membership and ancestor semantics. Explicit
+person IDs and expanded memberships are deduplicated together before splitting.
+Membership is a snapshot taken when the client prepares the message.
+
+The maximum is **400 unique person IDs per PostOffice record**. Larger lists
+are balanced across the minimum number of batches: 410 becomes 205 + 205, and
+2,500 becomes 358 + six batches of 357. Cross-client audiences remain in separate
+client records. Small messages keep their original message and thread IDs.
+Split records have independent message/thread IDs plus `broadcast_id`,
+`broadcast_thread_id`, one-based `batch_index`, and `batch_count` metadata.
+These broadcast fields remain on PostOffice; the unchanged Mailman does not
+propagate them into delivery/thread records.
+
+The shared messaging utility, MessageForm (including ShowGroup/GroupControl's
+send icon), FormFillB's direct sender, and both held-message release paths use
+this helper. MessageForm keeps a failed draft and its prepared batches while
+the composer stays mounted. Retrying unchanged skips confirmed writes and
+reuses the remaining IDs and membership snapshot. After a partial write, finish
+the original draft before changing its contents. This retry state is not
+persisted across closing/reloading the composer. Held-message release actions
+also retain batch progress while their component stays mounted and are removed
+only after all batches are queued.
+
+This is client-side queuing, not a delivery guarantee. Lambda/provider retries,
+recipient-handling rules, and destination deduplication are unchanged. Different
+people sharing a destination can still receive duplicate deliveries across
+batches, and Mailman rules can add recipients after client batching. Backend
+PostOffice writers are unchanged. To isolate one PostOffice record per Lambda
+invocation, configure the DynamoDB trigger's **Batch size = 1** separately; this
+change does not modify trigger settings or enable concurrency.
+
 ## Responsive Form Prompts
 
 An explicit top-level `required` value in a form field overrides inherited

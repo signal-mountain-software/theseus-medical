@@ -21,7 +21,10 @@ jest.mock('@material-ui/core/styles/makeStyles', () => () => () => ({}));
 jest.mock('use-sound', () => () => [jest.fn()]);
 jest.mock('react-idle-timer', () => ({ useIdleTimer: () => ({ start: jest.fn(), reset: jest.fn(), pause: jest.fn() }) }));
 jest.mock('../../util/AVAUtilities', () => ({
-  dbClient: { get: jest.fn(() => ({ promise: async () => ({}) })) },
+  dbClient: {
+    get: jest.fn(() => ({ promise: async () => ({}) })),
+    put: jest.fn(() => ({ promise: async () => ({}) }))
+  },
   getDb: jest.fn(async ({ TableName }) => TableName === 'People'
     ? { person_id: 'person', name: { first: 'Test', last: 'Person' }, groups: [] } : null),
   cl: jest.fn(),
@@ -69,6 +72,48 @@ const form = {
 };
 
 const inputFor = (text, index = 0) => screen.getAllByText(text)[index].closest('p').parentElement.querySelector('input,textarea');
+
+it.each([false, true])('batches final form messages and surfaces partial failure=%s', async fail => {
+  const originalPut = dbClient.put.getMockImplementation();
+  dbClient.put.mockClear();
+  dbClient.put.mockImplementation(params => ({
+    promise: async () => {
+      if (fail && params.Item.batch_index === 2) { throw new Error('Write denied'); }
+      return {};
+    }
+  }));
+  const onClose = jest.fn();
+  const messageForm = {
+    ...form,
+    sections: [{ section_name: 'Comments', fields: ['a'] }],
+    fields: { a: { type: 'text', prompt: 'Additional comments' } },
+    options: {
+      messaging: [{
+        send_message: {
+          send_to: Array.from({ length: 410 }, (_, index) => `person-${index}`),
+          subject: 'Subject', text: 'Body'
+        }
+      }]
+    }
+  };
+  try {
+    render(<FormFillB request={{ form_id: 'form', person_id: 'person', previewFormRec: messageForm }} onClose={onClose} />);
+    await screen.findByText('Additional comments');
+    fireEvent.click(screen.getByText('Finish'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Complete' }));
+    if (fail) {
+      await screen.findByText(/The form was saved, but some messages could not be queued/);
+      expect(onClose).not.toHaveBeenCalled();
+    } else {
+      await wait(() => expect(onClose).toHaveBeenCalled());
+    }
+    const requests = dbClient.put.mock.calls.map(([params]) => params);
+    expect(requests.map(params => params.Item.recipient_key.length)).toEqual([205, 205]);
+    expect(requests.every(params => params.TableName === 'PostOffice')).toBe(true);
+  } finally {
+    dbClient.put.mockImplementation(originalPut);
+  }
+});
 
 it.each([
   [false, true, false],

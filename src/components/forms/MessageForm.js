@@ -4,6 +4,7 @@ import useSession from '../../hooks/useSession';
 import ReactQuill from 'react-quill';
 import 'react-quill/dist/quill.snow.css';
 import { html_to_pdf } from '../../util/AVAMessages';
+import { preparePostOfficeSubmission, submitPostOfficeSubmission } from '../../util/AVAPostOffice';
 import Select from "react-dropdown-select";
 
 import { getImage, getPerson, makeName } from '../../util/AVAPeople';
@@ -334,6 +335,9 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
   const isMountedRef = React.useRef(true);
   const refreshIntervalRef = React.useRef(null);
   const messageTextInputRef = React.useRef(null);
+  const pendingPostOfficeRef = React.useRef(null);
+  const releasingPostOfficeRef = React.useRef(new Map());
+  const postingMessageRef = React.useRef(false);
   React.useEffect(() => {
     return () => {
       isMountedRef.current = false;
@@ -728,16 +732,24 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
       po_og.Item.message_id += `.${new Date().getTime()}`;
       po_og.Item.byPass_rules = true;
       cl({ [poTableName]: po_og.Item });
-      await dbClient
-        .put({
-          Item: po_og.Item,
-          TableName: poTableName
-        })
-        .promise()
-        .catch(error => {
-          cl(`Error writing ${poTableName}`, error);
-          goodHandle = false;
-        });
+      const releaseKey = `${this_actionRec.client_id}/${this_actionRec.after}`;
+      try {
+        let submission = releasingPostOfficeRef.current.get(releaseKey);
+        if (!submission) {
+          submission = await preparePostOfficeSubmission({
+            Item: po_og.Item,
+            TableName: poTableName
+          });
+          releasingPostOfficeRef.current.set(releaseKey, submission);
+        }
+        await submitPostOfficeSubmission(submission);
+      } catch (error) {
+        cl(`Error writing ${poTableName}`, error);
+        updateReactData({
+          alert: { severity: 'error', title: 'Unable to release message', message: error.message }
+        }, true);
+        goodHandle = false;
+      }
       if (goodHandle) {
         cl(`Good write to ${poTableName} with message_id ${po_og.Item.message_id} `);
         // remove the message action
@@ -755,6 +767,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
             cl(`Error deleting ${poTableName}`, error);
             goodHandle = false;
           });
+        if (goodHandle) { releasingPostOfficeRef.current.delete(releaseKey); }
       }
     }
     else {
@@ -765,154 +778,172 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
   }
 
   async function sendMessage() {
-    const draftMessageText = getPendingMessageText();
-    let postTime = new Date().getTime();
-    let deliverTime = postTime;
-    if (reactData.scheduledSend && reactData.scheduledSendTime) {
-      let scheduled = makeDate(reactData.scheduledSendTime).date;
-      if (scheduled && !scheduled.error && (scheduled.getTime() > postTime)) {
-        deliverTime = scheduled.getTime();
+    if (postingMessageRef.current) { return false; }
+    postingMessageRef.current = true;
+    updateReactData({ postingMessage: true }, true);
+    try {
+      const draftMessageText = getPendingMessageText();
+      let postTime = new Date().getTime();
+      let deliverTime = postTime;
+      if (reactData.scheduledSend && reactData.scheduledSendTime) {
+        let scheduled = makeDate(reactData.scheduledSendTime).date;
+        if (scheduled && !scheduled.error && (scheduled.getTime() > postTime)) {
+          deliverTime = scheduled.getTime();
+        }
       }
-    }
-    let message_id;
-    if (!reactData.newMessageThread) {
-      reactData.newMessageThread = `${postTime}.${uuid(6)}`;
-      message_id = `${postTime}.${uuid(6)}.0~CuredMessage`;
-    }
-    else {
-      message_id = `${reactData.newMessageThread}.${postTime}~CuredMessage`;
-    }
-    const reply_to = (reactData.replyToList && (reactData.replyToList.length > 0))
-      ? reactData.replyToList.map(r => { return r.person_id; })
-      : [];
-    let recipient_key = [];
-    reactData.newMessageRecipients.forEach(r => {
-      if (r.person_id) { recipient_key.push(...([r.person_id].flat())); }
-      else if (r.group_id) { recipient_key.push(`GRP:${r.group_id}`); }
-      else if (r.hasOwnProperty('rIndex') && (r.rIndex > -1)) {
-        recipient_key.push(...reactData.preferred_recipients[r.rIndex].personList);
+      let message_id;
+      if (!reactData.newMessageThread) {
+        reactData.newMessageThread = `${postTime}.${uuid(6)}`;
+        message_id = `${postTime}.${uuid(6)}.0~CuredMessage`;
       }
-    });
-    reply_to.forEach(r => {    // this makes sure that everyone on the reply_to list is copied on the original message
-      if ((r !== reactData.newMessageSendFrom) && !recipient_key.includes(r)) {
-        recipient_key.push(r);
+      else {
+        message_id = `${reactData.newMessageThread}.${postTime}~CuredMessage`;
       }
-    });
-    let PostOfficeRec = {
-      Item: {
-        thread_id: reactData.newMessageThread,
-        message_id,
-        allowReplyAll: reactData.allowReplyAll,
-        attachments: reactData.attachments_to_send,
-        client_id: pClient,
-        deliver_time: deliverTime,
-        from: reactData.newMessageSendFrom,
-        message_text: draftMessageText,
-        patient_id: reactData.newMessageSendFrom,
-        preferred_method: (reactData.newUrgentMessage ? 'urgent' : null),
-        recipient_base: 'list',
-        recipient_key,
-        subject: reactData.newMessageSubject || `Message from ${await makeName(reactData.newMessageSendFrom)}`,
-        reply_to,
-        is_public: reactData.is_public
-      },
-      TableName: 'PostOffice'
-    };
-    if (options && options.forwardBypassRules) {
-      PostOfficeRec.Item.byPass_rules = true;
-    }
-    if (reactData.newMessageSendFrom !== pPerson) {
-      PostOfficeRec.Item.sender_spoofedByAccount = pPerson;
-      PostOfficeRec.Item.sender_spoofedByUser = state.session.user_id;
-    }
-    if (draftMessageText.startsWith('<p')) {
-      PostOfficeRec.Item.html_message_text = draftMessageText;
-      let plain_text = draftMessageText;
-      plain_text = plain_text.replace(/<style([\s\S]*?)<\/style>/gi, '');
-      plain_text = plain_text.replace(/<script([\s\S]*?)<\/script>/gi, '');
-      plain_text = plain_text.replace(/<strong>/ig, '');
-      plain_text = plain_text.replace(/<\/strong>/ig, '');
-      plain_text = plain_text.replace(/<\/div>/ig, '\n');
-      plain_text = plain_text.replace(/<\/li>/ig, '\n');
-      plain_text = plain_text.replace(/<li>/ig, '  *  ');
-      plain_text = plain_text.replace(/<\/ul>/ig, '\n');
-      plain_text = plain_text.replace(/<\/p>/ig, '\n');
-      plain_text = plain_text.replace(/<br\s*[/]?>/gi, "\n");
-      plain_text = plain_text.replace(/<[^>]+>/ig, '');
-      plain_text = plain_text.replace('%%', '');
-      PostOfficeRec.Item.message_text = plain_text;
-      PostOfficeRec.Item.s3MessageHTMLdoc = await html_to_pdf({
-        client_id: pClient,
-        htmlText: draftMessageText,
-        messageKey: message_id
+      const reply_to = (reactData.replyToList && (reactData.replyToList.length > 0))
+        ? reactData.replyToList.map(r => { return r.person_id; })
+        : [];
+      let recipient_key = [];
+      reactData.newMessageRecipients.forEach(r => {
+        if (r.person_id) { recipient_key.push(...([r.person_id].flat())); }
+        else if (r.group_id) { recipient_key.push(`GRP:${r.group_id}`); }
+        else if (r.hasOwnProperty('rIndex') && (r.rIndex > -1)) {
+          recipient_key.push(...reactData.preferred_recipients[r.rIndex].personList);
+        }
       });
-    }
-    if (reactData.newMessageVMAlternative && reactData.newMessageVMAltText && (reactData.newMessageVMAltText.length > 0)) {
-      PostOfficeRec.Item.voice_mail = reactData.newMessageVMAltText;
-    }
-    if (window.location.href.split('//')[1].slice(0, 1).toUpperCase() !== 'D') {
-      PostOfficeRec.TableName = 'TestPostOffice';
-    }
-    let goodPost = true;
-    await dbClient
-      .put(PostOfficeRec)
-      .promise()
-      .catch(error => {
-        cl(`Error writing to Post Office; error is ${error}`);
-        goodPost = false;
+      reply_to.forEach(r => {    // this makes sure that everyone on the reply_to list is copied on the original message
+        if ((r !== reactData.newMessageSendFrom) && !recipient_key.includes(r)) {
+          recipient_key.push(r);
+        }
       });
-    if (goodPost) {
-      let nowTime = new Date().getTime();
-      reactData.threads[reactData.newMessageThread] = {
-        last_update: nowTime,
-        delete_flag: false,
-        messages: [
-          {
-            message_text: PostOfficeRec.Item.message_text,
-            html_message_text: PostOfficeRec.Item.html_message_text || PostOfficeRec.Item.message_text,
-            subject: PostOfficeRec.Item.subject,
-            last_update: nowTime,
-            attachments: PostOfficeRec.Item.attachments,
-            composite_key: `T:${reactData.newMessageThread}~M:001~D:${recipient_key[0]}`,
-            inOut: 'out',
-            my_id: pPerson,
-            sent_time: nowTime,
-            author_id: pPerson,
-            author_name: await makeName(pPerson),
-            author_image: getImage(pPerson),
-            reply_to: PostOfficeRec.Item.reply_to,
-            allowReplyAll: PostOfficeRec.Item.allowReplyAll,
-            status_urgent: reactData.newUrgentMessage,
-            status_with_attachment: Boolean(reactData.attachments_to_send && (reactData.attachments_to_send.length > 0)),
-            partner_id: new Set(PostOfficeRec.Item.recipient_key),
-            recipients: reactData.newMessageRecipients.map((r, x) => {
-              return {
-                recipient_id: r.person_id || r.group_id || reactData.preferred_recipients[r.rIndex].personList[0],
-                recipient_name: r.person_name || r.group_name || reactData.preferred_recipients[r.rIndex].objText,
-                is_group: !!r.group_id,
-                wasHeld: false,
-                status_held: false,
-                status_blocked: false,
-                status_redirected: false,
-                status_with_rules: false,
-                status_not_og: false,
-                heldUntil: 0,
-                methods: {
-                  'in Process': {
-                    last_update_time: nowTime,
-                    result: 'Recently sent',
-                    composite_key: `T:${reactData.newMessageThread}~M:001~D:${x}`
-                  }
-                }
-              };
-            }),
-            other_recipients: [],   // these are IDs of people who - on an inbound message to me - also received the same message
-            other_recipientNames: [],   // these are NamesIDs of people who - on an inbound message to me - also received the same message
-            is_public: reactData.is_public
-          }
-        ]
+      let PostOfficeRec = {
+        Item: {
+          thread_id: reactData.newMessageThread,
+          message_id,
+          allowReplyAll: reactData.allowReplyAll,
+          attachments: reactData.attachments_to_send,
+          client_id: pClient,
+          deliver_time: deliverTime,
+          from: reactData.newMessageSendFrom,
+          message_text: draftMessageText,
+          patient_id: reactData.newMessageSendFrom,
+          preferred_method: (reactData.newUrgentMessage ? 'urgent' : null),
+          recipient_base: 'list',
+          recipient_key,
+          subject: reactData.newMessageSubject || `Message from ${await makeName(reactData.newMessageSendFrom)}`,
+          reply_to,
+          is_public: reactData.is_public
+        },
+        TableName: 'PostOffice'
       };
-      reactData.sorted_threads.unshift(reactData.newMessageThread);
+      if (options && options.forwardBypassRules) {
+        PostOfficeRec.Item.byPass_rules = true;
+      }
+      if (reactData.newMessageSendFrom !== pPerson) {
+        PostOfficeRec.Item.sender_spoofedByAccount = pPerson;
+        PostOfficeRec.Item.sender_spoofedByUser = state.session.user_id;
+      }
+      if (reactData.newMessageVMAlternative && reactData.newMessageVMAltText && (reactData.newMessageVMAltText.length > 0)) {
+        PostOfficeRec.Item.voice_mail = reactData.newMessageVMAltText;
+      }
+      const signatureItem = { ...PostOfficeRec.Item };
+      delete signatureItem.message_id;
+      delete signatureItem.thread_id;
+      delete signatureItem.deliver_time;
+      const signature = JSON.stringify({
+        ...signatureItem,
+        scheduledTime: reactData.scheduledSend ? deliverTime : null
+      });
+      const pending = pendingPostOfficeRef.current;
+      if (pending && pending.signature !== signature && pending.submission.records.some(record => record.posted)) {
+        throw new Error('Part of the previous message is already queued. Restore its original text, recipients, and options, then send again to queue only the remaining batches.');
+      }
+      let submission;
+      if (pending && pending.signature === signature) {
+        submission = pending.submission;
+        PostOfficeRec = submission.records[0].request;
+      } else {
+        if (draftMessageText.startsWith('<p')) {
+          PostOfficeRec.Item.html_message_text = draftMessageText;
+          let plain_text = draftMessageText;
+          plain_text = plain_text.replace(/<style([\s\S]*?)<\/style>/gi, '');
+          plain_text = plain_text.replace(/<script([\s\S]*?)<\/script>/gi, '');
+          plain_text = plain_text.replace(/<strong>/ig, '');
+          plain_text = plain_text.replace(/<\/strong>/ig, '');
+          plain_text = plain_text.replace(/<\/div>/ig, '\n');
+          plain_text = plain_text.replace(/<\/li>/ig, '\n');
+          plain_text = plain_text.replace(/<li>/ig, '  *  ');
+          plain_text = plain_text.replace(/<\/ul>/ig, '\n');
+          plain_text = plain_text.replace(/<\/p>/ig, '\n');
+          plain_text = plain_text.replace(/<br\s*[/]?>/gi, "\n");
+          plain_text = plain_text.replace(/<[^>]+>/ig, '');
+          plain_text = plain_text.replace('%%', '');
+          PostOfficeRec.Item.message_text = plain_text;
+          PostOfficeRec.Item.s3MessageHTMLdoc = await html_to_pdf({
+            client_id: pClient,
+            htmlText: draftMessageText,
+            messageKey: message_id
+          });
+        }
+        if (window.location.href.split('//')[1].slice(0, 1).toUpperCase() !== 'D') {
+          PostOfficeRec.TableName = 'TestPostOffice';
+        }
+        submission = await preparePostOfficeSubmission(PostOfficeRec);
+        pendingPostOfficeRef.current = { signature, submission };
+      }
+      await submitPostOfficeSubmission(submission);
+      const nowTime = new Date().getTime();
+      if (submission.records.length === 1) {
+        reactData.threads[reactData.newMessageThread] = {
+          last_update: nowTime,
+          delete_flag: false,
+          messages: [
+            {
+              message_text: PostOfficeRec.Item.message_text,
+              html_message_text: PostOfficeRec.Item.html_message_text || PostOfficeRec.Item.message_text,
+              subject: PostOfficeRec.Item.subject,
+              last_update: nowTime,
+              attachments: PostOfficeRec.Item.attachments,
+              composite_key: `T:${reactData.newMessageThread}~M:001~D:${recipient_key[0]}`,
+              inOut: 'out',
+              my_id: pPerson,
+              sent_time: nowTime,
+              author_id: pPerson,
+              author_name: await makeName(pPerson),
+              author_image: getImage(pPerson),
+              reply_to: PostOfficeRec.Item.reply_to,
+              allowReplyAll: PostOfficeRec.Item.allowReplyAll,
+              status_urgent: reactData.newUrgentMessage,
+              status_with_attachment: Boolean(reactData.attachments_to_send && (reactData.attachments_to_send.length > 0)),
+              partner_id: new Set(PostOfficeRec.Item.recipient_key),
+              recipients: reactData.newMessageRecipients.map((r, x) => {
+                return {
+                  recipient_id: r.person_id || r.group_id || reactData.preferred_recipients[r.rIndex].personList[0],
+                  recipient_name: r.person_name || r.group_name || reactData.preferred_recipients[r.rIndex].objText,
+                  is_group: !!r.group_id,
+                  wasHeld: false,
+                  status_held: false,
+                  status_blocked: false,
+                  status_redirected: false,
+                  status_with_rules: false,
+                  status_not_og: false,
+                  heldUntil: 0,
+                  methods: {
+                    'in Process': {
+                      last_update_time: nowTime,
+                      result: 'Recently sent',
+                      composite_key: `T:${reactData.newMessageThread}~M:001~D:${x}`
+                    }
+                  }
+                };
+              }),
+              other_recipients: [],   // these are IDs of people who - on an inbound message to me - also received the same message
+              other_recipientNames: [],   // these are NamesIDs of people who - on an inbound message to me - also received the same message
+              is_public: reactData.is_public
+            }
+          ]
+        };
+        reactData.sorted_threads.unshift(reactData.newMessageThread);
+      }
       const recipientMessageText = `${listFromArray(((reactData.newMessageRecipients.length > 0)
         ? reactData.newMessageRecipients
         : reactData.selections)
@@ -947,17 +978,22 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
       }, true);
       // Re-refresh after Lambda delivery latency (~30s for processing)
       setTimeout(() => { if (isMountedRef.current) { refreshMessages(); } }, 30 * 1000);
-    }
-    else {
+      pendingPostOfficeRef.current = null;
+      return true;
+    } catch (error) {
+      cl(`Error writing to Post Office; error is ${error}`);
       updateReactData({
         alert: {
           severity: 'error',
           title: 'Your Message',
-          message: `There was a problem sending your message`,
+          message: `${error.message} Your draft has been kept. Retry unchanged to queue only batches not yet confirmed.`,
         }
       }, true);
+      return false;
+    } finally {
+      postingMessageRef.current = false;
+      updateReactData({ postingMessage: false }, true);
     }
-    return goodPost;
   }
 
   function handleResize() {
@@ -2162,7 +2198,7 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
                               : { marginTop: '24px', backgroundColor: 'white', color: 'green' }
                             }
                             size='small'
-                            //                       disabled={(reactData.newMessageText.length === 0) || (reactData.newMessageRecipients.length === 0)}
+                            disabled={reactData.postingMessage}
                             onClick={async () => {
                               const pendingMessageText = getPendingMessageText();
                               if (pendingMessageText.length === 0) {
@@ -3174,7 +3210,8 @@ export default ({ pPerson, pClient, pMessageList, onReset, defaultValue, options
               px={3}
               key={`alert_wrapper`}
               autoHideDuration={(reactData.alert.severity === 'success') ? 5000 : ((reactData.alert.severity === 'info') ? 15000 : null)}
-              onClose={() => {
+              onClose={(event, reason) => {
+                if (reason === 'clickaway' && pendingPostOfficeRef.current) { return; }
                 updateReactData({
                   warning: false,
                   alert: false

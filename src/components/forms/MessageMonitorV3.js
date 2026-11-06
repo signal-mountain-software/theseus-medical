@@ -29,6 +29,7 @@ import useSession from '../../hooks/useSession';
 import { dbClient, sentenceCase } from '../../util/AVAUtilities';
 import { makeDate } from '../../util/AVADateTime';
 import { parseDateInputAsLocalDate, buildMessageWeekList } from '../../util/AVAMessages';
+import { preparePostOfficeSubmission, submitPostOfficeSubmission } from '../../util/AVAPostOffice';
 import { AVAclasses, AVATextStyle } from '../../util/AVAStyles';
 import { makeName } from '../../util/AVAPeople';
 import QuickSearch from '../sections/QuickSearch';
@@ -1751,6 +1752,7 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
     const autoCcForwardNameByRecipientIdRef = React.useRef({});
     const autoCcLookupAttemptedRef = React.useRef(new Set());
     const singleDeliveryLoadedTokenRef = React.useRef('');
+    const releasingPostOfficeRef = React.useRef(new Map());
     const [party1QuickSearchData, setParty1QuickSearchData] = React.useState({
         selections: [],
     });
@@ -2663,12 +2665,16 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
             }
         }
 
-        await dbClient
-            .put({
+        const releaseKey = `${actionRec.client_id}/${actionRec.after}`;
+        let submission = releasingPostOfficeRef.current.get(releaseKey);
+        if (!submission) {
+            submission = await preparePostOfficeSubmission({
                 TableName: poTableName,
                 Item: nextPostOfficeRecord
-            })
-            .promise();
+            });
+            releasingPostOfficeRef.current.set(releaseKey, submission);
+        }
+        await submitPostOfficeSubmission(submission);
 
         await dbClient
             .delete({
@@ -2680,7 +2686,8 @@ export default function MessageMonitorV3({ defaults = {}, onClose = () => { } })
             })
             .promise();
 
-        return nextPostOfficeRecord.message_id;
+        releasingPostOfficeRef.current.delete(releaseKey);
+        return submission.records[0].request.Item.message_id;
     }, [findHeldActionRecByCompositeKey]);
 
     const handleReleaseHeldRecipients = React.useCallback(async (recipientSummaryList = []) => {
