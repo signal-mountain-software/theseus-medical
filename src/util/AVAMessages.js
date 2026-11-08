@@ -6,6 +6,7 @@ import { getCustomizations, getObject64 } from './AVAUtilities';
 import { getServiceRequests, formatServiceRequestDetails } from './AVAServiceRequest';
 import { getObservationItems } from './AVAObservations';
 import { makeDate } from './AVADateTime';
+import { postPostOffice } from './AVAPostOffice';
 
 import { jsPDF } from "jspdf";
 import html2canvas from 'html2canvas';
@@ -3495,7 +3496,7 @@ export async function sendMessages(body) {
   /*  Expect body as an object or array of objects with the following structure
           client: <client_id>,
           author: <from person_id>
-          testMode: <boolean> (if true, everything will happen EXCEPT the message will not be put in the PostOffice - and therefore not sent)
+          testMode: <boolean> (if true, write to TestPostOffice instead of PostOffice)
           messageText: <text> (if present, messageTextthis will override any messageText in the values attribute)
           htmltext: <text>
           recipientList: <person_id or array of person_id's list can include "GRP//<group_id>" as well>
@@ -3519,7 +3520,6 @@ export async function sendMessages(body) {
     mCount = 1;
   }
   for (let m = 0; m < mCount; m++) {
-    let currentTime = makeDate(new Date());
     let env = toSend[m];
     if (!('thread_id' in env)) { env.thread_id = `${postTime}.${uuid(6)}`; }
     // clean up recipientList before proceeding
@@ -3557,55 +3557,25 @@ export async function sendMessages(body) {
     if (!('subject' in PostOfficeRec.Item)) {
       PostOfficeRec.Item["subject"] = `Message from ${await makeName(env.author)}`;
     }
-    let to = [];
-    let ind = [];
-    if (Array.isArray(env.recipientList)) { to = env.recipientList; }
-    else to = [env.recipientList];
-    for (let r = 0; r < to.length; r++) {
-      PostOfficeRec.Item['message_id'] = `${env.thread_id}.${m}.${r}~AVAMessages`;
-      if (to[r].startsWith('GRP//')) {
-        let gCode = to[r].split('//')[1];
-        if (gCode.includes('/')) {
-          let [cl, gr] = gCode.split(/[/]+/);
-          PostOfficeRec.Item["client_id"] = cl;
-          gCode = gr;
-        }
-        PostOfficeRec.Item["recipient_base"] = 'group';
-        PostOfficeRec.Item["recipient_key"] = gCode;
-        let goodSend = true;
-        await dbClient
-          .put(PostOfficeRec)
-          .promise()
-          .catch(error => {
-            console.log(`Message Engine caught error at 268 adding a Message; error is ${error}`);
-            results.push({ sent: false, message: `Unable to send message to group ${gCode} ${currentTime.oaDate}.  Error was ${error}` });
-            goodSend = false;
-          });
-        if (goodSend) { results.push({ sent: true, message: `Sent message to group ${gCode} ${currentTime.oaDate}` }); }
-      }
-      else { ind.push(to[r]); }
-    }
-    if (ind.length > 0) {
-      PostOfficeRec.Item["recipient_base"] = 'list';
-      PostOfficeRec.Item["recipient_key"] = ind;
-      let goodPost = true;
-      await dbClient
-        .put(PostOfficeRec)
-        .promise()
-        .catch(error => {
-          cl(`Error writing to Post Office; error is ${error}`);
-          results.push({ sent: false, message: `Unable to send message ${currentTime.oaDate}.  Error was ${error}` });
-          goodPost = false;
-        });
-      if (goodPost) {
-        if (ind.length === 1) {
-          let sName = await makeName(ind[0]);
-          results.push({ sent: true, message: `Successfully sent to ${sName}`, messsage_id: PostOfficeRec?.Item?.message_id || '' });
-        }
-        else {
-          results.push({ sent: true, message: `Successfully sent to ${ind.length} recipients`, message_id: PostOfficeRec?.Item?.message_id || '' });
-        }
-      }
+    PostOfficeRec.Item.recipient_base = 'list';
+    PostOfficeRec.Item.recipient_key = [env.recipientList].flat();
+    try {
+      const submission = await postPostOffice(PostOfficeRec);
+      results.push({
+        sent: true,
+        message: `Successfully queued for ${submission.recipientCount} recipients`,
+        message_id: submission.records[0].request.Item.message_id,
+        message_ids: submission.records.map(record => record.request.Item.message_id)
+      });
+    } catch (error) {
+      cl(`Error writing to Post Office; error is ${error}`);
+      results.push({
+        sent: false,
+        message: `Unable to send message. ${error.message}`,
+        message_ids: error.submission
+          ? error.submission.records.filter(record => record.posted).map(record => record.request.Item.message_id)
+          : []
+      });
     }
   }
   return results;

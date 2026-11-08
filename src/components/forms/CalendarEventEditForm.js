@@ -2606,7 +2606,6 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
               for (const chosen of (selections || [])) {
                 if (!chosen || !chosen.person_id) { continue; }
                 let pID = chosen.person_id;
-                let selectedPerson = `${chosen.display_name || await makeName(pID)}%%${pID}%%${chosen.search_data || ''}`;
                 let availability_list = await (myAvailability(
                   {
                     check_date: pOccData.date,
@@ -2615,7 +2614,7 @@ export default ({ pEventCode, pEvent, peopleList, pPatient, pSignUps, pViewOnly 
                   }
                 ));
                 console.log(availability_list);
-                let slotObj = { person: selectedPerson };
+                let slotObj = { person: pID };
                 let newSlotStart24;
                 let newSlotEnd24;
                 if (editSlot) {

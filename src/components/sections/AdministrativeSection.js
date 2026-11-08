@@ -1,4 +1,5 @@
 import React from 'react';
+import DOMPurify from 'dompurify';
 import { Box, Typography, Checkbox, FormControlLabel, Input, Switch, Select, MenuItem, Chip } from '@material-ui/core/';
 import { isEmpty, deepCopy, booleanLikeToken } from '../../util/AVAUtilities';
 import { makeDate } from '../../util/AVADateTime';
@@ -6,6 +7,18 @@ import { makeDate } from '../../util/AVADateTime';
 import { AVATextStyle } from '../../util/AVAStyles';
 
 const DONE_SENTINEL = '__AVA_DONE__';
+
+const AdministrativePrompt = ({ children, suffix = '', ...props }) => {
+  const isHtml = typeof children === 'string' && /<\/?[a-z][^>]*>/i.test(children);
+  return (
+    <Typography component='div' {...props}>
+      {isHtml
+        ? <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(children, { USE_PROFILES: { html: true } }) }} />
+        : children}
+      {suffix}
+    </Typography>
+  );
+};
 
 // Persisted boolean-typed attributes aren't only ever a real true/false - the same attribute
 // can hold a 'yes'/'no'/'true'/'false' string if another tool (e.g. FormFillB) last wrote it.
@@ -39,12 +52,12 @@ const DropdownField = ({ fieldKey, fieldEntry, allFields, updateField }) => {
 
   return (
     <Box display='flex' flexDirection='column' justifyContent='flex-start' marginLeft={0} paddingBottom={0} alignItems='flex-start'>
-      <Typography style={Object.assign({},
+      <AdministrativePrompt style={Object.assign({},
         { margin: 0, marginLeft: 0, marginRight: '2px', marginBottom: 0, paddingTop: '16px', paddingBottom: 0, marginTop: 0 },
         AVATextStyle({ size: 1, bold: true }))
       }>
         {fieldEntry.fieldRec.prompt.value}
-      </Typography>
+      </AdministrativePrompt>
       <Select
         multiple={isMultiple}
         value={pendingValue}
@@ -158,7 +171,7 @@ export default ({ currentValues, ogValues, errorList, setError, reactData, updat
                 marginTop: 0,
                 paddingTop: 0,
               }}>
-                <Typography style={Object.assign({},
+                <AdministrativePrompt style={Object.assign({},
                   {
                     margin: 0,
                     marginLeft: 0,
@@ -173,7 +186,7 @@ export default ({ currentValues, ogValues, errorList, setError, reactData, updat
                   (AVATextStyle({ size: 1, bold: true })))
                 }>
                   {reactData.form_fields[this_formField].fieldRec.prompt.value}
-                </Typography>
+                </AdministrativePrompt>
                 <Box
                   flexDirection='row'
                   key={`CheckGroup__${this_formField}`}
@@ -252,12 +265,13 @@ export default ({ currentValues, ogValues, errorList, setError, reactData, updat
               display='flex' flexDirection='column'
               alignItems={'flex-start'}
             >
-              <Typography
+              <AdministrativePrompt
                 key={`local_prompt__${cFNdx}`}
+                suffix=' '
                 style={AVATextStyle({ size: 1, margin: { top: 1 }, bold: true })}
               >
-                {`${reactData.form_fields[this_formField].prompt} `}
-              </Typography>
+                {reactData.form_fields[this_formField].prompt}
+              </AdministrativePrompt>
               <React.Fragment
                 key={`groupFrag__${this_formField}`}
               >
@@ -309,12 +323,13 @@ export default ({ currentValues, ogValues, errorList, setError, reactData, updat
               display='flex' flexDirection='row'
               alignItems={'baseline'}
             >
-              <Typography
+              <AdministrativePrompt
                 key={`local_prompt__${cFNdx}`}
+                suffix=': '
                 style={AVATextStyle({ size: 1, margin: { top: 0.25 }, bold: true })}
               >
-                {`${reactData.form_fields[this_formField].prompt}: `}
-              </Typography>
+                {reactData.form_fields[this_formField].prompt}
+              </AdministrativePrompt>
               <Input
                 id={`field__${this_formField}`}
                 key={`field__${this_formField}`}
@@ -370,7 +385,7 @@ export default ({ currentValues, ogValues, errorList, setError, reactData, updat
               paddingBottom={'16px'}
               alignItems='flex-start'
             >
-              <Typography style={Object.assign({},
+              <AdministrativePrompt style={Object.assign({},
                 {
                   margin: 0,
                   marginLeft: 0,
@@ -385,7 +400,7 @@ export default ({ currentValues, ogValues, errorList, setError, reactData, updat
                 (AVATextStyle({ size: 1, bold: true })))
               }>
                 {reactData.form_fields[this_formField].prompt}
-              </Typography>
+              </AdministrativePrompt>
               <input
                 type="date"
                 id={`field__${cFNdx}`}
@@ -432,7 +447,7 @@ export default ({ currentValues, ogValues, errorList, setError, reactData, updat
               paddingBottom={0}
               alignItems='flex-start'
             >
-              <Typography style={Object.assign({},
+              <AdministrativePrompt style={Object.assign({},
                 {
                   margin: 0,
                   marginLeft: 0,
@@ -447,7 +462,7 @@ export default ({ currentValues, ogValues, errorList, setError, reactData, updat
                 (AVATextStyle({ size: 1, bold: true })))
               }>
                 {reactData.form_fields[this_formField].prompt}
-              </Typography>
+              </AdministrativePrompt>
               <Box flexGrow={2} display='flex' alignItems='center'
                 justifyContent='flex-start' marginBottom={1} flexDirection='row'>
                 <Typography

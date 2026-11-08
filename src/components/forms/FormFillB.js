@@ -12,6 +12,7 @@ import AVAUploadFile from '../../util/AVAUploadFile';
 
 import { printFromHTML, sendMessages, printDocumentHtmlB, printElementWysiwygB } from '../../util/AVAMessages';
 import { printEmptyDocument } from '../../util/AVAMessages';
+import { postPostOffice } from '../../util/AVAPostOffice';
 import SignatureCanvas from 'react-signature-canvas';
 import Select from "react-dropdown-select";
 import CloudUploadIcon from '@material-ui/icons/CloudUpload';
@@ -100,14 +101,14 @@ const useStyles = makeStyles(theme => ({
     margin: 0,
     marginLeft: '-8px',
     marginRight: '2px',
-    height: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: '10px',
-    marginBottom: '25px',
+    height: 'auto',
+    alignItems: 'flex-start',
+    justifyContent: 'flex-start',
+    marginTop: 0,
+    marginBottom: '4px',
   },
   radioDays: {
-    marginLeft: '-8px',
+    marginLeft: 0,
     marginRight: '16px',
     '&.MuiInputBase-input': {
       paddingBottom: '0px'
@@ -550,7 +551,7 @@ export default ({ request = {}, onClose }) => {
       newData
     )));
     if (force) {
-      setForceRedisplay(!forceRedisplay);
+      setForceRedisplay(value => !value);
     }
   };
 
@@ -1492,7 +1493,9 @@ export default ({ request = {}, onClose }) => {
 
     // set options — spread field_variables.options first so extra properties (e.g. date_format) pass through
     returnObj.options = Object.assign({}, field_variables.options || {}, {
-      required: !!(field_variables.required || field_variables.value?.required || returnObj.value?.required),
+      required: field_variables.required !== undefined
+        ? !!field_variables.required
+        : !!(field_variables.value?.required || returnObj.value?.required),
       log_results: returnObj.value?.log_results || false,
       viewOnly: (returnObj.value?.edit === 'view'),
       hidden: (returnObj.value?.edit === 'hidden'),
@@ -3139,7 +3142,7 @@ export default ({ request = {}, onClose }) => {
                       inputProps={{ 'aria-labelledby': `${props.ariaPrefix || 'message_routing'}_${tIndex}` }}
                     />
                   }
-                  label={<Typography className={classes.radioDays} style={{ whiteSpace: 'normal', overflowWrap: 'anywhere', minWidth: 0 }}>{text.display}</Typography>}
+                  label={<Typography className={classes.radioDays} style={{ whiteSpace: 'normal', overflowWrap: 'anywhere', minWidth: 0, paddingTop: '9px', lineHeight: '20px' }}>{text.display}</Typography>}
                   labelPlacement='end'
                 />
               ))}
@@ -3254,9 +3257,6 @@ export default ({ request = {}, onClose }) => {
         useFamilySizing={false}
         groupKeyPrefix={'CheckGroup'}
         ariaPrefix={'message_routing'}
-        optionRowStyle={props.multiLine
-          ? { height: 'auto', alignItems: 'center', marginBottom: '20px', paddingBottom: '8px' }
-          : undefined}
       />
     );
   };
@@ -4572,6 +4572,7 @@ export default ({ request = {}, onClose }) => {
       save_type: final ? 'save_final' : (timeout ? 'on_timeout' : 'in_process'),
     });
 
+    const messageErrors = [];
     // send messages or create new forms as indicated in formRec options upon final save
     if (final && reactData.formRec?.options?.messaging) {
       // conditional based on responses should be allowed here
@@ -4588,7 +4589,8 @@ export default ({ request = {}, onClose }) => {
             this_instruction.send_message.subject = await deepResolve(this_instruction.send_message.subject, reactData.peopleRec[reactData.pertains_to]);
           }
           this_instruction.send_message.text = await deepResolve(this_instruction.send_message.text, reactData.peopleRec[reactData.pertains_to]);
-          await sendMessage(this_instruction.send_message);
+          const messageResult = await sendMessage(this_instruction.send_message);
+          if (!messageResult.sent) { messageErrors.push(messageResult.error); }
         }
         if (this_instruction.hasOwnProperty('instruction') && (this_instruction.instruction === 'create_form')) {
           await createForm({        // finishing this form issues an instruction to create another form ("teacher recommendation" use case, for example)
@@ -4683,6 +4685,10 @@ export default ({ request = {}, onClose }) => {
       document_id: docData.document_id,
       recWritten
     });
+    if (messageErrors.length) {
+      response.goodPut = false;
+      response.putError = `The form was saved, but some messages could not be queued: ${messageErrors.join(' ')}`;
+    }
     return response;
   };
 
@@ -5033,13 +5039,13 @@ export default ({ request = {}, onClose }) => {
     if (send_instructions.attach) {
       PostOfficeRec.Item.attachments = [send_instructions.url];
     }
-    await dbClient
-      .put(PostOfficeRec)
-      .promise()
-      .catch(error => {
-        cl(`Error writing to Post Office; error is ${error}`);
-      });
-    return;
+    try {
+      await postPostOffice(PostOfficeRec);
+      return { sent: true };
+    } catch (error) {
+      cl(`Error writing to Post Office; error is ${error}`);
+      return { sent: false, error: error.message };
+    }
   }
 
   let preset_values = {};

@@ -38,7 +38,96 @@ entry to preview its target and params, or select it to populate the editable
 fields. Copying does not change title, color, or access. Function creation is
 master-only; the new card's `available_to` rules determine who can see it.
 
+## Administrative Field Prompts
+
+Administrative section prompts support plain text or HTML strings for text,
+date, boolean, selection, and dropdown fields. For example,
+`<strong>Important</strong><br/>Additional instructions` renders formatted text
+instead of literal tags. HTML is sanitized with DOMPurify before rendering;
+scripts, event handlers, and unsafe links are removed. Field values and save
+behavior are unchanged.
+
+## PowerPoint Daily Schedule Pagination
+
+`lambda/pptxTransformer.mjs` limits `{{event_schedule_today}}` to four events per
+slide by default. Larger lists are balanced across the minimum number of slides
+without changing event order: five events become 3 + 2, six become 3 + 3, and
+nine become 3 + 3 + 3. Blank paragraphs between events are added after pagination.
+The daily schedule's text box retains its template autofit settings and dimensions
+instead of being forced to grow. This is a count limit, not measured overflow
+detection; unusually long descriptions can still need a lower limit.
+
+Override the limit per transformation request to suit a client's template:
+
+```json
+{
+  "placeholder_page_sizes": {
+    "event_schedule_today": 4
+  }
+}
+```
+
+Limits must be positive integers. The same option supports `birthdays_this_month`
+(default seven); unknown keys or invalid limits fail explicitly. Weekly schedule
+grouping is unchanged. If a grouped placeholder shares a slide with a paginated
+flat list, the flat list is paginated within each group slide.
+
+No dedicated request builder for this Lambda exists in this application source;
+callers can include the option directly in their request body. Deploy the changed
+Lambda separately: the local `lambda` directory is ignored by this application's
+Git repository. Run the isolated transformer regressions with
+`node --test lambda\pptxTransformer.test.mjs`.
+
+## Calendar Attendee Selection
+
+The calendar event's **Add someone** picker passes the selected `person_id`
+directly to slot allocation. Picker display/search metadata is not appended to
+the identity used for the slot owner or Calendar key. Existing slot-instance
+suffixes and legacy allocation formats are unchanged. This prevents new
+malformed IDs; it does not repair previously written Calendar records.
+
+## Client Message Batching
+
+Client PostOffice writers use `src/util/AVAPostOffice.js`. Before posting, group
+references (`GRP:group`, `GRP//group`, or group-addressed records) are expanded
+into person IDs. People and group hierarchy reads are fully paginated, following
+Mailman's existing `People.groups` membership and ancestor semantics. Explicit
+person IDs and expanded memberships are deduplicated together before splitting.
+Membership is a snapshot taken when the client prepares the message.
+
+The maximum is **400 unique person IDs per PostOffice record**. Larger lists
+are balanced across the minimum number of batches: 410 becomes 205 + 205, and
+2,500 becomes 358 + six batches of 357. Cross-client audiences remain in separate
+client records. Small messages keep their original message and thread IDs.
+Split records have independent message/thread IDs plus `broadcast_id`,
+`broadcast_thread_id`, one-based `batch_index`, and `batch_count` metadata.
+These broadcast fields remain on PostOffice; the unchanged Mailman does not
+propagate them into delivery/thread records.
+
+The shared messaging utility, MessageForm (including ShowGroup/GroupControl's
+send icon), FormFillB's direct sender, and both held-message release paths use
+this helper. MessageForm keeps a failed draft and its prepared batches while
+the composer stays mounted. Retrying unchanged skips confirmed writes and
+reuses the remaining IDs and membership snapshot. After a partial write, finish
+the original draft before changing its contents. This retry state is not
+persisted across closing/reloading the composer. Held-message release actions
+also retain batch progress while their component stays mounted and are removed
+only after all batches are queued.
+
+This is client-side queuing, not a delivery guarantee. Lambda/provider retries,
+recipient-handling rules, and destination deduplication are unchanged. Different
+people sharing a destination can still receive duplicate deliveries across
+batches, and Mailman rules can add recipients after client batching. Backend
+PostOffice writers are unchanged. To isolate one PostOffice record per Lambda
+invocation, configure the DynamoDB trigger's **Batch size = 1** separately; this
+change does not modify trigger settings or enable concurrency.
+
 ## Responsive Form Prompts
+
+An explicit top-level `required` value in a form field overrides inherited
+legacy `value.required` settings, including `required: false`. When omitted,
+the inherited setting remains in effect. Selection minimums are independent
+constraints and can still require an answer.
 
 FormFillB treats configured prompt widths as preferred sizes, capped by the
 available container width (including field margins). Selection labels wrap
