@@ -84,6 +84,11 @@ const WIDTH_ADJUSTABLE_TYPES = ['text', 'date', 'phone', 'numeric', 'select', 's
 // that have both a Width and a Required control.
 const REQUIRED_AFTER_WIDTH_TYPES = ['text', 'numeric', 'select', 'select&text', 'select_event'];
 
+// Field types that don't get a "Default value?" picker: header is label-only (no value),
+// signature isn't a DataDictionary-shaped value, and upload is excluded for now even though a
+// DD field referencing a URL could reasonably seed an upload's default later.
+const DEFAULT_PICKER_EXCLUDED_TYPES = ['header', 'signature', 'upload'];
+
 // Named presets in place of raw pixel entry - values are the pixel widths FormFillB expects
 // in prompt.width. '' means "unset", letting FormFillB fall back to its own default.
 const WIDTH_PRESETS = [
@@ -111,6 +116,21 @@ const coerceFieldType = (rawType) => {
     if (normalizedType === 'string') { return 'text'; }
     if (normalizedType === 'boolean' || normalizedType === 'bool') { return 'yes/no'; }
     return rawType || 'text';
+};
+
+// Splits a field's stored `default` into what the "Default value?" picker understands
+// (a single `dictionary.<field_key>` source string) versus anything it doesn't (an array of
+// sources, a non-dictionary source, a literal `value`, etc.). The latter is preserved
+// untouched on save as nonDictionaryDefault, so editing a form through this UI never silently
+// drops a hand-authored default it doesn't have editor support for yet.
+const parseFieldDefaultForEditor = (fieldDef) => {
+    const rawDefault = fieldDef?.default;
+    const source = rawDefault?.source;
+    const isSimpleDictionaryDefault = (typeof source === 'string') && /^dictionary\./i.test(source.trim());
+    return {
+        defaultDictionaryKey: isSimpleDictionaryDefault ? source.trim().slice(source.trim().indexOf('.') + 1) : null,
+        nonDictionaryDefault: (rawDefault && !isSimpleDictionaryDefault) ? rawDefault : null,
+    };
 };
 
 // 'select&text' is not its own FIELD_TYPES entry - it's 'select' plus the "allow custom
@@ -180,6 +200,12 @@ const blankField = () => ({
     required: false,
     promptWidth: '',
     promptRows: '',
+    // Default value sourced from a DataDictionaryV3 field (authored via the "Default value?"
+    // picker) - see resolveDictionaryDefault in FormFillB. nonDictionaryDefault preserves any
+    // hand-authored default.source/value this editor doesn't understand (e.g. a 'person.*'
+    // source or a source array), so re-saving a form through this UI never silently drops it.
+    defaultDictionaryKey: null,
+    nonDictionaryDefault: null,
     // numeric only: optional inclusive bounds on the entered number.
     numericMin: '',
     numericMax: '',
@@ -427,6 +453,17 @@ export default ({ onClose, directForm }) => {
         setConditionError('');
         setConfirmDeleteCondition(false);
         setConditionEditorTarget({ sectionIdx, fieldIdx });
+    };
+
+    // Which field's "Default value from Data Dictionary" picker is open, if any. Pick-and-go:
+    // clicking a dictionary field in the picker commits it and closes immediately - there's no
+    // separate draft/Save step like the condition editor above.
+    const [defaultPickerTarget, setDefaultPickerTarget] = React.useState(null); // { sectionIdx, fieldIdx }
+    const openDefaultPicker = (sectionIdx, fieldIdx) => {
+        setDefaultPickerTarget({ sectionIdx, fieldIdx });
+    };
+    const closeDefaultPicker = () => {
+        setDefaultPickerTarget(null);
     };
 
     // Which value's message/notify/groups rule popup is open, if any - see the "Per-value stage
@@ -692,6 +729,7 @@ export default ({ onClose, directForm }) => {
                     required: !!fieldDef.required,
                     promptWidth: (typeof fieldDef.prompt === 'object' && fieldDef.prompt?.width) ? String(fieldDef.prompt.width) : '',
                     promptRows: (typeof fieldDef.prompt === 'object' && fieldDef.prompt?.rows) ? String(fieldDef.prompt.rows) : '',
+                    ...parseFieldDefaultForEditor(fieldDef),
                     numericMin: (numericMin !== undefined && numericMin !== null) ? String(numericMin) : '',
                     numericMax: (numericMax !== undefined && numericMax !== null) ? String(numericMax) : '',
                     eventIds: rawEventIds ? (Array.isArray(rawEventIds) ? rawEventIds : [rawEventIds]) : [],
@@ -1005,6 +1043,8 @@ export default ({ onClose, directForm }) => {
             required: false,
             promptWidth: '',
             promptRows: '',
+            defaultDictionaryKey: null,
+            nonDictionaryDefault: null,
             numericMin: '',
             numericMax: '',
             eventIds: [],
@@ -1564,6 +1604,14 @@ export default ({ onClose, directForm }) => {
                     };
                     if (field.dictionary_field_key) {
                         fieldDef.dictionary_field_key = field.dictionary_field_key;
+                    }
+                    // 'Default value?' picker output wins; otherwise preserve any hand-authored
+                    // default this editor doesn't model (see parseFieldDefaultForEditor above).
+                    if (field.defaultDictionaryKey) {
+                        fieldDef.default = { source: `dictionary.${field.defaultDictionaryKey}` };
+                    }
+                    else if (field.nonDictionaryDefault) {
+                        fieldDef.default = field.nonDictionaryDefault;
                     }
                     Object.assign(fieldDef, buildConditionOutput(field));
                     if (isSelectType(field.type)) {
@@ -2505,6 +2553,24 @@ export default ({ onClose, directForm }) => {
                                                         {renderConditionSummary(field, getConditionFieldOptions(sectionIdx, fieldIdx))}
                                                     </Box>
                                                 }
+                                                {!DEFAULT_PICKER_EXCLUDED_TYPES.includes(field.type) &&
+                                                    <Box display='flex' flexDirection='row' alignItems='center' style={{ gap: '8px', marginTop: '8px', minWidth: 0, flexWrap: 'wrap' }}>
+                                                        <Button
+                                                            size='small'
+                                                            onClick={() => openDefaultPicker(sectionIdx, fieldIdx)}
+                                                            style={{ flexShrink: 0, whiteSpace: 'nowrap' }}
+                                                        >
+                                                            {field.defaultDictionaryKey ? 'Default value…' : 'Default value?'}
+                                                        </Button>
+                                                        {field.defaultDictionaryKey &&
+                                                            <Chip
+                                                                size='small'
+                                                                label={`From Data Dictionary: ${reactData.dictionaryFields.find((f) => f.field_key === field.defaultDictionaryKey)?.description || field.defaultDictionaryKey}`}
+                                                                onDelete={() => updateField(sectionIdx, fieldIdx, { defaultDictionaryKey: null })}
+                                                            />
+                                                        }
+                                                    </Box>
+                                                }
                                             </Box>
                                             <IconButton size='small' onClick={() => removeField(sectionIdx, fieldIdx)}>
                                                 <DeleteIcon fontSize='small' />
@@ -3027,6 +3093,69 @@ export default ({ onClose, directForm }) => {
                             />
                         }
                     </React.Fragment>
+                );
+            })()}
+            {defaultPickerTarget && (() => {
+                const { sectionIdx, fieldIdx } = defaultPickerTarget;
+                const field = reactData.editingForm.sections[sectionIdx]?.fields?.[fieldIdx];
+                if (!field) { return null; }
+                const groupedDictionaryFields = reactData.dictionaryFields.reduce((acc, fieldRec) => {
+                    const category = fieldRec.category || 'Other';
+                    if (!acc[category]) { acc[category] = []; }
+                    acc[category].push(fieldRec);
+                    return acc;
+                }, {});
+                const categoryNames = Object.keys(groupedDictionaryFields).sort((a, b) => a.localeCompare(b));
+                return (
+                    <Dialog open={true} onClose={closeDefaultPicker} maxWidth='sm' fullWidth PaperProps={{ style: { maxHeight: '80vh' } }}>
+                        <DialogTitle>{'Default Value from Data Dictionary'}</DialogTitle>
+                        <DialogContent style={{ overflowY: 'auto' }}>
+                            <Typography style={AVATextStyle({ size: 0.85, color: 'textSecondary', margin: { bottom: 1 } })}>
+                                {'Choose a Data Dictionary field. Its current value will pre-fill this item when a new form is opened.'}
+                            </Typography>
+                            {field.defaultDictionaryKey &&
+                                <Button
+                                    size='small'
+                                    onClick={() => {
+                                        updateField(sectionIdx, fieldIdx, { defaultDictionaryKey: null });
+                                        closeDefaultPicker();
+                                    }}
+                                    style={{ marginBottom: '8px' }}
+                                >
+                                    {'Clear default value'}
+                                </Button>
+                            }
+                            {reactData.dictionaryFields.length === 0
+                                ? <Typography style={AVATextStyle({ size: 1 })}>
+                                    {'No DataDictionary fields were found for this client.'}
+                                </Typography>
+                                : categoryNames.map((categoryName) => (
+                                    <Box key={`default_picker_category_${categoryName}`} mb={1}>
+                                        <Typography style={AVATextStyle({ size: 0.9, bold: true, margin: { left: 0.2, top: 0.5, bottom: 0.2 } })}>
+                                            {categoryName}
+                                        </Typography>
+                                        {groupedDictionaryFields[categoryName].map((dictRec) => (
+                                            <Button
+                                                key={`default_picker_field_${dictRec.field_key}`}
+                                                fullWidth
+                                                size='small'
+                                                style={{ justifyContent: 'flex-start', textTransform: 'none', paddingLeft: '16px' }}
+                                                onClick={() => {
+                                                    updateField(sectionIdx, fieldIdx, { defaultDictionaryKey: dictRec.field_key });
+                                                    closeDefaultPicker();
+                                                }}
+                                            >
+                                                {dictRec.description || dictRec.field_key}
+                                            </Button>
+                                        ))}
+                                    </Box>
+                                ))
+                            }
+                        </DialogContent>
+                        <DialogActions>
+                            <Button onClick={closeDefaultPicker}>{'Cancel'}</Button>
+                        </DialogActions>
+                    </Dialog>
                 );
             })()}
             {answerLimitTarget !== null && answerLimitDraft && (() => {

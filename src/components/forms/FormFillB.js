@@ -1,7 +1,7 @@
 import React from 'react';
 import { answerSnapshot, applyClearRules, hasAnswer, resolveAnswerFieldKey, sectionAnswerError } from '../../util/AVAFormAnswerRules';
 
-import { dbClient, cl, makeArray, deepCopy, isEmpty, getDb, listFromArray, array_in_array, recordExists, isObject, titleCase, uuid, isMobile, s3, cloudfront, getObject, booleanLikeToken } from '../../util/AVAUtilities';
+import { dbClient, cl, makeArray, deepCopy, isEmpty, getDb, listFromArray, array_in_array, recordExists, isObject, titleCase, uuid, isMobile, s3, cloudfront, getObject, booleanLikeToken, resolveData } from '../../util/AVAUtilities';
 import { putTask, parseQuickActivity } from '../../util/AVATasks';
 import { addMember, removeMember } from '../../util/AVAGroups';
 import { AVAclasses, AVATextStyle } from '../../util/AVAStyles';
@@ -519,6 +519,9 @@ export default ({ request = {}, onClose }) => {
   const formFieldDefinitionCacheRef = React.useRef({});
   const commonFieldDefinitionCacheRef = React.useRef({});
   const dictionaryFieldDefinitionCacheRef = React.useRef({});
+  // Passed to resolveData() as its dictionaryCache option, so repeated 'dictionary.<field_key>'
+  // default resolutions across fields/renders reuse the same DataDictionaryV3 record reads.
+  const dictionaryValueResolutionCacheRef = React.useRef({});
   const answerSnapshotRef = React.useRef({});
   const [clearNotice, setClearNotice] = React.useState('');
   const updateReactData = (newData, force = false, editedKey) => {
@@ -809,6 +812,22 @@ export default ({ request = {}, onClose }) => {
   */
 
   // **************************
+  // Shared by getDefaultValueForField/setFieldDefault for a 'dictionary.<field_key>' default
+  // source - resolves the named DataDictionaryV3 field to its current raw value (the same
+  // resolution engine PeopleMaintenance uses for localdata_fields), so FormFillB's own
+  // formatValue()/type handling (not the dictionary's) formats it for display.
+  const resolveDictionaryDefault = async (dictFieldKey) => {
+    if (!dictFieldKey) { return undefined; }
+    const [resolvedEntry] = await resolveData(
+      state.session.client_id,
+      reactData.pertains_to,
+      [dictFieldKey],
+      { dictionaryCache: dictionaryValueResolutionCacheRef.current }
+    );
+    return resolvedEntry?.raw;
+  };
+
+  // **************************
   // Consolidated helper to resolve and return default value for a field
   const getDefaultValueForField = async ({ fieldRec, fieldName }) => {
     // fieldRec: the field record from formRec.fields[fieldName]
@@ -895,6 +914,9 @@ export default ({ request = {}, onClose }) => {
         }
         else if (source_file.startsWith('formData') || (source_file.startsWith('field'))) {
           response.value = reactData.fields[defaultObj.source_path[0]]?.value ?? '';
+        }
+        else if (source_file.toLowerCase().startsWith('dictionary')) {
+          response.value = await resolveDictionaryDefault(defaultObj.source_path[0]);
         }
 
         if (response.value) {
@@ -1045,6 +1067,9 @@ export default ({ request = {}, onClose }) => {
           }
           else if (source_file.startsWith('formData') || (source_file.startsWith('field'))) {
             response.value = reactData.fields[defaultObj.source_path[0]]?.value ?? '';
+          }
+          else if (source_file.toLowerCase().startsWith('dictionary')) {
+            response.value = await resolveDictionaryDefault(defaultObj.source_path[0]);
           }
           if (response.value) {
             break;
