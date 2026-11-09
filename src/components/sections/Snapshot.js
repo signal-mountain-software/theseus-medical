@@ -6,7 +6,7 @@ import useMediaQuery from '@material-ui/core/useMediaQuery';
 import { Box, Typography, Button } from '@material-ui/core/';
 import { formatPhone, createPersonPhotoThumbFromUrl, persistPersonPhotoThumb } from '../../util/AVAPeople';
 import { getPersonGroups, isLeaf } from '../../util/AVAGroups';
-import { deepCopy, titleCase, getObject, s3, cloudfront, cl, booleanLikeToken } from '../../util/AVAUtilities';
+import { deepCopy, titleCase, getObject, s3, cloudfront, cl, booleanLikeToken, stripHtmlToText } from '../../util/AVAUtilities';
 import { makeDate } from '../../util/AVADateTime';
 import { AVATextStyle, AVAclasses } from '../../util/AVAStyles';
 import SendIcon from '@material-ui/icons/Send';
@@ -591,7 +591,7 @@ export default ({ currentValues, reactData, updateReactData }) => {
                     key={`local_prompt__${cFNdx}c`}
                     style={AVATextStyle({ size: 0.8 })}
                   >
-                    {reactData.form_fields[this_formField].fieldRec.prompt.value}
+                    {stripHtmlToText(reactData.form_fields[this_formField].fieldRec.prompt.value)}
                   </Typography>
                   <Typography
                     key={`local_prompt__${cFNdx}d`}
