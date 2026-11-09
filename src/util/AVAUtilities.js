@@ -895,6 +895,21 @@ export async function updateACL(pObjIn, pTyp) {
     });
 };
 
+// Strips HTML tags (and decodes common entities) from a string so it can be shown as plain text.
+export function stripHtmlToText(raw) {
+  if (!raw || typeof raw !== 'string') { return raw || ''; }
+  let text = raw
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
+  text = text.replace(/<\/(p|div|li|br|h[1-6]|tr|td|th)>/gi, ' ');
+  text = text.replace(/<[^>]+>/g, '');
+  return text.replace(/\s+/g, ' ').trim();
+}
+
 export function isPromise(p) {
   return p && Object.prototype.toString.call(p) === "[object Promise]";
 }
