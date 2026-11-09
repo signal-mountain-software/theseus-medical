@@ -279,18 +279,24 @@ export default ({ request = {}, onClose }) => {
   // Print capture area excludes the bottom action bar to better match final form output.
   const printContentRef = React.useRef(null);
 
+  // calc(100% - 16px) alone bounds this correctly against the field's real containing block at
+  // render time, regardless of browser viewport/zoom/DevTools - a vw-based term used to be
+  // ANDed in here too, but vw is relative to the raw browser viewport, not this dialog's actual
+  // rendered width, so on a narrower viewport (DevTools open, a smaller window, etc.) it could
+  // silently undercut an explicit author-requested width well before the container itself ran out
+  // of room.
   const clampRequestedWidthToContainer = (requestedWidthPx, fallbackWidthPx) => {
     const requestedWidth = Number(requestedWidthPx);
     if (Number.isFinite(requestedWidth) && requestedWidth > 0) {
-      return `min(${requestedWidth}px, ${MAX_FIELD_WIDTH_VW}vw, calc(100% - 16px))`;
+      return `min(${requestedWidth}px, calc(100% - 16px))`;
     }
 
     const fallbackWidth = Number(fallbackWidthPx);
     if (Number.isFinite(fallbackWidth) && fallbackWidth > 0) {
-      return `min(${fallbackWidth}px, ${MAX_FIELD_WIDTH_VW}vw, calc(100% - 16px))`;
+      return `min(${fallbackWidth}px, calc(100% - 16px))`;
     }
 
-    return `min(${MAX_FIELD_WIDTH_VW}vw, calc(100% - 16px))`;
+    return `calc(100% - 16px)`;
   };
 
   const generateHtmlOutput = () => {
