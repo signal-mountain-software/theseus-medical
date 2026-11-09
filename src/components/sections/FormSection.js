@@ -18,6 +18,21 @@ import LockOpenIcon from '@material-ui/icons/LockOpen';
 
 import FormFillB from '../forms/FormFillB';
 
+// A 'complete' document whose most recent history update is older than this is displayed as
+// if it were still in process (orange, pencil icon) instead of green/check-circle - stale
+// completions often mean the person's situation has likely changed since they last confirmed it.
+const STALE_COMPLETED_MONTHS = 3;
+
+const isCompletedDocStale = (completedDoc) => {
+  if (!completedDoc?.last_update) { return false; }
+  const lastUpdateTimestamp = makeDate(completedDoc.last_update).timestamp;
+  if (!lastUpdateTimestamp) { return false; }
+  const staleCutoff = new Date();
+  staleCutoff.setMonth(staleCutoff.getMonth() - STALE_COMPLETED_MONTHS);
+  return lastUpdateTimestamp < staleCutoff.getTime();
+};
+
+
 export default ({ currentValues, reactData, updateReactData, currentOnly = false }) => {
 
   const { state } = useSession();
@@ -399,6 +414,10 @@ export default ({ currentValues, reactData, updateReactData, currentOnly = false
       }
     }
     else if (!rObj || (rObj.completedDocs.length > 0)) {
+      if (rObj && isCompletedDocStale(rObj.completedDocs[0])) {
+        orangePencilDisplayed.current = true;
+        return 'orange';
+      }
       greenPencilDisplayed.current = true;
       return 'green';
     }
@@ -414,6 +433,10 @@ export default ({ currentValues, reactData, updateReactData, currentOnly = false
       return 'green';
     }
     else if (rObj.completedDocs && (rObj.completedDocs.length > 0)) {
+      if (isCompletedDocStale(rObj.completedDocs[0])) {
+        orangeCircleDisplayed.current = true;
+        return 'orange';
+      }
       circleDisplayed.current = true;
       return 'green';
     }
@@ -915,7 +938,8 @@ export default ({ currentValues, reactData, updateReactData, currentOnly = false
                                           />
                                         </React.Fragment>
                                         : ((myDocs.completedDocs.length > 0) &&
-                                          (myDocs.wipDocs.length === 0)) ?
+                                          (myDocs.wipDocs.length === 0) &&
+                                          !isCompletedDocStale(myDocs.completedDocs[0])) ?
                                           <React.Fragment>
                                             <CheckCircleIcon
                                               key={`radio-button_form${form_index}off`}
