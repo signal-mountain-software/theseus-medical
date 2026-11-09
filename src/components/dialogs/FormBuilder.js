@@ -73,9 +73,16 @@ const FIELD_TYPES = [
     { value: 'upload', label: 'File Upload' },
 ];
 
-// Field types whose answer box width is actually controllable (rendered via FormFillB's
-// renderTextLikeField) - select/yes-no/header size themselves and ignore prompt.width.
-const WIDTH_ADJUSTABLE_TYPES = ['text', 'date', 'phone', 'numeric'];
+// Field types whose answer box width is actually controllable. Text-like types render via
+// FormFillB's renderTextLikeField; select/select&text/select_event render via FormFillB's
+// AVASelectionCheckGroup - both honor prompt.width. yes/no and header still size themselves
+// and ignore prompt.width.
+const WIDTH_ADJUSTABLE_TYPES = ['text', 'date', 'phone', 'numeric', 'select', 'select&text', 'select_event'];
+
+// Field types whose Required control is shown after Width/Height, matching the text/numeric
+// layout, rather than before it. Keeps select fields visually consistent with other fields
+// that have both a Width and a Required control.
+const REQUIRED_AFTER_WIDTH_TYPES = ['text', 'numeric', 'select', 'select&text', 'select_event'];
 
 // Named presets in place of raw pixel entry - values are the pixel widths FormFillB expects
 // in prompt.width. '' means "unset", letting FormFillB fall back to its own default.
@@ -2175,7 +2182,7 @@ export default ({ onClose, directForm }) => {
                                                             {'Unlink'}
                                                         </Button>
                                                     }
-                                                    {field.type !== 'text' && field.type !== 'numeric' && requiredControl}
+                                                    {!REQUIRED_AFTER_WIDTH_TYPES.includes(field.type) && requiredControl}
                                                     {WIDTH_ADJUSTABLE_TYPES.includes(field.type) &&
                                                         <FormControl style={{ minWidth: 140 }}>
                                                             <InputLabel shrink>{'Width'}</InputLabel>
@@ -2204,7 +2211,7 @@ export default ({ onClose, directForm }) => {
                                                             </Select>
                                                         </FormControl>
                                                     }
-                                                    {(field.type === 'text' || field.type === 'numeric') && requiredControl}
+                                                    {REQUIRED_AFTER_WIDTH_TYPES.includes(field.type) && requiredControl}
                                                 </Box>
                                                 <TextField
                                                     label='Prompt'
