@@ -22,7 +22,7 @@ import ExpandLessIcon from '@material-ui/icons/ExpandLess';
 const RULE_TYPES = [
   { value: 'onAdd',      label: 'When a member is added to this group' },
   { value: 'onRemove',   label: 'When a member is removed from this group' },
-  { value: 'withData',   label: 'When a data condition is met' },
+  { value: 'withData',   label: 'Members of this group all meet this criteria' },
 ];
 
 const ACTION_TYPES = [
@@ -54,6 +54,20 @@ const TEST_TYPES_ARRAY = [
   { value: 'lt',       label: 'any item < (numeric)' },
 ];
 
+// Test types for an onAdd/onRemove action's optional per-target-person data condition
+// (action.condition.data_test). Extends the withData test types with 'one_of' (match against
+// several acceptable values), which is intentionally NOT offered for withData rules - those are
+// also enforced by the separately-deployed evaluate-with-data-rules Lambda, which doesn't
+// implement 'one_of', while action conditions are only ever evaluated client-side.
+const ACTION_CONDITION_TEST_TYPES = [
+  ...TEST_TYPES,
+  { value: 'one_of', label: 'is one of (match any of these values)' },
+];
+const ACTION_CONDITION_TEST_TYPES_ARRAY = [
+  ...TEST_TYPES_ARRAY,
+  { value: 'one_of', label: 'list includes any of these values' },
+];
+
 const emptyAction = () => ({ action: 'addMember', who: 'self', where: [] });
 const emptyRule   = () => ({
   rule_type: 'onAdd',
@@ -74,6 +88,7 @@ export default ({ currentValues, updateField, updateReactData: parentUpdateReact
     expandedIndex: null,     // null = none; -1 = new rule form; n = editing rule n
     editingRule: null,       // deep copy of the rule being edited (or emptyRule() for new)
     backfillState: {},       // keyed by ruleIndex: null | { running, done, total }
+    newTestValueDrafts: {},  // keyed by actionIndex: draft text for the 'one_of' chip input
   });
 
   const update = (newData) => setLocal((prev) => Object.assign({}, prev, newData));
@@ -134,6 +149,43 @@ export default ({ currentValues, updateField, updateReactData: parentUpdateReact
     if (parentUpdateReactData) { parentUpdateReactData({ unsavedRuleEdit: false }, true); }
   };
 
+  // Resolves a DataDictionaryV3 field_key to a single field_path string, so the consuming code
+  // (evaluate-with-data-rules for withData rules; applyGroupRules in AVAGroups.js for onAdd/
+  // onRemove action conditions) doesn't need to re-query the dictionary or walk its
+  // first-good-value-wins path list at evaluation time. Returns undefined if the field_key isn't
+  // a currently-loaded dictionary field.
+  const resolveFieldPathFromDictionary = (dictionaryField) => {
+    const dictField = local.dictionaryFields.find(f => f.field_key === dictionaryField);
+    if (!dictField) { return undefined; }
+    // Find the first candidate with a People source to get the right path
+    const multiCandidates = [
+      ...(dictField.sources || []),
+      ...(dictField.source_options || []),
+      ...(dictField.source_candidates || []),
+      ...(dictField.resolution_sources || []),
+    ].filter(c => c && typeof c === 'object');
+    const peopleSources = multiCandidates.filter(c => {
+      const src = (c.source || '').toLowerCase();
+      return !src || src === 'person' || src === 'people';
+    });
+    const candidateWithPath = peopleSources.find(c => c.path) || {
+      path: dictField.path,
+      source: dictField.source,
+    };
+    const rawPath = candidateWithPath.path;
+    // A dictionary source's `path` is a "first-good-value-wins" list of alternative
+    // paths (e.g. a root attribute with a `local_data.*` fallback), not a nested path
+    // to be joined with dots. field_path is resolved once here (at save time), and the
+    // consumer only walks a single dot-path at evaluation time, so use the first (most
+    // preferred — typically the root attribute) candidate rather than joining them all.
+    const firstPathCandidate = Array.isArray(rawPath)
+      ? rawPath.find((entry) => typeof entry === 'string' && entry.trim())
+      : rawPath;
+    return (typeof firstPathCandidate === 'string' && firstPathCandidate.trim())
+      ? firstPathCandidate.trim()
+      : dictionaryField;
+  };
+
   const saveEdit = async () => {
     if (!local.editingRule) { return; }
     let ruleToSave = { ...local.editingRule };
@@ -141,40 +193,32 @@ export default ({ currentValues, updateField, updateReactData: parentUpdateReact
       // Strip actions — withData rules are condition-only; the Lambda handles add/remove
       delete ruleToSave.actions;
       // Resolve field_path from dictionary record so the Lambda doesn't need to re-query
-      const dictField = local.dictionaryFields.find(f => f.field_key === ruleToSave.data_test?.dictionaryField);
-      if (dictField) {
-        // Find the first candidate with a People source to get the right path
-        const multiCandidates = [
-          ...(dictField.sources || []),
-          ...(dictField.source_options || []),
-          ...(dictField.source_candidates || []),
-          ...(dictField.resolution_sources || []),
-        ].filter(c => c && typeof c === 'object');
-        const peopleSources = multiCandidates.filter(c => {
-          const src = (c.source || '').toLowerCase();
-          return !src || src === 'person' || src === 'people';
-        });
-        const candidateWithPath = peopleSources.find(c => c.path) || {
-          path: dictField.path,
-          source: dictField.source,
-        };
-        const rawPath = candidateWithPath.path;
-        // A dictionary source's `path` is a "first-good-value-wins" list of alternative
-        // paths (e.g. a root attribute with a `local_data.*` fallback), not a nested path
-        // to be joined with dots. field_path is resolved once here (at save time), and the
-        // Lambda only walks a single dot-path at evaluation time, so use the first (most
-        // preferred — typically the root attribute) candidate rather than joining them all.
-        const firstPathCandidate = Array.isArray(rawPath)
-          ? rawPath.find((entry) => typeof entry === 'string' && entry.trim())
-          : rawPath;
-        const field_path = (typeof firstPathCandidate === 'string' && firstPathCandidate.trim())
-          ? firstPathCandidate.trim()
-          : ruleToSave.data_test.dictionaryField;
-        ruleToSave = {
-          ...ruleToSave,
-          data_test: { ...ruleToSave.data_test, field_path },
-        };
+      if (ruleToSave.data_test?.dictionaryField) {
+        const field_path = resolveFieldPathFromDictionary(ruleToSave.data_test.dictionaryField);
+        if (field_path) {
+          ruleToSave = {
+            ...ruleToSave,
+            data_test: { ...ruleToSave.data_test, field_path },
+          };
+        }
       }
+    }
+    else if (Array.isArray(ruleToSave.actions)) {
+      // Likewise resolve field_path for any per-action data condition (onAdd/onRemove rules),
+      // so applyGroupRules doesn't need to re-query the dictionary at evaluation time either.
+      ruleToSave = {
+        ...ruleToSave,
+        actions: ruleToSave.actions.map((a) => {
+          const dictionaryField = a.condition?.data_test?.dictionaryField;
+          if (!dictionaryField) { return a; }
+          const field_path = resolveFieldPathFromDictionary(dictionaryField);
+          if (!field_path) { return a; }
+          return {
+            ...a,
+            condition: { ...a.condition, data_test: { ...a.condition.data_test, field_path } },
+          };
+        }),
+      };
     }
     let newRules = local.expandedIndex === -1
       ? [...currentRules, ruleToSave]
@@ -250,8 +294,19 @@ export default ({ currentValues, updateField, updateReactData: parentUpdateReact
   };
 
   // ── Rule-type label ─────────────────────────────────────────────────────────
-  const ruleTypeLabel = (rule_type) =>
-    RULE_TYPES.find((t) => t.value === rule_type)?.label || rule_type;
+  // withData's label is phrased as a standing characteristic ("Members ... all meet this
+  // criteria") rather than an event trigger like onAdd/onRemove, and names this group when
+  // its name is available, so it reads less like "When a data condition is met", which was
+  // easy to confuse with the event-based rule types above it.
+  const ruleTypeLabel = (rule_type) => {
+    if (rule_type === 'withData') {
+      const groupName = currentValues?.Groups?.name;
+      return groupName
+        ? `Members of "${groupName}" all meet this criteria`
+        : RULE_TYPES.find((t) => t.value === 'withData')?.label;
+    }
+    return RULE_TYPES.find((t) => t.value === rule_type)?.label || rule_type;
+  };
 
   // ── Action summary line (read-only view) ────────────────────────────────────
   const renderActionSummary = (action, i, rule_type) => {
@@ -272,9 +327,15 @@ export default ({ currentValues, updateField, updateReactData: parentUpdateReact
           return match ? match.name : gid;
         }).join(', ')
       : '(no groups)';
+    const dataTest = action.condition?.data_test;
+    const conditionText = dataTest?.dictionaryField
+      ? (dataTest.test === 'one_of'
+        ? ` — only if ${dataTest.dictionaryField} is one of ${(dataTest.testValues || []).join(', ') || '(no values set)'}`
+        : ` — only if ${dataTest.dictionaryField} ${dataTest.test || 'eq'} "${dataTest.testValue || ''}"`)
+      : '';
     return (
       <Typography key={`actsum_${i}`} style={AVATextStyle({ size: 0.82, margin: { left: 1.5, top: 0.2 } })}>
-        {`${i + 1}. ${actionLabel} — ${whoLabel} → ${whereText}`}
+        {`${i + 1}. ${actionLabel} — ${whoLabel} → ${whereText}${conditionText}`}
       </Typography>
     );
   };
@@ -427,6 +488,160 @@ export default ({ currentValues, updateField, updateReactData: parentUpdateReact
             </Box>
           )
         }
+
+        {/* optional per-action data condition — tests the TARGET person for this action (who
+            may be added to/removed from the group), NOT the person whose own add/remove to this
+            group triggered rule evaluation. e.g. "only add this family member if their intake
+            status is one of these values." Not applicable to withData rules' own actions (those
+            are condition-only at the rule level, and are stripped on save anyway). */}
+        {!isDataRule && (() => {
+          const dataTest = action.condition?.data_test;
+          const isArrayField = !!dataTest?.is_array_field;
+          const testTypeOptions = isArrayField ? ACTION_CONDITION_TEST_TYPES_ARRAY : ACTION_CONDITION_TEST_TYPES;
+          const patchDataTest = (patch) => patchAction(actionIndex, {
+            condition: { ...(action.condition || {}), data_test: { ...(dataTest || {}), ...patch } },
+          });
+          const testValueDraft = local.newTestValueDrafts?.[actionIndex] || '';
+          const setTestValueDraft = (value) => update({
+            newTestValueDrafts: { ...(local.newTestValueDrafts || {}), [actionIndex]: value },
+          });
+
+          return (
+            <Box mt={1.5}>
+              <Box display='flex' alignItems='center'>
+                <input
+                  type='checkbox'
+                  id={`action_condition_cb_${actionIndex}`}
+                  checked={!!dataTest}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      patchAction(actionIndex, {
+                        condition: { ...(action.condition || {}), data_test: { dictionaryField: '', test: 'eq', testValue: '' } },
+                      });
+                    } else {
+                      const { data_test, ...restCondition } = action.condition || {};
+                      patchAction(actionIndex, {
+                        condition: Object.keys(restCondition).length ? restCondition : undefined,
+                      });
+                    }
+                  }}
+                  style={{ marginRight: 6 }}
+                />
+                <label htmlFor={`action_condition_cb_${actionIndex}`} style={{ fontSize: '0.85rem', cursor: 'pointer' }}>
+                  {'Only for target people who meet a data condition'}
+                </label>
+              </Box>
+
+              {dataTest && (
+                <Box mt={1} px={2} py={1.5} style={{ border: '1px solid rgba(0,0,0,0.15)', borderRadius: 12 }}>
+                  <FormControl fullWidth margin='dense'>
+                    <InputLabel>Dictionary Field</InputLabel>
+                    <Select
+                      value={dataTest.dictionaryField || ''}
+                      onChange={(e) => patchDataTest({ dictionaryField: e.target.value })}
+                    >
+                      {local.dictionaryFields.length === 0 && (
+                        <MenuItem value=''><em>No fields found</em></MenuItem>
+                      )}
+                      {local.dictionaryFields.map((f, ndx) => (
+                        <MenuItem key={`${f.field_key}-${ndx}`} value={f.field_key}>
+                          {f.description || f.field_key}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+
+                  {/* allow typing a field ID directly if the dictionary is empty or the ID isn't in the list */}
+                  {local.dictionaryFields.length === 0 && (
+                    <TextField
+                      fullWidth
+                      margin='dense'
+                      label='Field ID (manual)'
+                      value={dataTest.dictionaryField || ''}
+                      onChange={(e) => patchDataTest({ dictionaryField: e.target.value })}
+                    />
+                  )}
+
+                  {/* Array-field toggle — lets the rule author signal that this field returns a list */}
+                  <Box display='flex' alignItems='center' mt={0.5} mb={0.5}>
+                    <input
+                      type='checkbox'
+                      id={`action_is_array_field_cb_${actionIndex}`}
+                      checked={isArrayField}
+                      onChange={(e) => patchDataTest({ is_array_field: e.target.checked })}
+                      style={{ marginRight: 6 }}
+                    />
+                    <label htmlFor={`action_is_array_field_cb_${actionIndex}`} style={{ fontSize: '0.85rem', cursor: 'pointer' }}>
+                      {'Field stores a list of values (e.g. multiple tags or entries)'}
+                    </label>
+                  </Box>
+
+                  <FormControl fullWidth margin='dense'>
+                    <InputLabel>Comparison</InputLabel>
+                    <Select
+                      value={dataTest.test || 'eq'}
+                      onChange={(e) => patchDataTest({ test: e.target.value })}
+                    >
+                      {testTypeOptions.map((t) => (
+                        <MenuItem key={t.value} value={t.value}>{t.label}</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+
+                  {dataTest.test === 'one_of'
+                    ? (
+                      <Box mt={0.5}>
+                        <Typography style={AVATextStyle({ size: 0.85, color: 'grey', margin: { bottom: 0.5 } })}>
+                          {'Acceptable Values'}
+                        </Typography>
+                        {(dataTest.testValues || []).length > 0 && (
+                          <Box display='flex' flexWrap='wrap' style={{ gap: 6, marginBottom: 8 }}>
+                            {(dataTest.testValues || []).map((v, vIdx) => (
+                              <Chip
+                                key={`testval_${actionIndex}_${vIdx}`}
+                                label={v}
+                                size='small'
+                                onDelete={() => patchDataTest({
+                                  testValues: (dataTest.testValues || []).filter((_, i) => i !== vIdx),
+                                })}
+                              />
+                            ))}
+                          </Box>
+                        )}
+                        <TextField
+                          fullWidth
+                          margin='dense'
+                          label='Add a value, then press Enter'
+                          value={testValueDraft}
+                          onChange={(e) => setTestValueDraft(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key !== 'Enter') { return; }
+                            e.preventDefault();
+                            const draft = testValueDraft.trim();
+                            if (!draft) { return; }
+                            if (!(dataTest.testValues || []).includes(draft)) {
+                              patchDataTest({ testValues: [...(dataTest.testValues || []), draft] });
+                            }
+                            setTestValueDraft('');
+                          }}
+                        />
+                      </Box>
+                    )
+                    : (
+                      <TextField
+                        fullWidth
+                        margin='dense'
+                        label='Test Value'
+                        value={dataTest.testValue || ''}
+                        onChange={(e) => patchDataTest({ testValue: e.target.value })}
+                      />
+                    )
+                  }
+                </Box>
+              )}
+            </Box>
+          );
+        })()}
       </Paper>
     );
   };
@@ -448,7 +663,7 @@ export default ({ currentValues, updateField, updateReactData: parentUpdateReact
             onChange={(e) => patchRule((prev) => ({ ...prev, rule_type: e.target.value }))}
           >
             {RULE_TYPES.map((t) => (
-              <MenuItem key={t.value} value={t.value}>{t.label}</MenuItem>
+              <MenuItem key={t.value} value={t.value}>{ruleTypeLabel(t.value)}</MenuItem>
             ))}
           </Select>
         </FormControl>
