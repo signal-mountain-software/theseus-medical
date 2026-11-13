@@ -79,14 +79,12 @@ const FIELD_TYPES = [
 // and ignore prompt.width.
 const WIDTH_ADJUSTABLE_TYPES = ['text', 'date', 'phone', 'numeric', 'select', 'select&text', 'select_event'];
 
-// Field types whose Required control is shown after Width/Height, matching the text/numeric
-// layout, rather than before it. Keeps select fields visually consistent with other fields
-// that have both a Width and a Required control.
-const REQUIRED_AFTER_WIDTH_TYPES = ['text', 'numeric', 'select', 'select&text', 'select_event'];
-
 // Field types that don't get a "Default value?" picker: header is label-only (no value),
 // signature isn't a DataDictionary-shaped value, and upload is excluded for now even though a
 // DD field referencing a URL could reasonably seed an upload's default later.
+// Separately (see render below), a field with dictionary_field_key (adopted from the Data
+// Dictionary) also never gets this picker - FormFillB always derives its default from that same
+// DD reference, so a hand-picked default here would never actually apply.
 const DEFAULT_PICKER_EXCLUDED_TYPES = ['header', 'signature', 'upload'];
 
 // Named presets in place of raw pixel entry - values are the pixel widths FormFillB expects
@@ -2312,7 +2310,6 @@ export default ({ onClose, directForm }) => {
                                                             {'Unlink'}
                                                         </Button>
                                                     }
-                                                    {!REQUIRED_AFTER_WIDTH_TYPES.includes(field.type) && requiredControl}
                                                     {WIDTH_ADJUSTABLE_TYPES.includes(field.type) &&
                                                         <FormControl style={{ minWidth: 140 }}>
                                                             <InputLabel shrink>{'Width'}</InputLabel>
@@ -2341,7 +2338,7 @@ export default ({ onClose, directForm }) => {
                                                             </Select>
                                                         </FormControl>
                                                     }
-                                                    {REQUIRED_AFTER_WIDTH_TYPES.includes(field.type) && requiredControl}
+                                                    {requiredControl}
                                                 </Box>
                                                 <TextField
                                                     label='Prompt'
@@ -2635,7 +2632,7 @@ export default ({ onClose, directForm }) => {
                                                         {renderConditionSummary(field, getConditionFieldOptions(sectionIdx, fieldIdx))}
                                                     </Box>
                                                 }
-                                                {!DEFAULT_PICKER_EXCLUDED_TYPES.includes(field.type) &&
+                                                {!DEFAULT_PICKER_EXCLUDED_TYPES.includes(field.type) && !field.dictionary_field_key &&
                                                     <Box display='flex' flexDirection='row' alignItems='center' style={{ gap: '8px', marginTop: '8px', minWidth: 0, flexWrap: 'wrap' }}>
                                                         <Button
                                                             size='small'
