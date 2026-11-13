@@ -159,11 +159,17 @@ export default ({ currentValues, updateField, updateReactData: parentUpdateReact
           source: dictField.source,
         };
         const rawPath = candidateWithPath.path;
-        const field_path = Array.isArray(rawPath)
-          ? rawPath.join('.')
-          : (typeof rawPath === 'string' && rawPath.trim()
-              ? rawPath.trim()
-              : ruleToSave.data_test.dictionaryField);
+        // A dictionary source's `path` is a "first-good-value-wins" list of alternative
+        // paths (e.g. a root attribute with a `local_data.*` fallback), not a nested path
+        // to be joined with dots. field_path is resolved once here (at save time), and the
+        // Lambda only walks a single dot-path at evaluation time, so use the first (most
+        // preferred — typically the root attribute) candidate rather than joining them all.
+        const firstPathCandidate = Array.isArray(rawPath)
+          ? rawPath.find((entry) => typeof entry === 'string' && entry.trim())
+          : rawPath;
+        const field_path = (typeof firstPathCandidate === 'string' && firstPathCandidate.trim())
+          ? firstPathCandidate.trim()
+          : ruleToSave.data_test.dictionaryField;
         ruleToSave = {
           ...ruleToSave,
           data_test: { ...ruleToSave.data_test, field_path },

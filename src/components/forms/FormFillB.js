@@ -1147,6 +1147,14 @@ export default ({ request = {}, onClose }) => {
     // Now override with any values in formRec.fields — try field_name first, then field_key
     // (DB may key entries by field_id which equals field_key, not by field_name)
     const _formSpecEntry = formRec.fields && (formRec.fields[field_name] || (field_key !== field_name && formRec.fields[field_key]));
+
+    // An explicit default authored AT THE FORM LEVEL (via FormBuilder's "Default value?" picker,
+    // or hand-authored) is the only thing allowed to override a dictionary-adopted field's
+    // default below - a same-keyed Form_Fields/Common_Fields library record's `default` doesn't
+    // count, since that's an incidental key collision, not an authored choice for this field.
+    const explicitFormLevelDefault = (isObject(_formSpecEntry) && _formSpecEntry.default)
+      || (isObject(fieldEntry) && fieldEntry.default);
+
     if (_formSpecEntry) {
       if (!_field_sources.includes('form spec')) { _field_sources.push('form spec'); }
       field_variables = Object.assign({}, field_variables, _formSpecEntry);
@@ -1158,9 +1166,56 @@ export default ({ request = {}, onClose }) => {
       field_variables = Object.assign({}, field_variables, fieldEntry);
     }
 
+    // A field "adopted" from the Data Dictionary in FormBuilder (dictionary_field_key set)
+    // is assumed to default to that DD field's current resolved value. Force that here so it
+    // wins over any `default` a same-keyed Form_Fields/Common_Fields library record happens to
+    // define (see getDefaultValueForField/resolveDictionaryDefault for 'dictionary.<key>'
+    // handling) - unless the form itself explicitly authored a different default.
+    if (field_variables.dictionary_field_key && !explicitFormLevelDefault) {
+      field_variables.default = { source: `dictionary.${field_variables.dictionary_field_key}` };
+    }
+
+    // Likewise, a dictionary-adopted field is assumed to save back to the DD's first declared
+    // person-sourced path, winning over a same-keyed Form_Fields/Common_Fields library record's
+    // saveAs - unless the form itself explicitly authored a different saveAs.
+    const explicitFormLevelSaveAs = (isObject(_formSpecEntry) && !isEmpty(_formSpecEntry.value?.saveAs))
+      || (isObject(fieldEntry) && !isEmpty(fieldEntry.value?.saveAs));
+    if (field_variables.dictionary_field_key && !explicitFormLevelSaveAs) {
+      const dictRec = await loadDictionaryFieldRec(field_variables.dictionary_field_key);
+      const inferredSaveAs = inferPersonSaveAsFromDictionary(dictRec);
+      if (inferredSaveAs) {
+        field_variables.value = Object.assign({}, field_variables.value, { saveAs: inferredSaveAs });
+      }
+    }
+
     field_variables._field_sources = _field_sources.length > 0 ? _field_sources : ['form spec'];
     field_variables._field_key = field_key;
     return field_variables;
+  };
+
+  // A dictionary-linked field has no authored saveAs of its own - it should always write back to
+  // the People record attribute the DD considers authoritative. Finds the DD record's first
+  // declared "person"/"people"-sourced path (NOT necessarily the path that actually resolved the
+  // field's current value - e.g. a root-attribute-with-local_data-fallback field always saves
+  // back to the root attribute) and returns it as a 'person.<path>' saveAs string (consumed by
+  // the "set saveAs" normalization in processFieldForSectionField). Returns null when the DD
+  // record has no person-sourced path (e.g. a document-only field), so no saveAs is inferred.
+  const inferPersonSaveAsFromDictionary = (dictRec) => {
+    if (!dictRec) { return null; }
+    const multiCandidates = [
+      ...(dictRec.sources || []),
+      ...(dictRec.source_options || []),
+      ...(dictRec.source_candidates || []),
+      ...(dictRec.resolution_sources || []),
+    ].filter((c) => c && typeof c === 'object');
+    const candidates = multiCandidates.length > 0 ? multiCandidates : [dictRec];
+    const personCandidate = candidates.find((c) => {
+      const src = (c.source || '').toString().toLowerCase();
+      return src === 'person' || src === 'people';
+    });
+    if (!personCandidate) { return null; }
+    const firstPath = Array.isArray(personCandidate.path) ? personCandidate.path[0] : personCandidate.path;
+    return (typeof firstPath === 'string' && firstPath.trim()) ? `person.${firstPath.trim()}` : null;
   };
 
   // DataDictionaryV3 is the authoritative type declaration for a dictionary-linked field - a
