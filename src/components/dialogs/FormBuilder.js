@@ -151,7 +151,7 @@ const omitKeys = (obj, keys) => (
 // listed here are stripped out of that raw snapshot first so a key FormBuilder actively
 // edits/clears (even conditionally, e.g. show_if vs. ignore_if) always reflects the current
 // edit rather than a stale raw value "winning" because this save round didn't happen to set it.
-const MANAGED_FORM_KEYS = ['client_id', 'form_id', 'form_name', 'category', 'active', 'current', 'sections', 'fields', 'stages'];
+const MANAGED_FORM_KEYS = ['client_id', 'form_id', 'form_name', 'category', 'active', 'current', 'options', 'sections', 'fields', 'stages'];
 const MANAGED_SECTION_KEYS = ['section_name', 'belongs_to_stage', 'fields', 'show_if', 'ignore_if', 'clear_if', 'answer_limits'];
 const MANAGED_FIELD_KEYS = ['type', 'prompt', 'required', 'dictionary_field_key', 'default', 'show_if', 'ignore_if', 'clear_if', 'value', 'options'];
 
@@ -375,6 +375,7 @@ const blankForm = (client_id) => {
         category: '',
         active: true,
         current: false,
+        options: {},
         sections: [initialSection],
         stages: ensureCompleteStage([{ stage_name }]),
     };
@@ -796,6 +797,7 @@ export default ({ onClose, directForm }) => {
             category: cloned.category || '',
             active: isFormActive(cloned),
             current: cloned.current === true,
+            options: cloned.options || {},
             sections: resolvedSections,
             stages: ensureCompleteStage(stages),
             __raw: cloned, // preserve top-level attributes FormBuilder doesn't model - see "Preserving unmanaged attributes" above
@@ -1741,6 +1743,7 @@ export default ({ onClose, directForm }) => {
             category: editingForm.category || '',
             active: isFormActive(editingForm),
             current: editingForm.current === true,
+            options: editingForm.options || {},
             sections,
             fields,
             stages: editingForm.stages || [],
@@ -2018,32 +2021,65 @@ export default ({ onClose, directForm }) => {
                             style={{ flexGrow: 1 }}
                             renderInput={(params) => <TextField {...params} label='Category' />}
                         />
-                        <Box display='flex' flexDirection='column'>
-                            <Tooltip title='Inactive forms stay in the system (and keep their documents) but are listed separately and not offered for new documents'>
-                                <FormControlLabel
-                                    style={{ marginRight: 0, whiteSpace: 'nowrap' }}
-                                    control={
-                                        <Checkbox
-                                            checked={!isFormActive(editingForm)}
-                                            onChange={(e) => updateEditingForm({ active: !e.target.checked })}
-                                        />
-                                    }
-                                    label='Inactive Form?'
-                                />
-                            </Tooltip>
-                            <Tooltip title="Include this form in the Current Forms section of a person's profile">
-                                <FormControlLabel
-                                    style={{ marginRight: 0, whiteSpace: 'nowrap' }}
-                                    control={
-                                        <Checkbox
-                                            checked={editingForm.current === true}
-                                            onChange={(e) => updateEditingForm({ current: e.target.checked })}
-                                        />
-                                    }
-                                    label='Current Form?'
-                                />
-                            </Tooltip>
-                        </Box>
+                    </Box>
+                    <Box display='flex' flexDirection='row' alignItems='center' style={{ gap: '16px' }}>
+                        {/* These are independent on/off toggles, not a mutually-exclusive group, so they're
+                            driven off onClick rather than onChange - a native radio input doesn't fire a
+                            change event when you click one that's already checked, which would make it
+                            impossible to click one of these "off" again once set.
+                            size='small' plus the reduced padding shrink the circle and tighten the gap to
+                            its label; the label font-size matches the small Buttons (e.g. "Conditional?",
+                            "Default value?") used elsewhere in this editor. */}
+                        <Tooltip title='Inactive forms stay in the system (and keep their documents) but are listed separately and not offered for new documents'>
+                            <FormControlLabel
+                                style={{ marginRight: 0, whiteSpace: 'nowrap' }}
+                                control={
+                                    <Radio
+                                        size='small'
+                                        style={{ padding: 4 }}
+                                        checked={!isFormActive(editingForm)}
+                                        onClick={() => updateEditingForm({ active: !isFormActive(editingForm) })}
+                                    />
+                                }
+                                label={<Typography style={{ fontSize: '0.8125rem' }}>Inactive Form?</Typography>}
+                            />
+                        </Tooltip>
+                        <Tooltip title="Include this form in the Current Forms section of a person's profile">
+                            <FormControlLabel
+                                style={{ marginRight: 0, whiteSpace: 'nowrap' }}
+                                control={
+                                    <Radio
+                                        size='small'
+                                        style={{ padding: 4 }}
+                                        checked={editingForm.current === true}
+                                        onClick={() => updateEditingForm({ current: !(editingForm.current === true) })}
+                                    />
+                                }
+                                label={<Typography style={{ fontSize: '0.8125rem' }}>Current Form?</Typography>}
+                            />
+                        </Tooltip>
+                        <Tooltip title='Only administrators will be able to see this form (and any of its documents) in a forms list; assignment to groups is unaffected'>
+                            <FormControlLabel
+                                style={{ marginRight: 0, whiteSpace: 'nowrap' }}
+                                control={
+                                    <Radio
+                                        size='small'
+                                        style={{ padding: 4 }}
+                                        checked={editingForm.options?.restricted_access === 'admin_only'}
+                                        onClick={() => {
+                                            const options = Object.assign({}, editingForm.options);
+                                            if (options.restricted_access === 'admin_only') {
+                                                delete options.restricted_access;
+                                            } else {
+                                                options.restricted_access = 'admin_only';
+                                            }
+                                            updateEditingForm({ options });
+                                        }}
+                                    />
+                                }
+                                label={<Typography style={{ fontSize: '0.8125rem' }}>Access Restricted to Admin only?</Typography>}
+                            />
+                        </Tooltip>
                     </Box>
                     <Typography style={AVATextStyle({ size: 0.75, color: 'textSecondary', margin: { top: 1, bottom: 1 } })}>
                         {`Form ID: ${editingForm.form_id}`}
