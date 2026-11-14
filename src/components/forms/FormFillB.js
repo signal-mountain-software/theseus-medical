@@ -469,6 +469,10 @@ export default ({ request = {}, onClose }) => {
     version: 1,
     idleState: false,
     pertains_to: options.person_id || state.session.patient_id,
+    // Explicit override so FormFillB can run for a person who doesn't have a real authenticated
+    // session yet (e.g. QuickAdd filling in a brand-new placeholder account pre-login) - falls
+    // back to the logged-in operator's own client_id for every other existing caller.
+    client_id: options.client_id || state.session.client_id,
     clientSampleMode: (!options.document_id && (options.person_id === state.session.client_id)),
     activeSectionOccurrences: {}
   });
@@ -825,7 +829,7 @@ export default ({ request = {}, onClose }) => {
   const resolveDictionaryDefault = async (dictFieldKey) => {
     if (!dictFieldKey) { return undefined; }
     const [resolvedEntry] = await resolveData(
-      state.session.client_id,
+      reactData.client_id,
       reactData.pertains_to,
       [dictFieldKey],
       { dictionaryCache: dictionaryValueResolutionCacheRef.current }
@@ -885,7 +889,7 @@ export default ({ request = {}, onClose }) => {
           if (!reactData.familyRec && reactData.family_id) {
             reactData.familyRec = await getDb({
               Key: {
-                client_id: state.session.client_id,
+                client_id: reactData.client_id,
                 composite_key: reactData.family_id
               },
               TableName: "FamilyGroups"
@@ -977,7 +981,7 @@ export default ({ request = {}, onClose }) => {
     if (!reactData.formRec.fields.hasOwnProperty(this_field)) {
       const formFieldRec = await getDb({
         Key: {
-          client_id: state.session.client_id,
+          client_id: reactData.client_id,
           field_name: this_field
         },
         TableName: "Form_Fields"
@@ -1037,7 +1041,7 @@ export default ({ request = {}, onClose }) => {
               if (!reactData.familyRec && reactData.family_id) {
                 reactData.familyRec = await getDb({
                   Key: {
-                    client_id: state.session.client_id,
+                    client_id: reactData.client_id,
                     composite_key: reactData.family_id
                   },
                   TableName: "FamilyGroups"
@@ -1101,7 +1105,7 @@ export default ({ request = {}, onClose }) => {
       }
       const fetchedFormFieldRec = await getDb({
         Key: {
-          client_id: state.session.client_id,
+          client_id: reactData.client_id,
           field_name: field_key
         },
         TableName: "Form_Fields"
@@ -1116,7 +1120,7 @@ export default ({ request = {}, onClose }) => {
       }
       const fetchedCommonFieldRec = await getDb({
         Key: {
-          client_id: state.session.client_id,
+          client_id: reactData.client_id,
           field_id: field_key
         },
         TableName: "Common_Fields"
@@ -1228,7 +1232,7 @@ export default ({ request = {}, onClose }) => {
     }
     const fetchedDictionaryRec = await getDb({
       Key: {
-        client_id: state.session.client_id,
+        client_id: reactData.client_id,
         field_key
       },
       TableName: "DataDictionaryV3"
@@ -1401,7 +1405,7 @@ export default ({ request = {}, onClose }) => {
       // Fetch calendar records for all event IDs in parallel
       const perEventResults = await Promise.all(
         eventIds.map(eid => getCalendarEntries({
-          client_id: state.session.client_id,
+          client_id: reactData.client_id,
           event_id: eid,
           type: 'all'
         }))
@@ -1518,7 +1522,7 @@ export default ({ request = {}, onClose }) => {
         else {
           // seats or time: interrogate existing slot records to find occupancy
           const slotQueryResults = await getCalendarEntries({
-            client_id: state.session.client_id,
+            client_id: reactData.client_id,
             event_id: occEventKey,
             type: 'slot'
           });
@@ -1656,7 +1660,7 @@ export default ({ request = {}, onClose }) => {
       ? deepCopy(options.previewFormRec)
       : await getDb({
         Key: {
-          client_id: state.session.client_id,
+          client_id: reactData.client_id,
           form_id
         },
         TableName: "Forms"
@@ -1900,7 +1904,7 @@ export default ({ request = {}, onClose }) => {
       if (gotPerson.family_groups && Array.isArray(gotPerson.family_groups) && gotPerson.family_groups.length > 0) {
         familyRec = await getDb({
           Key: {
-            client_id: state.session.client_id,
+            client_id: reactData.client_id,
             composite_key: gotPerson.family_groups[0]
           },
           TableName: "FamilyGroups"
@@ -2516,7 +2520,7 @@ export default ({ request = {}, onClose }) => {
             }
           }
           else if (extracted_field === 'client_id') {
-            response = response.replace(variable, state.session.client_id);
+            response = response.replace(variable, reactData.client_id);
           }
           else {
             response = response.replace(variable, '');
@@ -2633,7 +2637,7 @@ export default ({ request = {}, onClose }) => {
       fields: resolveFieldsForPrint(),
       signatures,
       docID: reactData.document_id,
-      client_id: state.session.client_id,
+      client_id: reactData.client_id,
       title: reactData.document_title,
       person_id: reactData.pertains_to,
     };
@@ -2649,7 +2653,7 @@ export default ({ request = {}, onClose }) => {
       fields: deepCopy(snapshot.fields),
       signatures: deepCopy(snapshot.signatures || []),
       docID: reactData.document_id || snapshot.source_document_id,
-      client_id: state.session.client_id,
+      client_id: reactData.client_id,
       title: snapshot.title || reactData.document_title,
       person_id: reactData.pertains_to,
     };
@@ -2701,7 +2705,7 @@ export default ({ request = {}, onClose }) => {
         await printElementWysiwygB({
           element: printContentRef.current,
           docID: reactData.document_id,
-          client_id: state.session.client_id,
+          client_id: reactData.client_id,
           title: reactData.document_title,
           options: printOptions,
         });
@@ -4199,7 +4203,7 @@ export default ({ request = {}, onClose }) => {
     for (const [, { event: releasedEvent, slot: releasedSlot, owner: releasedOwner }] of selectEventReleases) {
       try {
         await writeSlot({
-          client: state.session.client_id,
+          client: reactData.client_id,
           event: releasedEvent,
           owner: releasedOwner || state.session.patient_id,
           slot: releasedSlot,
@@ -4216,7 +4220,7 @@ export default ({ request = {}, onClose }) => {
     for (const [, { event: selectedEvent, slot: selectedSlot, owner: selectedOwner, override_name: selectedOverrideName, slotData: selectedSlotData }] of selectEventAssignments) {
       try {
         await writeSlot({
-          client: state.session.client_id,
+          client: reactData.client_id,
           event: selectedEvent,
           owner: selectedOwner || state.session.patient_id,
           slot: selectedSlot,
@@ -4597,7 +4601,7 @@ export default ({ request = {}, onClose }) => {
     // addMember/removeMember handle hierarchy, PeopleGroups, and onAdd/onRemove rule firing.
     if (pendingGroupRemovals.length > 0) {
       try {
-        await removeMember(reactData.pertains_to, state.session.client_id, pendingGroupRemovals, { includeDescendants: true, _personGroups: personGroups });
+        await removeMember(reactData.pertains_to, reactData.client_id, pendingGroupRemovals, { includeDescendants: true, _personGroups: personGroups });
       } catch (error) {
         cl('Failed to remove form group memberships:', error);
         const putError = `Unable to remove group memberships: ${error.message || error}`;
@@ -4607,7 +4611,7 @@ export default ({ request = {}, onClose }) => {
       cl(`[on_complete_groups] removeMember completed for ${reactData.pertains_to}: ${JSON.stringify(pendingGroupRemovals)}`);
     }
     if (pendingGroupAdditions.length > 0) {
-      await addMember(reactData.pertains_to, state.session.client_id, pendingGroupAdditions, { _personGroups: personGroups });
+      await addMember(reactData.pertains_to, reactData.client_id, pendingGroupAdditions, { _personGroups: personGroups });
       cl(`[on_complete_groups] addMember completed for ${reactData.pertains_to}: ${JSON.stringify(pendingGroupAdditions)}`);
     }
     if (peopleUpdated || pendingGroupRemovals.length > 0 || pendingGroupAdditions.length > 0) {
@@ -4634,13 +4638,13 @@ export default ({ request = {}, onClose }) => {
     }
 
     let docData = {
-      client_id: state.session.client_id,
+      client_id: reactData.client_id,
       document_id,
       title: reactData.document_title,
       pertains_to: reactData.pertains_to,
       status: final ? 'complete' : 'in_process',
       form_type: reactData.form_id,
-      client_id_form_type: `${state.session.client_id}%%${reactData.form_id}`,
+      client_id_form_type: `${reactData.client_id}%%${reactData.form_id}`,
       field_values,
       options: reactData.formRec.options,
       formLocked: formLocked !== undefined ? formLocked : (reactData.docRec?.formLocked || false),
@@ -4734,7 +4738,7 @@ export default ({ request = {}, onClose }) => {
         // Use removeMember/addMember so hierarchy, PeopleGroups, and onAdd/onRemove rules all fire.
         if (rule.remove) {
           try {
-            await removeMember(reactData.pertains_to, state.session.client_id, [rule.remove].flat(), { includeDescendants: true, _personGroups: personGroups });
+            await removeMember(reactData.pertains_to, reactData.client_id, [rule.remove].flat(), { includeDescendants: true, _personGroups: personGroups });
           } catch (error) {
             cl('Failed to remove final-save group memberships:', error);
             const putError = `The document was saved, but group memberships could not be removed: ${error.message || error}`;
@@ -4743,7 +4747,7 @@ export default ({ request = {}, onClose }) => {
           }
         }
         if (rule.add) {
-          await addMember(reactData.pertains_to, state.session.client_id, [rule.add].flat(), { _personGroups: personGroups });
+          await addMember(reactData.pertains_to, reactData.client_id, [rule.add].flat(), { _personGroups: personGroups });
         }
         if (personGroups.has(reactData.pertains_to)) {
           reactData.peopleRec[reactData.pertains_to].groups = personGroups.get(reactData.pertains_to);
@@ -4831,7 +4835,7 @@ export default ({ request = {}, onClose }) => {
     if (!familyId) { return null; }
     const familyRec = await getDb({
       Key: {
-        client_id: state.session.client_id,
+        client_id: reactData.client_id,
         composite_key: familyId
       },
       TableName: "FamilyGroups"
@@ -4850,7 +4854,7 @@ export default ({ request = {}, onClose }) => {
       if (this_instruction.template_id) {
         let templateRec = await getDb({
           Key: {
-            client_id: state.session.client_id,
+            client_id: reactData.client_id,
             template_id: this_instruction.template_id
           },
           TableName: 'MessageTemplates'
@@ -4901,7 +4905,7 @@ export default ({ request = {}, onClose }) => {
       final_messageText = resolveMessageTokens(final_messageText);
       final_html = resolveMessageTokens(final_html);
       await sendMessages({
-        client: state.session.client_id,
+        client: reactData.client_id,
         author: state.session.user_id,
         person_id: state.session.patient_id,
         messageText: final_messageText,
@@ -4925,7 +4929,7 @@ export default ({ request = {}, onClose }) => {
       if (this_instruction.template_id) {
         let templateRec = await getDb({
           Key: {
-            client_id: state.session.client_id,
+            client_id: reactData.client_id,
             template_id: this_instruction.template_id
           },
           TableName: 'MessageTemplates'
@@ -5075,7 +5079,7 @@ export default ({ request = {}, onClose }) => {
         if (!description?.trim()) { continue; }
         await putTask({
           task_id: null,
-          client_id: state.session.client_id,
+          client_id: reactData.client_id,
           description,
           status: 'active',
           start_date,
@@ -5109,7 +5113,7 @@ export default ({ request = {}, onClose }) => {
         thread_id: newMessageThread,
         message_id,
         allowReplyAll: false,
-        client_id: state.session.client_id,
+        client_id: reactData.client_id,
         deliver_time: postTime,
         from: state.session.patient_id,
         message_text: resolveMessageTokens(send_instructions.text),
@@ -5200,7 +5204,7 @@ export default ({ request = {}, onClose }) => {
     }
     let newDocumentID = await createDocument({
       docData: {
-        client_id: state.session.client_id,
+        client_id: reactData.client_id,
         form_type: instructions.form_id,
         pertains_to: instructions.pertains_to,
         field_values: preset_values
@@ -5217,7 +5221,7 @@ export default ({ request = {}, onClose }) => {
         let final_html = final_messageText + `<br><br>Please click on <a href=${jumpTo}?document=${newDocumentID}&&docUser=${this_assignment}>this link</a> to respond.`;
         final_messageText += `\r\n\nClick on this link to respond: ${jumpTo}?document=${newDocumentID}&&docUser=${this_assignment}`;
         await sendMessages({
-          client: state.session.client_id,
+          client: reactData.client_id,
           author: state.session.user_id,
           person_id: state.session.patient_id,
           messageText: final_messageText,
@@ -5572,7 +5576,7 @@ export default ({ request = {}, onClose }) => {
           documentList: [{
             sections,
             fields,
-            client_id: state.session.client_id,
+            client_id: reactData.client_id,
             title: document_title
           }]
         });
@@ -6895,7 +6899,7 @@ export default ({ request = {}, onClose }) => {
                     document_id: reactData.document_id,
                     form_type: reactData.form_id,
                     pertains_to: reactData.pertains_to,
-                    client_id: state.session.client_id,
+                    client_id: reactData.client_id,
                     title: docTitle
                   }
                 ),
