@@ -858,6 +858,43 @@ function compareRuleValue({ sourceValue, testType, testValue }) {
   }
 }
 
+/**
+ * Evaluates an onAdd/onRemove rule action's optional `condition.data_test` against the TARGET
+ * person for that action (the person who may be added/removed - NOT the person whose own
+ * add/remove to the group triggered this rule evaluation). Mirrors the single-value tests
+ * `doesPersonMatchGroupRules` uses for `withData` rules' field-path, is_array_field, eq/ne/
+ * contains/gt/lt - plus a 'one_of' test, matching if the resolved value (or, for an array
+ * field, any element of it) equals any of `data_test.testValues`. 'one_of' is intentionally
+ * only supported here, not for `withData` rules' data_test - those are also enforced by the
+ * separately-deployed evaluate-with-data-rules Lambda, which doesn't implement it, while
+ * onAdd/onRemove actions are only ever evaluated here, client-side, via applyGroupRules.
+ */
+function evaluateActionDataTest(data_test, peopleRec) {
+  const fieldPath = data_test?.field_path || data_test?.dictionaryField;
+  if (!fieldPath) { return true; }
+
+  const sourceValue = getValueAtPath(peopleRec, fieldPath);
+  const isArrayField = !!data_test.is_array_field || Array.isArray(sourceValue);
+  const valueList = isArrayField ? (Array.isArray(sourceValue) ? sourceValue : [sourceValue]) : [sourceValue];
+
+  if (data_test.test === 'one_of') {
+    const acceptableValues = Array.isArray(data_test.testValues) ? data_test.testValues : [];
+    if (acceptableValues.length === 0) { return false; }
+    return valueList.some((thisValue) =>
+      acceptableValues.some((acceptableValue) =>
+        compareRuleValue({ sourceValue: thisValue, testType: 'eq', testValue: acceptableValue })));
+  }
+
+  const testValue = data_test.testValue;
+  if (isArrayField) {
+    if (data_test.test === 'ne') {
+      return valueList.every((thisValue) => !compareRuleValue({ sourceValue: thisValue, testType: 'eq', testValue }));
+    }
+    return valueList.some((thisValue) => compareRuleValue({ sourceValue: thisValue, testType: data_test.test, testValue }));
+  }
+  return compareRuleValue({ sourceValue, testType: data_test.test, testValue });
+}
+
 export async function doesPersonMatchGroupRules(client_id, groupArg, personArg) {
   // dbClient and state are available in this module
   let groupRec = groupArg;
@@ -1926,6 +1963,20 @@ async function applyGroupRules(triggerType, person_id, client_id, group_id, fire
           }
           const conditionMet = requiredGroups.every(g => personCurrentGroups.includes(g));
           if (!conditionMet) { continue; }
+        }
+
+        // condition.data_test: a DataDictionary-based test against the TARGET person (not
+        // person_id, whose own add/remove triggered this rule evaluation) - e.g. "only add this
+        // family member to the group if their intake status is one of these values".
+        if (action.condition?.data_test) {
+          let targetPersonRec;
+          if (personRecs.has(targetPerson)) {
+            targetPersonRec = personRecs.get(targetPerson);
+          } else {
+            targetPersonRec = await getPerson(targetPerson);
+            if (targetPersonRec?.person_id) { personRecs.set(targetPerson, targetPersonRec); }
+          }
+          if (!evaluateActionDataTest(action.condition.data_test, targetPersonRec)) { continue; }
         }
 
         for (const targetGroup of where) {

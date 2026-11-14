@@ -79,14 +79,12 @@ const FIELD_TYPES = [
 // and ignore prompt.width.
 const WIDTH_ADJUSTABLE_TYPES = ['text', 'date', 'phone', 'numeric', 'select', 'select&text', 'select_event'];
 
-// Field types whose Required control is shown after Width/Height, matching the text/numeric
-// layout, rather than before it. Keeps select fields visually consistent with other fields
-// that have both a Width and a Required control.
-const REQUIRED_AFTER_WIDTH_TYPES = ['text', 'numeric', 'select', 'select&text', 'select_event'];
-
 // Field types that don't get a "Default value?" picker: header is label-only (no value),
 // signature isn't a DataDictionary-shaped value, and upload is excluded for now even though a
 // DD field referencing a URL could reasonably seed an upload's default later.
+// Separately (see render below), a field with dictionary_field_key (adopted from the Data
+// Dictionary) also never gets this picker - FormFillB always derives its default from that same
+// DD reference, so a hand-picked default here would never actually apply.
 const DEFAULT_PICKER_EXCLUDED_TYPES = ['header', 'signature', 'upload'];
 
 // Named presets in place of raw pixel entry - values are the pixel widths FormFillB expects
@@ -132,6 +130,30 @@ const parseFieldDefaultForEditor = (fieldDef) => {
         nonDictionaryDefault: (rawDefault && !isSimpleDictionaryDefault) ? rawDefault : null,
     };
 };
+
+// Shallow-omits the given keys from obj - used to strip FormBuilder-managed attributes out of a
+// raw stored record before re-merging the rest back in untouched (see "Preserving unmanaged
+// attributes" below).
+const omitKeys = (obj, keys) => (
+    Object.fromEntries(Object.entries(obj || {}).filter(([key]) => !keys.includes(key)))
+);
+
+// ---------------------------------------------------------------------------------------
+// Preserving unmanaged attributes
+//
+// FormBuilder only understands/edits a specific set of attributes on the Forms record's
+// top level, each section, and each field - anything else (e.g. a section's `occurrences`,
+// consumed by FormFillB to repeat a section, but with no FormBuilder UI of its own) was
+// previously dropped on save because buildFormRecord rebuilds each of these objects from
+// scratch out of the editor's own state. To avoid silently destroying data FormBuilder simply
+// doesn't model yet, startEditingForm stashes each original raw object on its editor-shape
+// counterpart (the `__raw` key below), and buildFormRecord re-merges it back in - MANAGED_*_KEYS
+// listed here are stripped out of that raw snapshot first so a key FormBuilder actively
+// edits/clears (even conditionally, e.g. show_if vs. ignore_if) always reflects the current
+// edit rather than a stale raw value "winning" because this save round didn't happen to set it.
+const MANAGED_FORM_KEYS = ['client_id', 'form_id', 'form_name', 'category', 'active', 'current', 'sections', 'fields', 'stages'];
+const MANAGED_SECTION_KEYS = ['section_name', 'belongs_to_stage', 'fields', 'show_if', 'ignore_if', 'clear_if', 'answer_limits'];
+const MANAGED_FIELD_KEYS = ['type', 'prompt', 'required', 'dictionary_field_key', 'default', 'show_if', 'ignore_if', 'clear_if', 'value', 'options'];
 
 // 'select&text' is not its own FIELD_TYPES entry - it's 'select' plus the "allow custom
 // value" checkbox checked. Both share the same list-of-values editor UI.
@@ -736,6 +758,7 @@ export default ({ onClose, directForm }) => {
                     eventOccurrenceLimit: (eventOccurrenceLimit !== undefined && eventOccurrenceLimit !== null) ? String(eventOccurrenceLimit) : '',
                     familySignupField: fieldDef.value?.selection?.family_signup_field || '',
                     ...parseConditionTest(fieldDef),
+                    __raw: fieldDef, // preserve attributes FormBuilder doesn't model - see "Preserving unmanaged attributes" above
                 };
             }));
             return {
@@ -747,6 +770,7 @@ export default ({ onClose, directForm }) => {
                 answerMode: section.answer_limits?.mode || 'fields',
                 answerMin: section.answer_limits?.min === undefined ? '' : String(section.answer_limits.min),
                 answerMax: section.answer_limits?.max === undefined ? '' : String(section.answer_limits.max),
+                __raw: section, // preserve attributes FormBuilder doesn't model (e.g. a repeating section's `occurrences`)
             };
         }));
 
@@ -774,6 +798,7 @@ export default ({ onClose, directForm }) => {
             current: cloned.current === true,
             sections: resolvedSections,
             stages: ensureCompleteStage(stages),
+            __raw: cloned, // preserve top-level attributes FormBuilder doesn't model - see "Preserving unmanaged attributes" above
         };
         updateReactData({
             view: 'edit',
@@ -1090,10 +1115,59 @@ export default ({ onClose, directForm }) => {
         updateField(sectionIdx, fieldIdx, { selectionList: [...field.selectionList, ''] });
     };
 
+    // Renaming (vs. clearing/filling in) a selection value can orphan any rule that was testing
+    // for its old spelling: another Item/section's Conditional Display condition
+    // (conditionField/conditionValues), or this field's own per-value stage rules (showIf/ignoreIf
+    // tests in on_complete_groups/on_complete_message/on_complete_notify - see "Per-value stage
+    // rules" above). Rather than let those rules silently stop matching, every test for this
+    // field's OLD value is re-pointed at the new spelling in the same update - including rules the
+    // rule-icon UI itself can't edit (an un-editable rule still shouldn't go stale).
     const updateSelectionValue = (sectionIdx, fieldIdx, valueIdx, newValue) => {
         const field = reactData.editingForm.sections[sectionIdx].fields[fieldIdx];
-        const selectionList = field.selectionList.map((v, idx) => (idx === valueIdx ? newValue : v));
-        updateField(sectionIdx, fieldIdx, { selectionList });
+        const { field_name } = field;
+        const oldValue = field.selectionList[valueIdx];
+        const renaming = !!(oldValue || '').trim() && (newValue !== oldValue);
+
+        const remapValues = (values) => (
+            Array.isArray(values) ? values.map((v) => (v === oldValue ? newValue : v)) : values
+        );
+        const remapTests = (tests) => (
+            Array.isArray(tests) ? tests.map((t) => (
+                (t && (t.field === field_name) && Array.isArray(t.values)) ? { ...t, values: remapValues(t.values) } : t
+            )) : tests
+        );
+
+        const sections = reactData.editingForm.sections.map((section, sIdx) => {
+            const fields = section.fields.map((f, fIdx) => {
+                if ((sIdx === sectionIdx) && (fIdx === fieldIdx)) {
+                    return { ...f, selectionList: f.selectionList.map((v, idx) => (idx === valueIdx ? newValue : v)) };
+                }
+                return (renaming && (f.conditionField === field_name)) ? { ...f, conditionValues: remapValues(f.conditionValues) } : f;
+            });
+            const sectionChanges = (renaming && (section.conditionField === field_name))
+                ? { conditionValues: remapValues(section.conditionValues) }
+                : {};
+            return { ...section, ...sectionChanges, fields };
+        });
+
+        const stages = renaming
+            ? (reactData.editingForm.stages || []).map((stage) => {
+                const stageChanges = {};
+                STAGE_RULE_KINDS.forEach((kind) => {
+                    if (!Array.isArray(stage[kind])) { return; }
+                    stageChanges[kind] = stage[kind].map((block) => ((block && (block.showIf || block.ignoreIf))
+                        ? {
+                            ...block,
+                            ...(block.showIf ? { showIf: remapTests(block.showIf) } : {}),
+                            ...(block.ignoreIf ? { ignoreIf: remapTests(block.ignoreIf) } : {}),
+                        }
+                        : block));
+                });
+                return Object.keys(stageChanges).length ? { ...stage, ...stageChanges } : stage;
+            })
+            : reactData.editingForm.stages;
+
+        updateEditingForm({ sections, stages });
     };
 
     const removeSelectionValue = (sectionIdx, fieldIdx, valueIdx) => {
@@ -1574,9 +1648,14 @@ export default ({ onClose, directForm }) => {
     // Converts the editor's section/field row shape back into a Forms record
     // (sections referencing fields by name + a flat fields object). Shared by
     // saveForm (writes it) and previewForm (hands it to FormFillB without writing it).
+    // Each level re-merges in whatever its `__raw` snapshot held that isn't one of that level's
+    // MANAGED_*_KEYS, so attributes FormBuilder doesn't model (e.g. a section's `occurrences`)
+    // survive a save unchanged instead of being dropped by this rebuild - see "Preserving
+    // unmanaged attributes" above.
     const buildFormRecord = (editingForm) => {
         const fields = {};
         const sections = editingForm.sections.map((section) => ({
+            ...omitKeys(section.__raw, MANAGED_SECTION_KEYS),
             section_name: section.section_name || '',
             belongs_to_stage: section.belongs_to_stage || '',
             ...buildConditionOutput(section),
@@ -1595,13 +1674,13 @@ export default ({ onClose, directForm }) => {
                     const promptExtras = {};
                     if (field.promptWidth) { promptExtras.width = Number(field.promptWidth); }
                     if (field.type === 'text' && field.promptRows) { promptExtras.rows = Number(field.promptRows); }
-                    const fieldDef = {
+                    const fieldDef = Object.assign(omitKeys(field.__raw, MANAGED_FIELD_KEYS), {
                         type: field.type,
                         prompt: Object.keys(promptExtras).length
                             ? Object.assign({ value: field.prompt || '' }, promptExtras)
                             : (field.prompt || ''),
                         required: !!field.required,
-                    };
+                    });
                     if (field.dictionary_field_key) {
                         fieldDef.dictionary_field_key = field.dictionary_field_key;
                     }
@@ -1655,6 +1734,7 @@ export default ({ onClose, directForm }) => {
         }));
 
         return {
+            ...omitKeys(editingForm.__raw, MANAGED_FORM_KEYS),
             client_id,
             form_id: editingForm.form_id,
             form_name: editingForm.form_name,
@@ -2230,7 +2310,6 @@ export default ({ onClose, directForm }) => {
                                                             {'Unlink'}
                                                         </Button>
                                                     }
-                                                    {!REQUIRED_AFTER_WIDTH_TYPES.includes(field.type) && requiredControl}
                                                     {WIDTH_ADJUSTABLE_TYPES.includes(field.type) &&
                                                         <FormControl style={{ minWidth: 140 }}>
                                                             <InputLabel shrink>{'Width'}</InputLabel>
@@ -2259,7 +2338,7 @@ export default ({ onClose, directForm }) => {
                                                             </Select>
                                                         </FormControl>
                                                     }
-                                                    {REQUIRED_AFTER_WIDTH_TYPES.includes(field.type) && requiredControl}
+                                                    {requiredControl}
                                                 </Box>
                                                 <TextField
                                                     label='Prompt'
@@ -2553,7 +2632,7 @@ export default ({ onClose, directForm }) => {
                                                         {renderConditionSummary(field, getConditionFieldOptions(sectionIdx, fieldIdx))}
                                                     </Box>
                                                 }
-                                                {!DEFAULT_PICKER_EXCLUDED_TYPES.includes(field.type) &&
+                                                {!DEFAULT_PICKER_EXCLUDED_TYPES.includes(field.type) && !field.dictionary_field_key &&
                                                     <Box display='flex' flexDirection='row' alignItems='center' style={{ gap: '8px', marginTop: '8px', minWidth: 0, flexWrap: 'wrap' }}>
                                                         <Button
                                                             size='small'
