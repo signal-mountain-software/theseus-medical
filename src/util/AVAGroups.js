@@ -13,6 +13,31 @@ let loadedPerson = null;
 // Structure: { adminHierarchy: [{id, belongs_to, level, name}], parent_of: {parentId: [childId, ...]} }
 let cachedHierarchy = null;
 
+// Shared by the MenuV3 available_to evaluators (withBootstrap.js's v3AuthorizedForMenuItem and
+// MainMenuV3.js's authorizedToMenuItem) so a `group:<id>` rule matches members of DESCENDANT
+// groups too, not just literal direct members - mirroring how getGroupAccess's own pass zero
+// already ancestor-expands membership for the accessible_to/may_access engine. Deliberately kept
+// as a pure, standalone helper operating on a flat adminHierarchy array (not on getPersonGroups'
+// own flat memberGroupIds), so the underlying membership sources stay untouched and this
+// expansion only happens at rule-evaluation time.
+export function expandGroupIdsWithAncestors(groupIds, adminHierarchy) {
+  const expanded = new Set(groupIds || []);
+  const hierarchy = adminHierarchy || [];
+  const byId = new Map(hierarchy.map(g => [(g.id || g.group_id), g]));
+  for (const gid of (groupIds || [])) {
+    const seen = new Set([gid]);  // guard against a cyclical belongs_to chain
+    let current = byId.get(gid);
+    // '__TOP__' is the synthetic client-root marker, not a real group - no accessible_to/
+    // available_to rule could ever reference it, so stop the walk there instead of adding it.
+    while (current && current.belongs_to && (current.belongs_to !== '__TOP__') && !seen.has(current.belongs_to)) {
+      expanded.add(current.belongs_to);
+      seen.add(current.belongs_to);
+      current = byId.get(current.belongs_to);
+    }
+  }
+  return expanded;
+}
+
 /* 
 **********************
 
@@ -472,6 +497,100 @@ export async function getGroupAccess(client_id, person_id, options) {
 
   loadedPerson = person_id;
   return [groups_person_belongsTo, rejectObject, classList];
+}
+
+// Group-centric sibling to accountAccess/getGroupAccess - answers "what has everyone ELSE
+// granted to this group's members", powering the Messaging Shortcuts reverse-lookup panel
+// (see GroupMaintenance). Rather than re-deriving the accessible_to/may_access engine, this
+// reuses getGroupAccess UNCHANGED via its existing options.personRec override, seeding a
+// synthetic subject whose groups are [group_id] (pass zero inside getGroupAccess ancestor-
+// expands from there the same way it would for a real person) and whose account_class mirrors
+// the group's own admin_class. This carries zero behavior risk to every other getGroupAccess
+// caller (bootstrap, addMember/removeMember, etc.) since getGroupAccess itself is untouched.
+//
+// This deliberately returns a curated subset of what is_accessible actually includes, not every
+// technically-accessible group - two categories are excluded on purpose:
+// 1. Candidates whose only path to is_accessible is being a DESCENDANT of some other, unrelated
+//    group that happens to have been granted access (e.g. if "Marketing Staff" grants Friends &
+//    Family access, every one of Marketing Staff's own children/grandchildren also becomes
+//    technically accessible via getGroupAccess's own descendant-cascade pass - but nobody
+//    specifically decided those descendants should be reachable, and the count of such
+//    candidates multiplies combinatorially with both sides' tree depth for zero actionable
+//    value). Inheriting a grant made to one of THIS group's own ancestors is kept instead
+//    (bounded by this group's own tree depth, and independently actionable - a narrower
+//    sub-group's admin may still want its own distinct shortcut); being swept in via the OTHER
+//    side's descendant cascade is not, since a shortcut enabled at that higher level already
+//    reaches every one of its descendants automatically (available_to ancestor-expands - see
+//    expandGroupIdsWithAncestors/v3AuthorizedForMenuItem/authorizedToMenuItem).
+// 2. Candidates that are broadly open to essentially everyone (public/open group_type, or an
+//    *all accessible_to rule) - these would show up on nearly every group's candidate list and
+//    are almost never a reasonable one-tap message target. *admin/*support are narrower,
+//    genuinely meaningful audiences and are kept.
+export async function getGroupAccessibleGroups(client_id, group_id) {
+  const groupsResult = await dbClient
+    .query({
+      KeyConditionExpression: 'client_id = :c',
+      ExpressionAttributeValues: { ':c': client_id },
+      TableName: 'Groups'
+    })
+    .promise()
+    .catch(error => {
+      cl({ 'Error reading Groups in getGroupAccessibleGroups': error, client_id: `<${client_id}>` });
+    });
+  const allGroups = recordExists(groupsResult) ? groupsResult.Items : [];
+  const byId = new Map(allGroups.map(g => [g.group_id, g]));
+  const thisGroupRec = byId.get(group_id);
+  const admin_class = thisGroupRec?.admin_class || 'local';
+  const is_admin = ['master', 'admin'].includes(admin_class);
+
+  const ancestorIds = [...expandGroupIdsWithAncestors(
+    [group_id],
+    allGroups.map(g => ({ id: g.group_id, belongs_to: g.belongs_to }))
+  )].filter(id => id !== group_id);
+
+  const syntheticSubjectId = `__group_subject__${group_id}`;
+  const [groups_person_belongsTo, rejectObject] = await getGroupAccess(client_id, syntheticSubjectId, {
+    personRec: { account_class: admin_class, groups: [group_id] }
+  });
+  const allResults = Object.assign({}, groups_person_belongsTo, rejectObject);
+
+  const matchesGroupRule = (rule, targetId) => (
+    (typeof rule === 'string') && rule.startsWith('group:') && (rule.slice(6).trim() === targetId)
+  );
+
+  // Returns null (not a generic fallback string) when no explicit, specific mechanism applies -
+  // signaling the caller to exclude this candidate rather than show it with a vague reason.
+  // Broadly-open candidates (public/open group_type, or an *all accessible_to rule) are also
+  // excluded here, not just unlabeled - they're reachable by essentially every group in the
+  // client, so they'd pad every single group's candidate list with the same long tail of
+  // entries that are almost never a reasonable one-tap target. *admin/*support are narrower,
+  // genuinely meaningful audiences and are kept.
+  function describeReason(candidateId) {
+    const candidateRec = byId.get(candidateId) || {};
+    if (is_admin) { return 'Available because this group is an administrative/master group'; }
+    if (candidateRec.group_type === 'public' || candidateRec.group_type === 'open') { return null; }
+    const rules = makeArray(candidateRec.accessible_to || []);
+    if (rules.some(r => matchesGroupRule(r, group_id))) { return 'Granted directly'; }
+    const matchedAncestor = ancestorIds.find(aid => rules.some(r => matchesGroupRule(r, aid)));
+    if (matchedAncestor) { return `Inherited from parent group "${byId.get(matchedAncestor)?.name || matchedAncestor}"`; }
+    if (rules.includes('*all')) { return null; }
+    if (rules.includes('*admin')) { return 'Available to administrators'; }
+    if (rules.includes('*support')) { return 'Available to support staff'; }
+    return null;
+  }
+
+  const candidates = [];
+  for (const [candidateId, result] of Object.entries(allResults)) {
+    if (!result.is_accessible || (candidateId === group_id)) { continue; }
+    const reason = describeReason(candidateId);
+    if (!reason) { continue; }
+    candidates.push({
+      group_id: candidateId,
+      group_name: result.group_name,
+      reason
+    });
+  }
+  return candidates.sort((a, b) => `${a.group_name || ''}`.localeCompare(`${b.group_name || ''}`));
 }
 
 export async function getPeopleResponsibleFor(person_id) {
