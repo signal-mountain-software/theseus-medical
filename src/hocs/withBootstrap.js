@@ -1,7 +1,7 @@
 import React from 'react';
 import { Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField } from '@material-ui/core';
 import { dbClient, lambda, makeArray, getCustomizations, deepCopy, uuid } from '../util/AVAUtilities';
-import { accountAccess, getAllGroups, getGroupsBelongTo, getPersonGroups } from '../util/AVAGroups';
+import { accountAccess, getAllGroups, getGroupsBelongTo, getPersonGroups, expandGroupIdsWithAncestors } from '../util/AVAGroups';
 import { getAllOccurrences, v2buildCalendar, createNewOccurrences } from '../util/AVACalendars';
 import { sendMessages } from '../util/AVAMessages';
 import { addDays } from '../util/AVADateTime';
@@ -1309,6 +1309,11 @@ export default Component => props => {
       const isSubjectAdmin = ['master', 'admin'].includes(currentProfile.account_class);
       const isSubjectSupport = ['master', 'support', 'admin'].includes(currentProfile.account_class);
       const subjectPersonId = currentSession.patient_id;
+      // Ancestor-expanded once per bootstrap pass - a `group:<id>` rule should also match members
+      // of DESCENDANT groups, the same way the accessible_to/may_access engine already does (see
+      // getGroupAccess's pass zero). memberGroupIds itself stays flat/literal; the expansion only
+      // happens here, at rule-evaluation time.
+      const expandedMemberGroupIds = expandGroupIdsWithAncestors(memberGroupIds, group_structure.adminHierarchy);
 
       const v3AuthorizedForMenuItem = (available_to) => {
         if (!available_to || available_to.length === 0) { return true; }
@@ -1319,7 +1324,7 @@ export default Component => props => {
           if (raw === '*all') { return true; }
           if (raw === '*admin') { return isSubjectAdmin; }
           if (raw === '*support') { return isSubjectSupport; }
-          if (raw.startsWith('group:')) { return memberGroupIds.includes(raw.slice(6)); }
+          if (raw.startsWith('group:')) { return expandedMemberGroupIds.has(raw.slice(6)); }
           if (raw.startsWith('person:')) { return subjectPersonId === raw.slice(7); }
           return false;
         });
@@ -1329,7 +1334,7 @@ export default Component => props => {
           if (type === '*all') { return true; }
           if (type === '*admin' && isSubjectAdmin) { return true; }
           if (type === '*support' && isSubjectSupport) { return true; }
-          if (type === 'group' && memberGroupIds.includes(value)) { return true; }
+          if (type === 'group' && expandedMemberGroupIds.has(value)) { return true; }
           if (type === 'person' && subjectPersonId === value) { return true; }
         }
         return false;

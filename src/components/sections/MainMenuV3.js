@@ -3,6 +3,7 @@ import { Auth } from '@aws-amplify/auth';
 import { recordExists, getObject, cl, switchActiveAccount, dbClient, lambda, polly, listFromArray, getMarqueeMessage, deepCopy, makeArray } from '../../util/AVAUtilities';
 import { makeDate, makeTime } from '../../util/AVADateTime';
 import { getImage } from '../../util/AVAPeople';
+import { expandGroupIdsWithAncestors } from '../../util/AVAGroups';
 import { AVATextStyle, AVAclasses, AVADefaults, hexToRgb, isDark } from '../../util/AVAStyles';
 import { clearPushSubscriptionFromDB, initPushNotifications, unsubscribeFromPush, isPushSupported, isPushOptedIn, syncAlertDeliveryMethod } from '../../util/AVAPushNotifications';
 import { getActivityDetail } from '../../util/AVAActivityLoaderV3';
@@ -557,7 +558,10 @@ export default ({ start_at }) => {
         cl({ 'Error loading subject groups for menu auth': error });
       });
     if (recordExists(personRec)) {
-      subjectGroupsRef.current = new Set(personRec.Item.groups || []);
+      // Ancestor-expanded, the same way getGroupAccess's own pass zero already does for the
+      // accessible_to/may_access engine - a `group:<id>` available_to rule should also match
+      // members of descendant groups, not just this person's literal .groups array.
+      subjectGroupsRef.current = expandGroupIdsWithAncestors(personRec.Item.groups || [], state.groups?.adminHierarchy);
     }
   };
 
