@@ -108,7 +108,10 @@ const useStyles = makeStyles(theme => ({
     marginBottom: '4px',
   },
   radioDays: {
-    marginLeft: 0,
+    // Pulls the label text in toward its checkbox by about half of the checkbox's own
+    // built-in right-side padding (9px), tightening the default gap without touching the
+    // checkbox itself.
+    marginLeft: '-6px',
     marginRight: '16px',
     '&.MuiInputBase-input': {
       paddingBottom: '0px'
@@ -150,7 +153,10 @@ const useStyles = makeStyles(theme => ({
     borderRadius: 4,
     boxSizing: 'border-box',
     paddingTop: theme.spacing(0.5),
-    paddingRight: theme.spacing(1),
+    // Extra right padding (vs. the 1-spacing-unit left/top/bottom) so shrink-to-fit boxes
+    // (select/yes-no fields with no configured width) don't size themselves so tightly that
+    // wrapped label text appears to touch the right edge.
+    paddingRight: theme.spacing(1.5),
     paddingBottom: theme.spacing(0.5),
     paddingLeft: theme.spacing(1),
   },
@@ -2982,7 +2988,7 @@ export default ({ request = {}, onClose }) => {
           <Typography className={`${classes.selectionFieldLabelInline} ${isRequiredField ? classes.requiredLabel : ''}`}
             style={{ fontSize: `${reactData.user_fontSize}rem` }}>
             <span dangerouslySetInnerHTML={{ __html: adaptHtml(promptText || normalizePromptMarkup(props.prop)) }} />
-            {isRequiredField && <span className={classes.requiredAsterisk}>*</span>}
+            {isRequiredField && <span className={classes.requiredAsterisk}>&nbsp;*</span>}
           </Typography>
           {!!helperText && (
             <Typography className={classes.selectionFieldHelper}>{helperText}</Typography>
@@ -3139,7 +3145,7 @@ export default ({ request = {}, onClose }) => {
           <Typography className={`${classes.selectionFieldLabelInline} ${isRequiredField ? classes.requiredLabel : ''}`}
             style={{ fontSize: `${reactData.user_fontSize}rem` }}>
             <span dangerouslySetInnerHTML={{ __html: adaptHtml(promptText || normalizePromptMarkup(props.prop)) }} />
-            {isRequiredField && <span className={classes.requiredAsterisk}>*</span>}
+            {isRequiredField && <span className={classes.requiredAsterisk}>&nbsp;*</span>}
           </Typography>
           {!!helperText && (
             <Typography className={classes.selectionFieldHelper}>{helperText}</Typography>
@@ -3244,7 +3250,7 @@ export default ({ request = {}, onClose }) => {
               {(props.withPrompt) &&
                 <FormControlLabel
                   className={classes.formControlDays}
-                  style={{ maxWidth: '100%', height: 'auto', alignItems: 'flex-start' }}
+                  style={{ maxWidth: '100%', height: 'auto', alignItems: 'center' }}
                   key={`${props.prop}_other`}
                   control={
                     <Checkbox
@@ -3322,7 +3328,7 @@ export default ({ request = {}, onClose }) => {
                           wordBreak: 'break-word'
                         }
                       }}
-                      style={{ width: '400px', minWidth: 0, maxWidth: 'calc(100% - 32px)', marginRight: '16px', marginTop: '5px' }}
+                      style={{ width: '400px', minWidth: 0, maxWidth: 'calc(100% - 32px)', marginRight: '16px' }}
                     />
                   }
                   labelPlacement='end'
@@ -6685,7 +6691,7 @@ export default ({ request = {}, onClose }) => {
                                                     })))
                                                   }}
                                                 />
-                                                {isRequiredField && <span className={classes.requiredAsterisk}>*</span>}
+                                                {isRequiredField && <span className={classes.requiredAsterisk}>&nbsp;*</span>}
                                               </Typography>
                                             </Box>
                                           }
