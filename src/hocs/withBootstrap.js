@@ -1,7 +1,7 @@
 import React from 'react';
 import { Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField } from '@material-ui/core';
 import { dbClient, lambda, makeArray, getCustomizations, deepCopy, uuid } from '../util/AVAUtilities';
-import { accountAccess, getAllGroups, getGroupsBelongTo, getPersonGroups } from '../util/AVAGroups';
+import { accountAccess, getAllGroups, getGroupsBelongTo, getPersonGroups, expandGroupIdsWithAncestors } from '../util/AVAGroups';
 import { getAllOccurrences, v2buildCalendar, createNewOccurrences } from '../util/AVACalendars';
 import { sendMessages } from '../util/AVAMessages';
 import { addDays } from '../util/AVADateTime';
@@ -173,6 +173,20 @@ export default Component => props => {
               urlData: Object.assign({}, urlData, {
                 launch_formNew: true,
                 formNew_formID: urlData.form_id
+              })
+            });
+          }
+          // ?redeem=<code> - like document_id/form_id above, this just stashes the intent; the
+          // person still goes through the completely normal login flow below (no extra question
+          // inserted), and this is only acted on after a real login succeeds (see showRedeemCode
+          // and its render branch) - so a bookmarked/reused redeem link behaves exactly like a
+          // plain login link once the code has already been applied once for that person.
+          else if (urlData.redeem) {
+            console.log('Redeem code parameter detected:', urlData.redeem);
+            updateReactData({
+              urlData: Object.assign({}, urlData, {
+                launch_redeemCode: true,
+                redeemCode_value: urlData.redeem
               })
             });
           }
@@ -562,6 +576,14 @@ export default Component => props => {
     return (AVAReady && reactData?.urlData?.launch_formNew);
   }
 
+  // Only reachable after a full, normal login (AVAReady set via LoginModuleV2's onReady, same as
+  // showFormFill/showFormNew above) - the person is fully authenticated by the time this renders,
+  // so QuickAdd's 'deep_link_redeem' source can go straight to redeeming the code against their
+  // own, now-known state.session.person_id, with no separate identity check of its own.
+  function showRedeemCode() {
+    return (AVAReady && reactData?.urlData?.launch_redeemCode && state.session?.person_id);
+  }
+
   function showMyForms() {
     return (AVAReady && reactData?.urlData?.launch_myForms);
   }
@@ -701,6 +723,28 @@ export default Component => props => {
           form_id: reactData.urlData?.formNew_formID,
           person_id: state.session?.patient_id,
           mode: 'new'
+        }}
+      />
+    );
+  }
+  else if (showRedeemCode()) {
+    return (
+      <QuickAdd
+        onClose={() => {
+          // Whether redeemed, already-redeemed (silent), or an invalid/stale code (also
+          // silent) - either way, clear the flag and fall through to the normal app below,
+          // exactly like a plain login. No page reload: a real session already exists.
+          updateReactData({
+            urlData: Object.assign({}, reactData.urlData, {
+              launch_redeemCode: false
+            })
+          });
+        }}
+        options={{
+          source: 'deep_link_redeem',
+          client_id: state.session?.client_id || null,
+          preauth_code: reactData.urlData?.redeemCode_value || null,
+          preauth_person_id: state.session?.person_id || null
         }}
       />
     );
@@ -1265,6 +1309,11 @@ export default Component => props => {
       const isSubjectAdmin = ['master', 'admin'].includes(currentProfile.account_class);
       const isSubjectSupport = ['master', 'support', 'admin'].includes(currentProfile.account_class);
       const subjectPersonId = currentSession.patient_id;
+      // Ancestor-expanded once per bootstrap pass - a `group:<id>` rule should also match members
+      // of DESCENDANT groups, the same way the accessible_to/may_access engine already does (see
+      // getGroupAccess's pass zero). memberGroupIds itself stays flat/literal; the expansion only
+      // happens here, at rule-evaluation time.
+      const expandedMemberGroupIds = expandGroupIdsWithAncestors(memberGroupIds, group_structure.adminHierarchy);
 
       const v3AuthorizedForMenuItem = (available_to) => {
         if (!available_to || available_to.length === 0) { return true; }
@@ -1275,7 +1324,7 @@ export default Component => props => {
           if (raw === '*all') { return true; }
           if (raw === '*admin') { return isSubjectAdmin; }
           if (raw === '*support') { return isSubjectSupport; }
-          if (raw.startsWith('group:')) { return memberGroupIds.includes(raw.slice(6)); }
+          if (raw.startsWith('group:')) { return expandedMemberGroupIds.has(raw.slice(6)); }
           if (raw.startsWith('person:')) { return subjectPersonId === raw.slice(7); }
           return false;
         });
@@ -1285,7 +1334,7 @@ export default Component => props => {
           if (type === '*all') { return true; }
           if (type === '*admin' && isSubjectAdmin) { return true; }
           if (type === '*support' && isSubjectSupport) { return true; }
-          if (type === 'group' && memberGroupIds.includes(value)) { return true; }
+          if (type === 'group' && expandedMemberGroupIds.has(value)) { return true; }
           if (type === 'person' && subjectPersonId === value) { return true; }
         }
         return false;

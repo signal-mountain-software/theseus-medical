@@ -3,12 +3,14 @@ import { Auth } from '@aws-amplify/auth';
 import { recordExists, getObject, cl, switchActiveAccount, dbClient, lambda, polly, listFromArray, getMarqueeMessage, deepCopy, makeArray } from '../../util/AVAUtilities';
 import { makeDate, makeTime } from '../../util/AVADateTime';
 import { getImage } from '../../util/AVAPeople';
+import { expandGroupIdsWithAncestors } from '../../util/AVAGroups';
 import { AVATextStyle, AVAclasses, AVADefaults, hexToRgb, isDark } from '../../util/AVAStyles';
 import { clearPushSubscriptionFromDB, initPushNotifications, unsubscribeFromPush, isPushSupported, isPushOptedIn, syncAlertDeliveryMethod } from '../../util/AVAPushNotifications';
 import { getActivityDetail } from '../../util/AVAActivityLoaderV3';
 import { getMenuCategoryForDate } from '../../util/AVAObservations';
 import { loadAndQueueNotifications, markNotificationShown, resolveNotification, priorityToSeverity, getNotificationDisplayOptions, INITIAL_NOTIFICATION_CHECK_TIME, playNotificationSound, unlockNotificationSound } from '../../util/AVANotifications';
 import QuickAdd from './QuickAdd';
+import AVATextInput from '../forms/AVATextInput';
 
 import Card from '@material-ui/core/Card';
 import CardActionArea from '@material-ui/core/CardActionArea';
@@ -63,6 +65,7 @@ import HomeIcon from '@material-ui/icons/Home';
 import AutorenewIcon from '@material-ui/icons/Autorenew';
 import NewReleasesOutlinedIcon from '@material-ui/icons/NewReleasesOutlined';
 import PersonAddIcon from '@material-ui/icons/PersonAdd';
+import VpnKeyIcon from '@material-ui/icons/VpnKey';
 import SearchIcon from '@material-ui/icons/Search';
 import AddCircleOutlineIcon from '@material-ui/icons/AddCircleOutline';
 import CancelIcon from '@material-ui/icons/Cancel';
@@ -240,6 +243,8 @@ export default ({ start_at }) => {
     popupMenuOpen: false,
     showProfileEdit: false,
     showAddAccount: false,
+    showRedeemCodePrompt: false,
+    redeemCode: null,
     showQuickSearch: false,
     editFavorites: !clientUseTileUI,
     showPasswordEdit: false,
@@ -553,7 +558,10 @@ export default ({ start_at }) => {
         cl({ 'Error loading subject groups for menu auth': error });
       });
     if (recordExists(personRec)) {
-      subjectGroupsRef.current = new Set(personRec.Item.groups || []);
+      // Ancestor-expanded, the same way getGroupAccess's own pass zero already does for the
+      // accessible_to/may_access engine - a `group:<id>` available_to rule should also match
+      // members of descendant groups, not just this person's literal .groups array.
+      subjectGroupsRef.current = expandGroupIdsWithAncestors(personRec.Item.groups || [], state.groups?.adminHierarchy);
     }
   };
 
@@ -5722,6 +5730,23 @@ export default ({ start_at }) => {
                     </Box>
                   </MenuItem>
                 }
+                {state.session?.person_id &&
+                  <MenuItem onClick={async () => {
+                    pause();
+                    updateReactData({
+                      showRedeemCodePrompt: true,
+                      popupMenuOpen: false
+                    }, true);
+                  }}>
+                    <Box
+                      display='flex' flexDirection='row' alignItems={'center'}
+                      key={'vRowRedeem'}
+                    >
+                      <VpnKeyIcon />
+                      <Typography className={classes.popUpMenuRow} >{'Register for Another Session'}</Typography>
+                    </Box>
+                  </MenuItem>
+                }
                 <MenuItem onClick={async () => {
                   pause();
                   updateReactData({
@@ -6304,6 +6329,38 @@ export default ({ start_at }) => {
                 />
               }
             </React.Fragment>
+          }
+
+          {reactData.showRedeemCodePrompt &&
+            <AVATextInput
+              titleText={'Register for Another Session'}
+              promptText={'Enter your authorization code'}
+              valueText={['']}
+              buttonText={'Submit'}
+              onCancel={() => {
+                updateReactData({ showRedeemCodePrompt: false }, true);
+              }}
+              onSave={(code) => {
+                updateReactData({
+                  showRedeemCodePrompt: false,
+                  redeemCode: (code || '').trim() || null
+                }, true);
+              }}
+            />
+          }
+
+          {reactData.redeemCode &&
+            <QuickAdd
+              onClose={() => {
+                updateReactData({ redeemCode: null }, true);
+              }}
+              options={{
+                source: 'menu_redeem',
+                client_id: state.session?.client_id || null,
+                preauth_code: reactData.redeemCode,
+                preauth_person_id: state.session?.person_id || null
+              }}
+            />
           }
 
           {reactData.showQuickSearch &&

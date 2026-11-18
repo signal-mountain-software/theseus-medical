@@ -74,6 +74,7 @@ import { makeDate } from '../../util/AVADateTime';
 import { AVATextStyle, AVAclasses } from '../../util/AVAStyles';
 import { sendMessages } from '../../util/AVAMessages';
 import { getConfiguredPersonType, resolvePersonType, getPersonTypeLabel, getDisplayPersonType } from '../../util/AVAPersonType';
+import FormFillB from '../forms/FormFillB';
 import AVAConfirm from '../forms/AVAConfirm';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
@@ -187,11 +188,25 @@ export default ({ onClose, options = {}, new_account_form }) => {
     preauth_code_prompt: 'Enter your authorization code', // label from client_style
     preauth_code_input: '',       // user input on prompt_for_preauth_code stage
     matched_preauth_rec: null,    // PreAuthorization record found; held until account is written
-    preauth_person_id: null,      // person_id of existing account found in code-mode name lookup
+    // person_id of existing account found in code-mode name lookup - OR seeded directly from
+    // options.preauth_person_id when the caller already knows who this is (e.g. LoginModuleV2's
+    // "Register for another session" menu action or a ?redeem= deep link, both invoked only
+    // after the person has already fully authenticated - see handlePreAuthCodeInput).
+    preauth_person_id: options?.preauth_person_id || null,
     preauth_lookup_type: null,    // lookupType used to find the existing account ('user_id'|'name'|'email'|'phone')
     updating_existing_person_id: null, // when set, fill_fields stage updates this existing account
     existing_people_rec: null,         // full People record loaded for pre-filling the update form
     group_selection_values: [],        // group IDs chosen by the user from group_selection list
+    // When set, fill_fields stage renders FormFillB instead of QuickAdd's own field rendering -
+    // see account_config.form_id (opt-in per account_type; see docs/ discussion on migrating
+    // field_list-based account_types to real Form definitions one at a time).
+    formFillDelegation: null,
+    // Pending User ID choice for a brand-new form_id-delegated account (Pattern B) - set instead
+    // of rendering fill_fields when a NEW (not existing-account) account_type has form_id, since
+    // FormFillB needs a real person_id to exist before it can render.
+    pendingFormIdUserIdChoice: null,
+    new_account_user_id_input: '',
+    new_account_user_id_error: '',
   });
 
   const [refreshTrigger, setRefreshTrigger] = React.useState(false);
@@ -290,11 +305,13 @@ export default ({ onClose, options = {}, new_account_form }) => {
 
       // Determine initial stage based on how QuickAdd was invoked
       // - url_parameter (?create=client_id): start with name verification to prevent duplicates
-      // - login_preauth (from LoginModuleV2): identity already verified via TFA, so skip the
+      // - login_preauth (from LoginModuleV2's original preauth flow), menu_redeem (the "Register
+      //   for another session" menu action), and deep_link_redeem (a ?redeem= URL): identity is
+      //   already verified (TFA at login, or simply already being logged in), so skip the
       //   name-verification stage entirely and apply the code directly
       // - otherwise: normal admin use, skip directly to account type selection
       const invokedViaUrl = options.source === 'url_parameter';
-      const invokedViaLoginPreauth = options.source === 'login_preauth';
+      const invokedViaLoginPreauth = ['login_preauth', 'menu_redeem', 'deep_link_redeem'].includes(options.source);
 
       if (invokedViaLoginPreauth) {
         // Pre-seed the contact info the person already entered at login so form fields can be
@@ -454,6 +471,16 @@ export default ({ onClose, options = {}, new_account_form }) => {
           field_name: '*password',
           prompt: { value: 'Password' },
           value: { type: '*password' },
+        };
+        continue;
+      }
+      // *user_id is a built-in special field (Pattern B): optional, lets the user pick their own
+      // login ID instead of always getting an AVA-generated one - no DB record needed.
+      if (fieldName === '*user_id') {
+        fieldData[fieldName] = {
+          field_name: '*user_id',
+          prompt: { value: 'User ID (optional)' },
+          value: { type: '*user_id' },
         };
         continue;
       }
@@ -641,10 +668,57 @@ export default ({ onClose, options = {}, new_account_form }) => {
       stage: 'fill_fields'
     }));
 
+    // account_config.form_id is an opt-in per-account_type switch to delegate field-gathering to
+    // FormFillB (see the mirrored branch in applyPreAuthResult for the existing-account case).
+    // This is always the brand-new-account case (handleAccountTypeChange is the manual "pick an
+    // account type" path; the existing-account pre-auth match path goes through
+    // applyPreAuthResult instead) - FormFillB needs a real person_id to exist before it can
+    // render, so prompt for a User ID first rather than opening FormFillB immediately.
+    if (selectedConfig?.form_id) {
+      updateReactData({ pendingFormIdUserIdChoice: { form_id: selectedConfig.form_id } }, true);
+      return;
+    }
+
     // Gather form fields for the selected account type
     if (selectedConfig) {
       await gatherFormFields(selectedConfig);
     }
+  };
+
+  /**
+   * Resolves the User ID for a brand-new form_id-delegated account (custom, uniqueness-checked;
+   * or blank -> uuid()), creates the minimal placeholder People record FormFillB needs to exist
+   * before it can render (it loads the People record for `pertains_to` and throws if missing -
+   * see FormFillB.js's initializeFromDoc), and opens FormFillB against it. SessionsV2 isn't
+   * created here - savePeopleRecord/saveSessionsV2Record already (unconditionally) create or
+   * update both tables for every member at final save, regardless of is_existing_account.
+   */
+  const confirmNewAccountFormIdUserId = async () => {
+    const { form_id } = reactData.pendingFormIdUserIdChoice || {};
+    if (!form_id) { return; }
+
+    const customUserId = (reactData.new_account_user_id_input || '').trim();
+    let resolvedUserId = customUserId;
+    if (customUserId) {
+      if (!(await isUserIdAvailable(customUserId))) {
+        updateReactData({ new_account_user_id_error: 'That User ID is already taken. Please try another.' }, true);
+        return;
+      }
+    } else {
+      resolvedUserId = uuid();
+    }
+
+    await putDb({
+      TableName: 'People',
+      Item: { person_id: resolvedUserId, client_id: reactData.client_id }
+    });
+
+    updateReactData({
+      pendingFormIdUserIdChoice: null,
+      new_account_user_id_input: '',
+      new_account_user_id_error: '',
+      formFillDelegation: { form_id, person_id: resolvedUserId },
+    }, true);
   };
 
   const handleChangeAccountType = () => {
@@ -942,8 +1016,10 @@ export default ({ onClose, options = {}, new_account_form }) => {
   // Returns true when a field is required.
   // Sole authority is the config-level required array so that required status
   // is correct on every pass regardless of what a Form_Fields DB record says.
+  // *user_id is always optional by design (Pattern B: "leave blank and AVA will create one for
+  // you") - it can't be forced required via the config, regardless of what's in `required`.
   const isFieldRequired = (fieldName, fieldData) => {
-    if (!fieldData) { return false; }
+    if (!fieldData || fieldName === '*user_id') { return false; }
     return !!(reactData.selected_account_config?.required || []).includes(fieldName);
   };
 
@@ -996,6 +1072,20 @@ export default ({ onClose, options = {}, new_account_form }) => {
       }
     }
 
+    // Validate *user_id field if present and non-blank: must not collide with an existing
+    // person_id, or one already claimed by a family member collected earlier this session.
+    // Left blank, AVA generates one later in proceedWithSave instead.
+    if (fieldList.includes('*user_id')) {
+      const customUserId = (reactData.field_values['*user_id'] || '').trim();
+      if (customUserId && !(await isUserIdAvailable(customUserId))) {
+        setReactData(prev => ({
+          ...prev,
+          field_validation_errors: { ...prev.field_validation_errors, '*user_id': 'That User ID is already taken. Please try another.' }
+        }));
+        return;
+      }
+    }
+
     // Compute preauth_extra_fields: keys in preauth_data that are not in this account_type's field_list
     // These will be written directly onto the People record without prompting the user.
     // Only applies to the primary (first) account — subsequent family members only get default_groups.
@@ -1044,7 +1134,9 @@ export default ({ onClose, options = {}, new_account_form }) => {
       }
 
       try {
-        familyMember.proposed_user_id = await generateUniqueUserId(familyMember);
+        familyMember.proposed_user_id = fieldList.includes('*user_id')
+          ? ((reactData.field_values['*user_id'] || '').trim() || uuid())
+          : await generateUniqueUserId(familyMember);
       } catch (error) {
         console.error('Failed to generate user ID for member:', familyMember, error);
         showAlert({
@@ -1298,8 +1390,13 @@ export default ({ onClose, options = {}, new_account_form }) => {
    * - Extracts account_type from preauth_data
    * - Seeds field_values with the remaining preauth_data keys
    * - Skips select_account_type and transitions directly to fill_fields
+   *
+   * existingPersonId (when set) is the resolved person_id for an existing-account match - passed
+   * explicitly rather than read back from reactData.updating_existing_person_id, since the
+   * updateReactData call that sets it (just before this is invoked) isn't guaranteed to have been
+   * applied yet when this reads it.
    */
-  const applyPreAuthResult = async (preAuthRec) => {
+  const applyPreAuthResult = async (preAuthRec, existingPersonId = null) => {
     const preauthData = preAuthRec.preauth_data || {};
     const accountType = preauthData.account_type || '';
     if (reactData.supplied_account_config && accountType !== reactData.supplied_account_config.account_type) {
@@ -1344,7 +1441,68 @@ export default ({ onClose, options = {}, new_account_form }) => {
       ...(seedValues.first_name ? { parsed_first_name: seedValues.first_name } : {}),
       ...(seedValues.last_name  ? { parsed_last_name:  seedValues.last_name  } : {}),
     }, true);
+
+    // account_config.form_id is an opt-in per-account_type switch to delegate field-gathering to
+    // FormFillB instead of QuickAdd's own field_list rendering (see migration-converter todo).
+    // Scoped here to the existing-account (pre-auth-matched) path only: a real person_id already
+    // exists, so FormFillB needs no placeholder-account/session bootstrapping to run.
+    if (selectedConfig.form_id && existingPersonId) {
+      updateReactData({
+        formFillDelegation: {
+          form_id: selectedConfig.form_id,
+          person_id: existingPersonId,
+        }
+      }, true);
+      return;
+    }
+
     await gatherFormFields(selectedConfig);
+  };
+
+  /**
+   * Called when FormFillB finishes gathering data for a form_id-delegated account_type.
+   * FormFillB has already written the person's data directly (via saveAs), so the familyMember
+   * pushed here carries empty form_fields/field_values - the existing-account write path in
+   * completeProcess() safely no-ops on those and only needs to apply default_groups/group
+   * selections, exactly as it already does for QuickAdd's own field-rendered existing-account
+   * updates.
+   */
+  const handleFormFillDelegationClose = (ignore_me, statusObj) => {
+    const aborted = !statusObj || statusObj.document_status === 'aborted';
+    if (aborted) {
+      updateReactData({ formFillDelegation: null }, true);
+      return;
+    }
+
+    const familyMember = {
+      index: reactData.current_member_index,
+      account_type: reactData.selected_account_type,
+      account_config: reactData.selected_account_config,
+      form_fields: {},
+      field_values: {},
+      preauth_extra_fields: (() => {
+        if (!reactData.matched_preauth_rec || reactData.current_member_index !== 0) { return {}; }
+        const preauthData = reactData.matched_preauth_rec.preauth_data || {};
+        const reservedKeys = new Set(['account_type', 'first_name', 'last_name', 'groups']);
+        const extra = {};
+        Object.entries(preauthData).forEach(([key, value]) => {
+          if (!reservedKeys.has(key)) { extra[key] = value; }
+        });
+        if (preauthData.groups !== undefined) { extra._preauth_groups = preauthData.groups; }
+        return extra;
+      })(),
+      group_selection_values: reactData.group_selection_values || [],
+      proposed_user_id: reactData.formFillDelegation?.person_id,
+      is_existing_account: true,
+      used_form_fill: true,
+      timestamp: new Date().toISOString()
+    };
+
+    updateReactData({
+      formFillDelegation: null,
+      family_members: [...reactData.family_members, familyMember],
+      stage: 'complete'
+    }, true);
   };
 
   /**
@@ -1828,14 +1986,27 @@ export default ({ onClose, options = {}, new_account_form }) => {
    *      Check one-time-use gate, then apply preauth_data to kick off account creation.
    */
   const handlePreAuthCodeInput = async (code, personId = null) => {
+    // Two newer invocation sources, both only ever used AFTER the person has already fully
+    // authenticated (LoginModuleV2's "Register for another session" menu action, or a ?redeem=
+    // deep link), so neither needs the pre-login "Welcome Back... logging you in" redirect the
+    // original 'login_preauth'/'url_parameter' sources rely on - they're already logged in.
+    //   - 'menu_redeem': a deliberate user action - show an explicit already-registered message.
+    //   - 'deep_link_redeem': automatic/background - fail silently either way (already registered
+    //     or an invalid/stale code), since the person never consciously typed anything here; see
+    //     the catch-22 discussion on bookmarked/reused redeem links.
+    const isMenuRedeem = options.source === 'menu_redeem';
+    const isSilentDeepLinkRedeem = options.source === 'deep_link_redeem';
+
     // personId may be passed directly to avoid stale-closure issues with reactData
     if (!code || code.trim() === '') {
-      showAlert({
-        severity: 'error',
-        title: 'Code Required',
-        message: 'Please enter an authorization code to continue.',
-        autoHide: true
-      });
+      if (!isSilentDeepLinkRedeem) {
+        showAlert({
+          severity: 'error',
+          title: 'Code Required',
+          message: 'Please enter an authorization code to continue.',
+          autoHide: true
+        });
+      }
       return;
     }
 
@@ -1843,6 +2014,10 @@ export default ({ onClose, options = {}, new_account_form }) => {
     const preAuthRec = await lookupPreAuth(normalizedCode);
 
     if (!preAuthRec) {
+      if (isSilentDeepLinkRedeem) {
+        onClose([], null);
+        return;
+      }
       showAlert({
         severity: 'error',
         title: 'Invalid Code',
@@ -1859,6 +2034,15 @@ export default ({ onClose, options = {}, new_account_form }) => {
     if (effectivePersonId) {
       // ── Existing-account path ────────────────────────────────────────────
       if (usedBy.includes(effectivePersonId)) {
+        if (isMenuRedeem) {
+          showAlert({ severity: 'info', title: 'Already Registered', message: 'You\'ve already registered with that code.', autoHide: true });
+          onClose([], null);
+          return;
+        }
+        if (isSilentDeepLinkRedeem) {
+          onClose([], null);
+          return;
+        }
         // Already enrolled with this code — skip update and go straight to AVA
         sessionStorage.removeItem('AVASessionData');
         const baseUrl = window.location.href.split('?')[0];
@@ -1885,7 +2069,7 @@ export default ({ onClose, options = {}, new_account_form }) => {
         parsed_first_name: existingPeopleRec?.name?.first || reactData.parsed_first_name || '',
         parsed_last_name:  existingPeopleRec?.name?.last  || reactData.parsed_last_name  || '',
       }, false);
-      await applyPreAuthResult(preAuthRec);
+      await applyPreAuthResult(preAuthRec, effectivePersonId);
     } else {
       // ── New-account path ─────────────────────────────────────────────────
       // Gate: code is restricted to updating existing accounts only
@@ -2739,6 +2923,20 @@ export default ({ onClose, options = {}, new_account_form }) => {
   };
 
   /**
+   * Checks whether a user-chosen *user_id candidate is free to use: not already claimed by
+   * another family member collected earlier in this same session, and not already a real
+   * person_id in the People table. Unlike generateUniqueUserId, this never mutates the
+   * candidate - a user-chosen ID that's taken is rejected outright (see saveCurrentFamilyMember),
+   * not silently suffixed with a counter.
+   */
+  const isUserIdAvailable = async (candidateId) => {
+    const existsInFamily = (reactData.family_members || []).some(m => m.proposed_user_id === candidateId);
+    if (existsInFamily) { return false; }
+    const existingPerson = await getDb({ Key: { person_id: candidateId }, TableName: 'People' });
+    return !existingPerson;
+  };
+
+  /**
    * Complete the QuickAdd process and generate family_id if multiple members
    * 
    * Following the pattern from FamilyMaintenance.js and LinkedAccounts.js:
@@ -2931,6 +3129,7 @@ export default ({ onClose, options = {}, new_account_form }) => {
   };
 
   return (
+    <>
     <Dialog open={true || reactData.initialized || refreshTrigger}
       aria-labelledby="scroll-dialog-title"
       p={2}
@@ -3285,8 +3484,53 @@ export default ({ onClose, options = {}, new_account_form }) => {
           </Box>
         )}
 
+        {/* Pending User ID choice for a brand-new form_id-delegated account (Pattern B) */}
+        {reactData.pendingFormIdUserIdChoice && (
+          <Box style={{ marginTop: '16px' }}>
+            <Typography variant="h6" style={{ marginBottom: '8px' }}>
+              Choose a User ID
+            </Typography>
+            <Typography style={{ marginBottom: '16px' }}>
+              This is what you'll use to log in next time. Enter one you'll remember, or leave this blank and AVA will create one for you.
+            </Typography>
+            <TextField
+              fullWidth
+              label="User ID (optional)"
+              value={reactData.new_account_user_id_input}
+              error={!!reactData.new_account_user_id_error}
+              helperText={reactData.new_account_user_id_error}
+              onChange={(e) => updateReactData({ new_account_user_id_input: e.target.value, new_account_user_id_error: '' })}
+              variant='outlined'
+              size='small'
+            />
+            <Box display='flex' flexDirection='row' justifyContent='flex-end' style={{ marginTop: '16px', gap: 8 }}>
+              <Button
+                className={AVAClass.AVAButton}
+                style={{ backgroundColor: 'red', color: 'white' }}
+                onClick={() => {
+                  updateReactData({
+                    pendingFormIdUserIdChoice: null,
+                    new_account_user_id_input: '',
+                    new_account_user_id_error: '',
+                  }, false);
+                  handleChangeAccountType();
+                }}
+              >
+                Back
+              </Button>
+              <Button
+                className={AVAClass.AVAButton}
+                style={{ backgroundColor: 'green', color: 'white' }}
+                onClick={confirmNewAccountFormIdUserId}
+              >
+                Continue
+              </Button>
+            </Box>
+          </Box>
+        )}
+
         {/* Account Type Selection Stage */}
-        {(reactData.stage === 'select_account_type' || reactData.stage === 'fill_fields') && (
+        {!reactData.pendingFormIdUserIdChoice && (reactData.stage === 'select_account_type' || reactData.stage === 'fill_fields') && (
           <>
             {/* Show account type selection only if none is selected */}
             {!reactData.selected_account_type && (
@@ -3632,7 +3876,10 @@ export default ({ onClose, options = {}, new_account_form }) => {
                   const dateHelperText = isDateField ? 'Enter date (various formats accepted: 12/25/1990, Dec 25 1990, etc.)' : '';
                   const emailHelperText = isEmailField ? 'Enter a valid email address (e.g., user@example.com)' : '';
                   const phoneHelperText = isPhoneField ? 'Enter phone number (10 digits for US: 5551234567, minimum 10 digits for international)' : '';
-                  const baseHelperText = fieldData.prompt?.help_text || dateHelperText || emailHelperText || phoneHelperText;
+                  const userIdHelperText = fieldType === '*user_id'
+                    ? 'This is what you\'ll use to log in next time. Enter one you\'ll remember, or leave this blank and AVA will create one for you.'
+                    : '';
+                  const baseHelperText = fieldData.prompt?.help_text || dateHelperText || emailHelperText || phoneHelperText || userIdHelperText;
 
                   // Check for validation errors
                   const validationError = reactData.field_validation_errors?.[fieldName];
@@ -4314,5 +4561,16 @@ export default ({ onClose, options = {}, new_account_form }) => {
         </Snackbar>
       }
     </Dialog>
+    {reactData.formFillDelegation && (
+      <FormFillB
+        request={{
+          form_id: reactData.formFillDelegation.form_id,
+          person_id: reactData.formFillDelegation.person_id,
+          client_id: reactData.client_id,
+        }}
+        onClose={handleFormFillDelegationClose}
+      />
+    )}
+    </>
   );
 };

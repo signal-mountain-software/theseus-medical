@@ -72,6 +72,28 @@ it('treats a missing active attribute as active and stores the inverse of "Inact
   expect(putDb.mock.calls[0][0].Item.active).toBe(false);
 });
 
+it('toggles "Access Restricted to Admin only?" and saves it under options.restricted_access', async () => {
+  render(<FormBuilder directForm={form} onClose={jest.fn()} />);
+  const checkbox = (await screen.findByText('Access Restricted to Admin only?')).closest('label').querySelector('input');
+  expect(checkbox).not.toBeChecked();
+  fireEvent.click(checkbox);
+  expect(checkbox).toBeChecked();
+  fireEvent.click(screen.getByText('Save Form'));
+  await wait(() => expect(putDb).toHaveBeenCalled());
+  expect(putDb.mock.calls[0][0].Item.options.restricted_access).toBe('admin_only');
+});
+
+it('clears options.restricted_access when "Access Restricted to Admin only?" is unchecked, preserving other options', async () => {
+  render(<FormBuilder directForm={{ ...form, options: { restricted_access: 'admin_only', other_flag: 'keep-me' } }} onClose={jest.fn()} />);
+  const checkbox = (await screen.findByText('Access Restricted to Admin only?')).closest('label').querySelector('input');
+  expect(checkbox).toBeChecked();
+  fireEvent.click(checkbox);
+  expect(checkbox).not.toBeChecked();
+  fireEvent.click(screen.getByText('Save Form'));
+  await wait(() => expect(putDb).toHaveBeenCalled());
+  expect(putDb.mock.calls[0][0].Item.options).toEqual({ other_flag: 'keep-me' });
+});
+
 it('hides Delete from non-admins and for unsaved new forms', async () => {
   mockState.user.account_class = 'user';
   const { unmount } = render(<FormBuilder directForm={form} onClose={jest.fn()} />);

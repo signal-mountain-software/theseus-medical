@@ -9,6 +9,7 @@ import useSession from '../../hooks/useSession';
 
 import GroupProfileSection from '../sections/GroupProfileSection';
 import GroupSecuritySection from '../sections/GroupSecuritySection';
+import GroupMessagingSection from '../sections/GroupMessagingSection';
 import GroupFormsSection from '../sections/GroupFormsSection';
 import GroupTasksSection from '../sections/GroupTasksSection';
 import GroupRulesSection from '../sections/GroupRulesSection';
@@ -124,6 +125,9 @@ export default ({ pK, client_id, overrideValues, tableName = 'Groups', pKName = 
       GroupSecuritySection: {
         component_id: GroupSecuritySection,
       },
+      GroupMessagingSection: {
+        component_id: GroupMessagingSection,
+      },
       GroupFormsSection: {
         component_id: GroupFormsSection,
       },
@@ -217,6 +221,14 @@ export default ({ pK, client_id, overrideValues, tableName = 'Groups', pKName = 
           isAuthorized: true,
           version_id: 0,
           component_name: 'GroupSecuritySection'
+        },
+        {
+          section_name: 'Messaging Shortcuts',
+          color: options?.color || 'orange',
+          isOpen: false,
+          isAuthorized: true,
+          version_id: 0,
+          component_name: 'GroupMessagingSection'
         },
         {
           section_name: 'Group Forms',
