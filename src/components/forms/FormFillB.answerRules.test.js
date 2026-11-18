@@ -174,6 +174,22 @@ it('caps configured prompt widths at the container and allows selection labels t
   expect(label.closest('label').style.height).toBe('auto');
 });
 
+it('hides a field with value.edit = "hidden" and disables one with value.edit = "view"', async () => {
+  const editModeForm = {
+    ...form,
+    sections: [{ section_name: 'Status', fields: ['hidden_field', 'view_field', 'visible_field'] }],
+    fields: {
+      hidden_field: { type: 'yes/no', prompt: 'Hidden question', required: true, value: { edit: 'hidden' } },
+      view_field: { type: 'text', prompt: 'View only question', value: { edit: 'view' } },
+      visible_field: { type: 'text', prompt: 'Normal question' },
+    },
+  };
+  render(<FormFillB request={{ form_id: 'form', previewFormRec: editModeForm }} onClose={jest.fn()} />);
+  await screen.findByText('Normal question');
+  expect(screen.queryByText('Hidden question')).not.toBeInTheDocument();
+  expect(inputFor('View only question')).toBeDisabled();
+});
+
 it.each([
   ['default', 'First', 'First', false],
   ['complete', 'First', 'First', false],

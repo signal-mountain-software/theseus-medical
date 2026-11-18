@@ -1607,12 +1607,12 @@ export default ({ request = {}, onClose }) => {
     returnObj.options = Object.assign({}, field_variables.options || {}, {
       required: field_variables.required !== undefined
         ? !!field_variables.required
-        : !!(field_variables.value?.required || returnObj.value?.required),
-      log_results: returnObj.value?.log_results || false,
-      viewOnly: (returnObj.value?.edit === 'view'),
-      hidden: (returnObj.value?.edit === 'hidden'),
+        : !!field_variables.value?.required,
+      log_results: field_variables.value?.log_results || false,
+      viewOnly: (field_variables.value?.edit === 'view'),
+      hidden: (field_variables.value?.edit === 'hidden'),
       ifEmpty: field_variables.options ? field_variables.options.ifEmpty : null,
-      resetFields: (returnObj.value?.resetFields
+      resetFields: (field_variables.value?.resetFields
         || (field_variables.options ? field_variables.options.resetFields : null))
     });
 
