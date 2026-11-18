@@ -982,11 +982,12 @@ function compareRuleValue({ sourceValue, testType, testValue }) {
  * person for that action (the person who may be added/removed - NOT the person whose own
  * add/remove to the group triggered this rule evaluation). Mirrors the single-value tests
  * `doesPersonMatchGroupRules` uses for `withData` rules' field-path, is_array_field, eq/ne/
- * contains/gt/lt - plus a 'one_of' test, matching if the resolved value (or, for an array
- * field, any element of it) equals any of `data_test.testValues`. 'one_of' is intentionally
- * only supported here, not for `withData` rules' data_test - those are also enforced by the
- * separately-deployed evaluate-with-data-rules Lambda, which doesn't implement it, while
- * onAdd/onRemove actions are only ever evaluated here, client-side, via applyGroupRules.
+ * contains/gt/lt - plus 'one_of'/'not_one_of' tests, matching (or not matching) if the resolved
+ * value (or, for an array field, any element of it) equals any of `data_test.testValues`.
+ * 'one_of'/'not_one_of' are intentionally only supported here, not for `withData` rules'
+ * data_test - those are also enforced by the separately-deployed evaluate-with-data-rules
+ * Lambda, which doesn't implement them, while onAdd/onRemove actions are only ever evaluated
+ * here, client-side, via applyGroupRules.
  */
 function evaluateActionDataTest(data_test, peopleRec) {
   const fieldPath = data_test?.field_path || data_test?.dictionaryField;
@@ -1002,6 +1003,17 @@ function evaluateActionDataTest(data_test, peopleRec) {
     return valueList.some((thisValue) =>
       acceptableValues.some((acceptableValue) =>
         compareRuleValue({ sourceValue: thisValue, testType: 'eq', testValue: acceptableValue })));
+  }
+
+  if (data_test.test === 'not_one_of') {
+    // Complement of 'one_of': true when NONE of the resolved value(s) match ANY excluded value.
+    // An empty exclusion list excludes nothing, so it's trivially satisfied (true), the mirror
+    // of 'one_of's empty-list "matches nothing" (false).
+    const excludedValues = Array.isArray(data_test.testValues) ? data_test.testValues : [];
+    if (excludedValues.length === 0) { return true; }
+    return !valueList.some((thisValue) =>
+      excludedValues.some((excludedValue) =>
+        compareRuleValue({ sourceValue: thisValue, testType: 'eq', testValue: excludedValue })));
   }
 
   const testValue = data_test.testValue;

@@ -141,6 +141,40 @@ it('runs descendant onRemove rules with the post-removal membership context', as
   expect(personGroups.get('person')).toEqual(['__TOP__', 'Other', 'OtherLeaf']);
 });
 
+it('skips an onRemove action whose not_one_of condition matches an excluded value', async () => {
+  dbClient.get.mockImplementation(params => ({
+    promise: async () => params.Key.group_id === 'Grandchild' ? {
+      Item: { group_rules: [{
+        rule_type: 'onRemove',
+        actions: [{
+          action: 'addMember',
+          where: ['OtherLeaf'],
+          condition: { data_test: { field_path: 'name.first', test: 'not_one_of', testValues: ['Test'] } },
+        }],
+      }] },
+    } : {},
+  }));
+  await removeMember('person', 'client', 'Parent', { includeDescendants: true });
+  expect(dbClient.put).not.toHaveBeenCalled();
+});
+
+it('runs an onRemove action whose not_one_of condition excludes a different value', async () => {
+  dbClient.get.mockImplementation(params => ({
+    promise: async () => params.Key.group_id === 'Grandchild' ? {
+      Item: { group_rules: [{
+        rule_type: 'onRemove',
+        actions: [{
+          action: 'addMember',
+          where: ['OtherLeaf'],
+          condition: { data_test: { field_path: 'name.first', test: 'not_one_of', testValues: ['SomeoneElse'] } },
+        }],
+      }] },
+    } : {},
+  }));
+  await removeMember('person', 'client', 'Parent', { includeDescendants: true });
+  expect(dbClient.put.mock.calls.map(([p]) => p.Item.client_group_id)).toContain('client~OtherLeaf');
+});
+
 it('re-adds only the selected child and its ancestors despite cached People data', async () => {
   const personGroups = new Map();
   await removeMember('person', 'client', 'Parent', { includeDescendants: true, _personGroups: personGroups });

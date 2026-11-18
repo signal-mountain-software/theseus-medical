@@ -79,13 +79,17 @@ const FIELD_TYPES = [
 // and ignore prompt.width.
 const WIDTH_ADJUSTABLE_TYPES = ['text', 'date', 'phone', 'numeric', 'select', 'select&text', 'select_event'];
 
-// Field types that don't get a "Default value?" picker: header is label-only (no value),
-// signature isn't a DataDictionary-shaped value, and upload is excluded for now even though a
-// DD field referencing a URL could reasonably seed an upload's default later.
+// Field types that don't get a "Default value?" picker: header is label-only (no value), and
+// signature isn't a DataDictionary-shaped value. 'upload' is allowed - FormFillB renders an
+// upload's existing value as a URL exactly like 'image' does, so a DD field whose resolved
+// value is a URL (e.g. one backed by an uploaded photo elsewhere) can seed it. Picking a DD
+// field whose value isn't actually a URL (e.g. a date) won't crash - FormFillB's upload/image
+// rendering falls back to an "Unable to display this file" placeholder for a non-URL value -
+// but it also won't look like a meaningful default, so pick accordingly.
 // Separately (see render below), a field with dictionary_field_key (adopted from the Data
 // Dictionary) also never gets this picker - FormFillB always derives its default from that same
 // DD reference, so a hand-picked default here would never actually apply.
-const DEFAULT_PICKER_EXCLUDED_TYPES = ['header', 'signature', 'upload'];
+const DEFAULT_PICKER_EXCLUDED_TYPES = ['header', 'signature'];
 
 // Named presets in place of raw pixel entry - values are the pixel widths FormFillB expects
 // in prompt.width. '' means "unset", letting FormFillB fall back to its own default.
@@ -103,6 +107,14 @@ const HEIGHT_PRESETS = [
     { value: '', label: 'Single line' },
     { value: '3', label: 'Medium (3 lines)' },
     { value: '5', label: 'Large (5 lines)' },
+];
+
+// Mirrors FormFillB's value.edit - 'view' disables the field (still shown, read-only),
+// 'hidden' skips rendering it entirely. 'normal' (the default) omits value.edit altogether.
+const EDIT_MODE_OPTIONS = [
+    { value: 'normal', label: 'Normal' },
+    { value: 'view', label: 'View only' },
+    { value: 'hidden', label: 'Hidden' },
 ];
 
 // DataDictionary/legacy field records sometimes store their type as the generic 'string', or
@@ -222,6 +234,9 @@ const blankField = () => ({
     required: false,
     promptWidth: '',
     promptRows: '',
+    // 'normal' | 'view' | 'hidden' - mirrors FormFillB's value.edit, which disables ('view') or
+    // fully hides ('hidden') the field at fill time (see FormFillB.js's options.viewOnly/hidden).
+    editMode: 'normal',
     // Default value sourced from a DataDictionaryV3 field (authored via the "Default value?"
     // picker) - see resolveDictionaryDefault in FormFillB. nonDictionaryDefault preserves any
     // hand-authored default.source/value this editor doesn't understand (e.g. a 'person.*'
@@ -489,6 +504,16 @@ export default ({ onClose, directForm }) => {
         setDefaultPickerTarget(null);
     };
 
+    // Which field's "Hidden/View only?" picker is open, if any - same pick-and-go pattern as
+    // the Default Value picker above.
+    const [editModePickerTarget, setEditModePickerTarget] = React.useState(null); // { sectionIdx, fieldIdx }
+    const openEditModePicker = (sectionIdx, fieldIdx) => {
+        setEditModePickerTarget({ sectionIdx, fieldIdx });
+    };
+    const closeEditModePicker = () => {
+        setEditModePickerTarget(null);
+    };
+
     // Which value's message/notify/groups rule popup is open, if any - see the "Per-value stage
     // rules" block below for classifyFieldStageRules/buildFieldStageRuleOutput.
     const [ruleEditorTarget, setRuleEditorTarget] = React.useState(null); // { sectionIdx, fieldIdx, value, kind }
@@ -752,6 +777,7 @@ export default ({ onClose, directForm }) => {
                     required: !!fieldDef.required,
                     promptWidth: (typeof fieldDef.prompt === 'object' && fieldDef.prompt?.width) ? String(fieldDef.prompt.width) : '',
                     promptRows: (typeof fieldDef.prompt === 'object' && fieldDef.prompt?.rows) ? String(fieldDef.prompt.rows) : '',
+                    editMode: ['view', 'hidden'].includes(fieldDef.value?.edit) ? fieldDef.value.edit : 'normal',
                     ...parseFieldDefaultForEditor(fieldDef),
                     numericMin: (numericMin !== undefined && numericMin !== null) ? String(numericMin) : '',
                     numericMax: (numericMax !== undefined && numericMax !== null) ? String(numericMax) : '',
@@ -1730,6 +1756,12 @@ export default ({ onClose, directForm }) => {
                         if (Number.isFinite(parsedMax)) { numericOptions.maxValue = parsedMax; }
                         if (Object.keys(numericOptions).length) { fieldDef.options = numericOptions; }
                     }
+                    // Applies regardless of field type/branch above - merges into whatever
+                    // value object a type-specific branch already built (selection/column),
+                    // or starts a fresh one for types that don't otherwise have a `value`.
+                    if (['view', 'hidden'].includes(field.editMode)) {
+                        fieldDef.value = Object.assign({}, fieldDef.value || {}, { edit: field.editMode });
+                    }
                     fields[field_name] = fieldDef;
                     return field_name;
                 }),
@@ -2686,6 +2718,24 @@ export default ({ onClose, directForm }) => {
                                                         }
                                                     </Box>
                                                 }
+                                                {field.type !== 'header' &&
+                                                    <Box display='flex' flexDirection='row' alignItems='center' style={{ gap: '8px', marginTop: '8px', minWidth: 0, flexWrap: 'wrap' }}>
+                                                        <Button
+                                                            size='small'
+                                                            onClick={() => openEditModePicker(sectionIdx, fieldIdx)}
+                                                            style={{ flexShrink: 0, whiteSpace: 'nowrap' }}
+                                                        >
+                                                            {(field.editMode && field.editMode !== 'normal') ? 'Hidden/View only…' : 'Hidden/View only?'}
+                                                        </Button>
+                                                        {(field.editMode && field.editMode !== 'normal') &&
+                                                            <Chip
+                                                                size='small'
+                                                                label={EDIT_MODE_OPTIONS.find((o) => o.value === field.editMode)?.label || field.editMode}
+                                                                onDelete={() => updateField(sectionIdx, fieldIdx, { editMode: 'normal' })}
+                                                            />
+                                                        }
+                                                    </Box>
+                                                }
                                             </Box>
                                             <IconButton size='small' onClick={() => removeField(sectionIdx, fieldIdx)}>
                                                 <DeleteIcon fontSize='small' />
@@ -3269,6 +3319,40 @@ export default ({ onClose, directForm }) => {
                         </DialogContent>
                         <DialogActions>
                             <Button onClick={closeDefaultPicker}>{'Cancel'}</Button>
+                        </DialogActions>
+                    </Dialog>
+                );
+            })()}
+            {editModePickerTarget && (() => {
+                const { sectionIdx, fieldIdx } = editModePickerTarget;
+                const field = reactData.editingForm.sections[sectionIdx]?.fields?.[fieldIdx];
+                if (!field) { return null; }
+                const currentEditMode = field.editMode || 'normal';
+                return (
+                    <Dialog open={true} onClose={closeEditModePicker} maxWidth='sm' fullWidth>
+                        <DialogTitle>{'Hidden / View Only'}</DialogTitle>
+                        <DialogContent>
+                            <Typography style={AVATextStyle({ size: 0.85, color: 'textSecondary', margin: { bottom: 1 } })}>
+                                {'Choose how this item behaves when the form is filled out. "View only" still shows the item (read-only); "Hidden" skips it entirely.'}
+                            </Typography>
+                            {EDIT_MODE_OPTIONS.map((option) => (
+                                <Button
+                                    key={`edit_mode_option_${option.value}`}
+                                    fullWidth
+                                    size='small'
+                                    variant={(currentEditMode === option.value) ? 'outlined' : 'text'}
+                                    style={{ justifyContent: 'flex-start', textTransform: 'none', paddingLeft: '16px', marginBottom: '4px' }}
+                                    onClick={() => {
+                                        updateField(sectionIdx, fieldIdx, { editMode: option.value });
+                                        closeEditModePicker();
+                                    }}
+                                >
+                                    {option.label}
+                                </Button>
+                            ))}
+                        </DialogContent>
+                        <DialogActions>
+                            <Button onClick={closeEditModePicker}>{'Cancel'}</Button>
                         </DialogActions>
                     </Dialog>
                 );

@@ -2,7 +2,7 @@ import ExcelJS from 'exceljs';
 import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
 
-import { dbClient, recordExists, deepCopy, resolveData, cl, getObject } from './AVAUtilities';
+import { dbClient, recordExists, deepCopy, resolveData, cl, getObject, stripHtmlToText } from './AVAUtilities';
 import { getPersonGroupDisplayLines } from './AVAGroups';
 
 export function formatExportValue(value, options = {}) {
@@ -176,7 +176,7 @@ export async function getExportFieldPickerData({ sessionId, clientId, exportScop
       .filter((fieldRec) => !!fieldRec?.field_key && !normalizedExclusions.has(`${fieldRec.field_key}`.trim().toLowerCase()))
       .map((fieldRec) => ({
         field_key: fieldRec.field_key,
-        description: fieldRec.description || fieldRec.field_key,
+        description: stripHtmlToText(fieldRec.description) || fieldRec.field_key,
         category: fieldRec.category || 'Other',
         value_type: fieldRec?.type,
         export_formats: Array.isArray(fieldRec?.export_formats) ? fieldRec.export_formats : null,
@@ -1049,7 +1049,7 @@ async function getExportFieldDefinitionsByKey({ clientId, selectedFieldKeys = []
     const dictionaryFieldRec = dictionaryByKey[fieldKey] || {};
     return {
       field_key: fieldKey,
-      description: dictionaryFieldRec.description || fieldKey,
+      description: stripHtmlToText(dictionaryFieldRec.description) || fieldKey,
       category: dictionaryFieldRec.category || 'Other',
       value_type: dictionaryFieldRec.type || null
     };
