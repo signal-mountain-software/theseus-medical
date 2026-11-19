@@ -48,11 +48,11 @@ function renderGroupAssignments() {
 
 it('shows member groups highlighted and non-member ancestors dimmed for context in the reference list', async () => {
   renderGroupAssignments();
-  await screen.findByText('Current Groups (reference only)');
+  await screen.findByText('Current Groups');
 
   const memberRow = screen.getByText('Grandchild One');
   expect(memberRow.style.fontWeight).toBe('bold');
-  expect(memberRow.style.color).toBe('rgb(46, 125, 50)');
+  expect(memberRow.style.color).toBe('rgb(189, 44, 165)');
 
   const ancestorRow = screen.getAllByText('Child One')[0];
   expect(ancestorRow.style.fontWeight).toBe('');
@@ -64,7 +64,7 @@ it('shows member groups highlighted and non-member ancestors dimmed for context 
 
 it('hides levels beyond the top 2 by default and reveals them via the eyeball icon', async () => {
   renderGroupAssignments();
-  await screen.findByText('Administrative Groups');
+  await screen.findByText('Update Group Memberships below');
 
   // "Grandchild One" appears once already (reference list); the selection list's copy should
   // not be rendered until its parent ("Child One") is expanded.
@@ -80,7 +80,7 @@ it('hides levels beyond the top 2 by default and reveals them via the eyeball ic
 
 it('omits the eyeball icon on top-level rows, where it could never toggle anything', async () => {
   renderGroupAssignments();
-  await screen.findByText('Administrative Groups');
+  await screen.findByText('Update Group Memberships below');
 
   const rootRows = screen.getAllByText('Root One');
   const selectionRootRow = rootRows[rootRows.length - 1].closest('div');
