@@ -1,7 +1,7 @@
 
 import React from 'react';
 
-import { getPerson, getImage } from '../../util/AVAPeople';
+import { getPerson, getImage, buildPersonSearchData } from '../../util/AVAPeople';
 import { deepCopy, isEmpty, dbClient, cl, recordExists, switchActiveAccount, resolveData } from '../../util/AVAUtilities';
 import { AVAclasses, AVATextStyle, isDark } from '../../util/AVAStyles';
 import { determineClass, doesPersonMatchGroupRules, addMember, removeMember, getPersonGroups } from '../../util/AVAGroups';
@@ -1297,26 +1297,11 @@ export default ({ patient, person_id, personRec, initialValues, options = {}, on
       return false;
     }
 
-    let search_words = [
-      firstNameValue,
-      lastNameValue,
-      (reactData.current.peopleRec.name.first || '').toLowerCase(),
-      (reactData.current.peopleRec.name.last || '').toLowerCase(),
-      reactData.current.peopleRec.contact_info?.cell?.number
-        ? reactData.current.peopleRec.contact_info.cell.number.slice(-10)
-        : (reactData.current.peopleRec.messaging?.sms ? reactData.current.peopleRec.messaging.sms.slice(-10) : ' ')
-    ].filter(word => word && word.trim()); // Remove empty strings
-
-    if (!reactData.current.peopleRec.search_data) {
-      reactData.current.peopleRec.search_data = search_words.join(' ');
-    }
-    else {
-      for (let this_word of search_words) {
-        if (!reactData.current.peopleRec.search_data.includes(this_word)) {
-          reactData.current.peopleRec.search_data += ' ' + this_word;
-        }
-      }
-    }
+    const autoSearchData = await buildPersonSearchData({
+      personRec: reactData.current.peopleRec,
+      client_id: reactData.current.peopleRec.client_id || state.session.client_id
+    });
+    reactData.current.peopleRec.search_data = autoSearchData;
 
     const peopleChanged = JSON.stringify(reactData.og.peopleRec) !== JSON.stringify(reactData.current.peopleRec);
     const sessionChanged = JSON.stringify(reactData.og.sessionRec) !== JSON.stringify(reactData.current.sessionRec);

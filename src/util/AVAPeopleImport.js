@@ -3,6 +3,7 @@
 // accounts and optionally creating the rest).
 import { dbClient, putDb, isEmpty, titleCase, cl } from './AVAUtilities';
 import { addMember } from './AVAGroups';
+import { buildPersonSearchData } from './AVAPeople';
 
 const XLSX = require('xlsx');
 
@@ -183,10 +184,6 @@ export const createPersonAccount = async ({ client_id, idStyle, usedIds, firstNa
   const preferred_method = email ? 'email' : (cell ? 'sms' : 'AVA');
   const preferred_methods = preferred_method === 'AVA' ? ['AVA'] : [preferred_method];
 
-  const searchWords = [firstName, lastName, firstName.toLowerCase(), lastName.toLowerCase()];
-  if (cell) searchWords.push(cell.slice(-10));
-  if (email) searchWords.push(email);
-
   const peopleRecord = {
     person_id: user_id,
     user_id,
@@ -198,10 +195,10 @@ export const createPersonAccount = async ({ client_id, idStyle, usedIds, firstNa
     preferred_methods,
     contact_info,
     messaging,
-    search_data: searchWords.join(' '),
     created_on: new Date().toISOString(),
     last_update: new Date().toISOString(),
   };
+  peopleRecord.search_data = await buildPersonSearchData({ personRec: peopleRecord, client_id });
 
   const sessionRecord = {
     session_id: user_id,

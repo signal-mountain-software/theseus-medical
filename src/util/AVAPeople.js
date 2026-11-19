@@ -1,4 +1,4 @@
-import { isPromise, cl, recordExists, sentenceCase, titleCase, isEmpty, dbClient, getObject } from '../util/AVAUtilities';
+import { isPromise, cl, recordExists, sentenceCase, titleCase, isEmpty, dbClient, getObject, getCustomizations, resolveData } from '../util/AVAUtilities';
 
 let foundPeople = {};
 let savedSession;
@@ -639,12 +639,10 @@ export async function getPerson(pID, pElement = '*all', override = false) {
         }
         if (personRec.Item.messaging.voice) {
             personRec.Item.voice = personRec.Item.home = formatPhone(personRec.Item.messaging.voice);
-            personRec.Item.search_data += ' ' + personRec.Item.messaging.voice;
         }
         else { personRec.Item.voice = personRec.Item.home = ''; }
         if (personRec.Item.messaging.sms) {
             personRec.Item.cell = personRec.Item.sms = formatPhone(personRec.Item.messaging.sms);
-            personRec.Item.search_data += ' ' + personRec.Item.messaging.sms;
         }
         else { personRec.Item.cell = personRec.Item.sms = ''; }
         if (personRec.Item.messaging.office) {
@@ -658,13 +656,12 @@ export async function getPerson(pID, pElement = '*all', override = false) {
         personRec.Item.first = personRec.Item?.name.first;
         personRec.Item.last = personRec.Item?.name.last;
         personRec.Item.display_name = (`${personRec.Item.first} ${personRec.Item.last}`).trim();
+        // search_data is now fully maintained at write time (see buildPersonSearchData) - this
+        // used to also bolt on extra text here at read time (a lowercased copy of itself, plus
+        // messaging.email/voice/office/sms again), which just duplicated what should already be
+        // in the stored value and masked whether the write-time logic was actually keeping it
+        // current. Only the safe "never undefined" default remains.
         if (!personRec.Item.search_data) { personRec.Item.search_data = ''; }
-        personRec.Item.search_data += personRec.Item.search_data.toLowerCase();
-        personRec.Item.search_data +=
-            ' ' + personRec.Item.messaging.email +
-            ' ' + (personRec.Item.messaging.voice || '') +
-            ' ' + (personRec.Item.messaging.office || '') +
-            ' ' + (personRec.Item.messaging.sms || '');
         if (personRec.Item.person_photo) {
             rememberPersonPhotoThumb(pID, personRec.Item.person_photo);
         }
@@ -875,21 +872,24 @@ export function makeSearchData(iArray) {
         if (i.name) (names.push(...(Object.values(i.name))));
         names.forEach(n => {
             if (n) {
+                // Matching is case-insensitive everywhere search_data is consumed (every caller
+                // lowercases both the stored string and the typed filter before comparing - see
+                // GroupControl.js's OKtoShow, PersonFilter.js's okToShow, MainMenuV3.js's
+                // findPeopleByName), so a separate TitleCase copy of each name word added nothing
+                // searchable; only the lowercase form is needed.
                 search_words.push(...(n.trim().toLowerCase().split(/\s+/)));
-                search_words.push(...(titleCase(n.trim()).split(/\s+/)));
             }
         });
         let phone = [i.cell, i.sms, i.office, i.voice];
         if (i.messaging) (phone.push(...(Object.values(i.messaging))));
         phone.forEach(p => {
             if (p && (typeof (p) === 'string')) {
+                // Matching is substring-based against the full joined search_data string, so a
+                // single normalized digit string already covers lookups by last-4, by the 10-digit
+                // number without country code, etc. - those are all substrings of the full digit
+                // string and don't need to be stored as separate words too.
                 let iC = p.replace(/\D/g, '');
-                search_words.push(iC);
-                search_words.push(iC.slice(-4));
-                if (iC.length > 10) {
-                    search_words.push(iC.slice(1));
-                }
-                search_words.push(iC.slice(-4));
+                if (iC) { search_words.push(iC); }
             }
         });
     });
@@ -898,4 +898,67 @@ export function makeSearchData(iArray) {
         if (!wordCheck.includes(w) && (w !== 'undefined')) { wordCheck.push(w); }
     });
     return wordCheck.join(' ');
+}
+
+// Coerces a resolved DataDictionary value into text usable inside search_data. Values that can't
+// be meaningfully reduced to words (objects, null/undefined, e.g. a raw address-details object)
+// are dropped rather than JSON-stringified into noise; arrays are flattened/joined.
+function coerceSearchableValue(value) {
+    if ((value === null) || (value === undefined) || (value === '')) { return ''; }
+    if (typeof value === 'string') { return value; }
+    if ((typeof value === 'number') || (typeof value === 'boolean')) { return String(value); }
+    if (Array.isArray(value)) { return value.map(coerceSearchableValue).filter(Boolean).join(' '); }
+    return '';
+}
+
+// Builds the full, authoritative search_data string for a person record - always a complete
+// recomputation from current field values, never an incremental append onto whatever's already
+// stored (which is what let old names/phone numbers linger in search_data forever after being
+// changed - see PeopleMaintenance.js's prior per-save append logic). `extraWords` lets a caller
+// fold in additional searchable text that isn't a plain People-record field (e.g. a family name/
+// id) without this function needing to know where it came from.
+// first_name/last_name/cell_phone are always included and are NOT config-gated. Clients can
+// additionally extend search_data with arbitrary DataDictionaryV3 fields via a Customizations
+// record (custom_key: 'search_data_fields', customization_value: array of DataDictionaryV3
+// field_key strings for this client) - each is resolved via resolveData() against personRec
+// itself (not a stale DB copy, via recordOverrides) so a pending/not-yet-saved edit is reflected.
+// personRec.search_data_manual is always preserved untouched - it's the one piece of search_data
+// an admin can hand-author (via PeopleMaintenance's Tech Info tab) that should survive regardless
+// of what else changes on the record (e.g. finding "William Shakespeare" under "Bill").
+export async function buildPersonSearchData({ personRec, client_id, extraWords } = {}) {
+    if (!personRec) { return ''; }
+
+    const descriptor = {
+        firstName: personRec.name?.first || '',
+        lastName: personRec.name?.last || '',
+        cell: personRec.contact_info?.cell?.number || personRec.messaging?.sms || ''
+    };
+
+    const extraTerms = [];
+
+    let configuredFieldKeys = [];
+    if (client_id) {
+        const fieldConfig = await getCustomizations('search_data_fields', client_id).catch(() => false);
+        if (fieldConfig && Array.isArray(fieldConfig.customization_value)) {
+            configuredFieldKeys = fieldConfig.customization_value.filter(Boolean);
+        }
+    }
+
+    if ((configuredFieldKeys.length > 0) && client_id && personRec.person_id) {
+        const resolvedEntries = await resolveData(client_id, personRec.person_id, configuredFieldKeys, {
+            address_lookup: false,
+            resolve_address: false,
+            recordOverrides: { People: personRec }
+        }).catch(() => []);
+        resolvedEntries.forEach((entry) => {
+            const word = coerceSearchableValue(entry?.formatted ?? entry?.raw);
+            if (word) { extraTerms.push(word); }
+        });
+    }
+
+    if (personRec.search_data_manual) { extraTerms.push(personRec.search_data_manual); }
+    if (extraWords) { extraTerms.push(...[extraWords].flat().filter(Boolean)); }
+    if (extraTerms.length > 0) { descriptor.searchTerm = extraTerms.join(' '); }
+
+    return makeSearchData([descriptor]);
 }

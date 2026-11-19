@@ -986,6 +986,9 @@ function applyFieldRules(rawValue, rules) {
  * @param {Object<string, any>} [options.locators] Optional locator overrides by locator name (highest priority).
  * @param {any} [options.person_id] Optional direct locator override when dictionary locator is `person_id`.
  * @param {any} [options.client_id] Optional direct locator override when dictionary locator is `client_id`.
+ * @param {Object<string, Object>} [options.recordOverrides] Optional in-memory records keyed by table name (e.g. `People`).
+ *   When a dictionary field's resolved source table has a matching entry here, that record is used directly and the
+ *   normal DynamoDB read is skipped - lets a caller resolve fields against a not-yet-saved record (e.g. pending edits).
  * @param {boolean} [options.address_lookup=true] Set false to disable external address lookup for `address` fields.
  * @param {boolean} [options.resolve_address=true] Alias/companion switch for address lookup; false disables lookup.
  * @param {boolean} [options.persist_resolved_address=true] Set false to skip writing resolved address back to `People`.
@@ -1509,6 +1512,12 @@ async function getSourceRecord({ client_id, person_id, dictionaryRec, options = 
     else {
       tableName = dictionaryRec.source;
     }
+  }
+
+  // Lets a caller resolve fields against an in-flight record (e.g. edits not yet saved) instead
+  // of whatever is currently persisted - skips the DB read entirely for that table.
+  if (options.recordOverrides && Object.prototype.hasOwnProperty.call(options.recordOverrides, tableName)) {
+    return options.recordOverrides[tableName];
   }
 
   const sourceRec = await dbClient
