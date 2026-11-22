@@ -32,6 +32,19 @@ const isCompletedDocStale = (completedDoc) => {
   return lastUpdateTimestamp < staleCutoff.getTime();
 };
 
+// Explains why a form is showing up in this person's list at all, for the "Document Info"
+// right-click snack. A document (in progress or completed) is the most current/relevant reason
+// once one exists, regardless of how the form originally entered the list - only a form with no
+// documents yet falls back to the actual inclusion reason(s) recorded when the list was built
+// (one or more group names, or a direct "Assigned by" document assignment - see initialize()'s
+// myFormListObj construction above).
+const describeWhyInList = (myDocs) => {
+  if (myDocs?.wipDocs?.length > 0) { return 'Doc in process'; }
+  if (myDocs?.completedDocs?.length > 0) { return 'Doc previously completed'; }
+  if (myDocs?.whyGroups?.length > 0) { return myDocs.whyGroups.join(', '); }
+  return myDocs?.why || 'Unknown';
+};
+
 
 export default ({ currentValues, reactData, updateReactData, currentOnly = false }) => {
 
@@ -146,6 +159,17 @@ export default ({ currentValues, reactData, updateReactData, currentOnly = false
           }
           if (this_group && this_group.forms) {
             for (let this_form of this_group.forms) {
+              // A form can be listed by more than one of this person's groups - if we've
+              // already added it (from an earlier group in this loop), just record the
+              // additional group name instead of overwriting the whole entry (which would
+              // both lose the earlier group's name and wipe out the view_only/current checks
+              // already performed for it).
+              if (myFormListObj.hasOwnProperty(this_form)) {
+                if (!myFormListObj[this_form].whyGroups.includes(this_group.name)) {
+                  myFormListObj[this_form].whyGroups.push(this_group.name);
+                }
+                continue;
+              }
               let view_only = false;
               const formRec = await getForm(this_form);
               if (formRec && (!currentOnly || formRec.current === true)) {
@@ -158,7 +182,8 @@ export default ({ currentValues, reactData, updateReactData, currentOnly = false
                   }
                 }
                 myFormListObj[this_form] = Object.assign({}, formRec, {
-                  why: this_group.group_name,
+                  why: this_group.name,
+                  whyGroups: [this_group.name],
                   form_id: this_form,
                   form_name: formRec.form_name,
                   formRec: formRec,
@@ -212,6 +237,7 @@ export default ({ currentValues, reactData, updateReactData, currentOnly = false
               }
               myFormListObj[this_doc.form_type] = Object.assign({}, formRec, {
                 why: `Assigned by ${this_doc.history[this_doc.history.length - 1].update_by}`,
+                whyGroups: [],
                 form_id: this_doc.form_type,
                 form_name: formRec.form_name || this_doc.form_type,
                 //            dueDate: formData.due_date,
@@ -1018,6 +1044,7 @@ export default ({ currentValues, reactData, updateReactData, currentOnly = false
                                                         ? myDocs.completedDocs[0].document_id
                                                         : (myDocs.wipDocs && myDocs.wipDocs.length > 0 ? myDocs.wipDocs[0].document_id : 'Not started')}</strong><br />
                                                       Form ID: <strong>{this_formID}</strong><br />
+                                                      Why in list: <strong>{describeWhyInList(myDocs)}</strong><br />
                                                     </div>
                                                   }
                                                 }, true);

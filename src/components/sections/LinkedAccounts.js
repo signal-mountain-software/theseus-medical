@@ -7,7 +7,7 @@ import QuickSearch from '../sections/QuickSearch';
 import QuickAdd from '../sections/QuickAdd';
 import MakeMessage from '../forms/MakeMessage';
 import { getPerson } from '../../util/AVAPeople';
-import { getDb } from '../../util/AVAUtilities';
+import { getDb, dbClient, cl } from '../../util/AVAUtilities';
 import useSession from '../../hooks/useSession';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
@@ -34,7 +34,9 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
 
   const [localData, setLocalData] = React.useState({
     viewFamilyMember: false,
-    showQuickAdd: null // Will be set to family_id when adding new member to existing family
+    showQuickAdd: null, // Will be set to family_id when adding new member to existing family
+    confirmRemove: false, // Set true to swap the family-member dialog into its confirm-removal step
+    removalInProgress: false
   });
 
   const [refreshTrigger, setRefreshTrigger] = React.useState(false);
@@ -62,6 +64,119 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
     }
     return false;
   }
+
+  // Detaches personId from familyId: drops familyId out of their People.family_groups, and
+  // keeps People.family_id pointing at a family they're still actually in (or removes it
+  // entirely once there are none left). Also mirrors the change into currentValues.peopleRec
+  // when personId is the profile currently open in PeopleMaintenance - that record gets PUT
+  // back in full on a later profile Save, so without this the stale in-memory copy would
+  // silently undo the direct write we're making here.
+  const detachPersonFromFamily = async (personId, familyId) => {
+    const personRec = await getPerson(personId, '*all', true);
+    if (!personRec || !personRec.person_id) { return; }
+    const remainingGroups = (personRec.family_groups || []).filter(fg => fg !== familyId);
+    const updateParams = {
+      Key: { person_id: personId },
+      TableName: 'People',
+    };
+    if (remainingGroups.length === 0) {
+      updateParams.UpdateExpression = 'SET family_groups = :fg REMOVE family_id';
+      updateParams.ExpressionAttributeValues = { ':fg': remainingGroups };
+    }
+    else {
+      updateParams.UpdateExpression = 'SET family_groups = :fg, family_id = :fid';
+      updateParams.ExpressionAttributeValues = { ':fg': remainingGroups, ':fid': remainingGroups[0] };
+    }
+    await dbClient
+      .update(updateParams)
+      .promise()
+      .catch(error => { cl(`Error updating People.family_groups for ${personId}: ${error}`); });
+
+    if (personId === currentValues.peopleRec.person_id) {
+      currentValues.peopleRec.family_groups = remainingGroups;
+      if (remainingGroups.length === 0) { delete currentValues.peopleRec.family_id; }
+      else { currentValues.peopleRec.family_id = remainingGroups[0]; }
+    }
+  };
+
+  // Removes either a single other_member (keeping the family itself), or - only reachable when
+  // removing the primary with zero other_members - the entire family. Runs immediately rather
+  // than through the usual pending-updates/Save flow: the person being removed is frequently
+  // NOT the profile open in PeopleMaintenance, so there's no single "current" record for a
+  // pending change to attach to, and FamilyGroups deletion isn't something that flow models at
+  // all (see updateField in PeopleMaintenance.js - it only ever patches reactData.current).
+  const performFamilyRemoval = async () => {
+    const { fNdx, primary, other_index } = localData.viewFamilyMember;
+    const thisFamily = currentValues.familyRecs[fNdx];
+    const clientId = thisFamily.client_id || currentValues.peopleRec.client_id || state.session.client_id;
+
+    updateLocalData({ removalInProgress: true }, true);
+    try {
+      if (primary) {
+        await dbClient
+          .delete({
+            Key: { client_id: clientId, composite_key: thisFamily.family_id },
+            TableName: 'FamilyGroups',
+          })
+          .promise()
+          .catch(error => { cl(`Error deleting FamilyGroups ${thisFamily.family_id}: ${error}`); });
+        await detachPersonFromFamily(thisFamily.primary_contact.id, thisFamily.family_id);
+
+        currentValues.familyRecs.splice(fNdx, 1);
+        if (reactData.myFamilyData) { reactData.myFamilyData.splice(fNdx, 1); }
+
+        updateReactData({
+          current: currentValues,
+          myFamilyData: reactData.myFamilyData,
+          alert: {
+            severity: 'success',
+            title: 'Family group removed',
+            message: `${thisFamily.primary_contact.name} removed, and the "${thisFamily.family_name}" family group deleted.`
+          }
+        }, true);
+      }
+      else {
+        const removedMember = thisFamily.other_members[other_index];
+        const updatedFamily = Object.assign({}, thisFamily, {
+          other_members: thisFamily.other_members.filter((_, idx) => idx !== other_index),
+        });
+        await dbClient
+          .put({ Item: updatedFamily, TableName: 'FamilyGroups' })
+          .promise()
+          .catch(error => { cl(`Error updating FamilyGroups ${thisFamily.family_id}: ${error}`); });
+        await detachPersonFromFamily(removedMember.id, thisFamily.family_id);
+
+        currentValues.familyRecs[fNdx] = updatedFamily;
+        if (removedMember.id === currentValues.peopleRec.person_id) {
+          // Removing myself as a non-primary member - this family no longer applies to this profile.
+          currentValues.familyRecs.splice(fNdx, 1);
+          if (reactData.myFamilyData) { reactData.myFamilyData.splice(fNdx, 1); }
+        }
+
+        updateReactData({
+          current: currentValues,
+          myFamilyData: reactData.myFamilyData,
+          alert: {
+            severity: 'success',
+            title: 'Member removed',
+            message: `${removedMember.name} has been removed from ${thisFamily.family_name}.`
+          }
+        }, true);
+      }
+      updateLocalData({ viewFamilyMember: false, confirmRemove: false, removalInProgress: false }, true);
+    }
+    catch (error) {
+      cl(`Error removing family member: ${error}`);
+      updateLocalData({ removalInProgress: false }, true);
+      updateReactData({
+        alert: {
+          severity: 'error',
+          title: 'Unable to remove',
+          message: `Something went wrong removing this person. Please try again.`
+        }
+      }, true);
+    }
+  };
 
   React.useEffect(() => {
     async function initialize() {
@@ -179,7 +294,8 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
                         createAccount: false,
                         fNdx,
                         other_index: false
-                      }
+                      },
+                      confirmRemove: false
                     }, true);
                   }}
                 >
@@ -246,7 +362,8 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
                               createAccount: false,
                               fNdx,
                               other_index: memberNdx
-                            }
+                            },
+                            confirmRemove: false
                           }, true);
                         }}
                       >
@@ -572,26 +689,29 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
               elevation={2}
               onClose={() => {
                 updateLocalData({
-                  viewFamilyMember: false
+                  viewFamilyMember: false,
+                  confirmRemove: false
                 }, true);
               }}
             >
-              <DialogContentText
-                id='scroll-dialog-title'
-                style={AVATextStyle({
-                  size: 1.4,
-                  bold: true,
-                  margin: { left: 0.5, top: 1 }
-                })}
-              >
-                {localData.viewFamilyMember.primary
-                  ? currentValues.familyRecs[localData.viewFamilyMember.fNdx].primary_contact.name
-                  : (currentValues.familyRecs[localData.viewFamilyMember.fNdx].other_members[localData.viewFamilyMember.other_index]
-                    ? currentValues.familyRecs[localData.viewFamilyMember.fNdx].other_members[localData.viewFamilyMember.other_index].name
-                    : 'Create a new Account'
-                  )
-                }
-              </DialogContentText>
+              {!localData.confirmRemove &&
+                <React.Fragment>
+                  <DialogContentText
+                    id='scroll-dialog-title'
+                    style={AVATextStyle({
+                      size: 1.4,
+                      bold: true,
+                      margin: { left: 0.5, top: 1 }
+                    })}
+                  >
+                    {localData.viewFamilyMember.primary
+                      ? currentValues.familyRecs[localData.viewFamilyMember.fNdx].primary_contact.name
+                      : (currentValues.familyRecs[localData.viewFamilyMember.fNdx].other_members[localData.viewFamilyMember.other_index]
+                        ? currentValues.familyRecs[localData.viewFamilyMember.fNdx].other_members[localData.viewFamilyMember.other_index].name
+                        : 'Create a new Account'
+                      )
+                    }
+                  </DialogContentText>
               {localData.viewFamilyMember.createAccount &&
                 <TextField
                   style={AVATextStyle({ margin: { left: 1 }, width: '80%' })}
@@ -720,59 +840,116 @@ export default ({ currentValues, updateField, reactData, updateReactData }) => {
                   </React-Fragment>
                 }
               </React.Fragment>
+                </React.Fragment>
+              }
+              {localData.confirmRemove &&
+                <DialogContentText
+                  style={AVATextStyle({ margin: { left: 0.5, top: 1 } })}
+                >
+                  {localData.viewFamilyMember.primary
+                    ? `Removing ${currentValues.familyRecs[localData.viewFamilyMember.fNdx].primary_contact.name} will delete the entire family group "${currentValues.familyRecs[localData.viewFamilyMember.fNdx].family_name}". This cannot be undone.`
+                    : `Remove ${currentValues.familyRecs[localData.viewFamilyMember.fNdx].other_members[localData.viewFamilyMember.other_index].name} from ${currentValues.familyRecs[localData.viewFamilyMember.fNdx].family_name}? This cannot be undone.`
+                  }
+                </DialogContentText>
+              }
 
               <DialogActions style={{ justifyContent: 'center' }}>
-                <Button
-                  className={AVAClass.AVAButton}
-                  style={{ marginTop: '16px', backgroundColor: 'green', color: 'white' }}
-                  size='small'
-                  onClick={async () => {
-                    if (localData.viewFamilyMember.createAccount) {
-                      currentValues.familyRecs[localData.viewFamilyMember.fNdx].other_members[localData.viewFamilyMember.other_index].createAccount = true;
-                      await updateReactData({ current: currentValues }, false);
-                    }
-                    updateLocalData({
-                      viewFamilyMember: false
-                    }, true);
-                  }}
-                >
-                  {'Done'}
-                </Button>
-                {localData.viewFamilyMember.createAccount
+                {localData.confirmRemove
                   ?
-                  <Button
-                    className={AVAClass.AVAButton}
-                    style={{ marginTop: '16px', backgroundColor: 'red', color: 'white' }}
-                    size='small'
-                    onClick={async () => {
-                      currentValues.familyRecs[localData.viewFamilyMember.fNdx].other_members.splice(localData.viewFamilyMember.other_index, 1);
-                      await updateReactData({ current: currentValues }, false);
-                      updateLocalData({
-                        viewFamilyMember: false
-                      }, true);
-                    }}
-                  >
-                    {"Don't Create"}
-                  </Button>
-                  :
-                  (((localData.viewFamilyMember.other_index || (localData.viewFamilyMember.other_index === 0))
-                    ?
+                  <React.Fragment>
                     <Button
                       className={AVAClass.AVAButton}
                       style={{ marginTop: '16px', backgroundColor: 'red', color: 'white' }}
                       size='small'
+                      disabled={localData.removalInProgress}
+                      onClick={performFamilyRemoval}
+                    >
+                      {localData.viewFamilyMember.primary ? 'Delete Family Group' : 'Confirm Removal'}
+                    </Button>
+                    <Button
+                      className={AVAClass.AVAButton}
+                      style={{ marginTop: '16px', backgroundColor: 'white', color: 'black' }}
+                      size='small'
+                      disabled={localData.removalInProgress}
+                      onClick={() => {
+                        updateLocalData({ confirmRemove: false }, true);
+                      }}
+                    >
+                      {'Cancel'}
+                    </Button>
+                  </React.Fragment>
+                  :
+                  <React.Fragment>
+                    <Button
+                      className={AVAClass.AVAButton}
+                      style={{ marginTop: '16px', backgroundColor: 'green', color: 'white' }}
+                      size='small'
                       onClick={async () => {
+                        if (localData.viewFamilyMember.createAccount) {
+                          currentValues.familyRecs[localData.viewFamilyMember.fNdx].other_members[localData.viewFamilyMember.other_index].createAccount = true;
+                          await updateReactData({ current: currentValues }, false);
+                        }
                         updateLocalData({
-                          viewFamilyMember: false,
-                          openFamilyMember: currentValues.familyRecs[localData.viewFamilyMember.fNdx].other_members[localData.viewFamilyMember.other_index].id
+                          viewFamilyMember: false
                         }, true);
                       }}
                     >
-                      {`View this Account`}
+                      {'Done'}
                     </Button>
-                    :
-                    null
-                  ))
+                    {localData.viewFamilyMember.createAccount
+                      ?
+                      <Button
+                        className={AVAClass.AVAButton}
+                        style={{ marginTop: '16px', backgroundColor: 'red', color: 'white' }}
+                        size='small'
+                        onClick={async () => {
+                          currentValues.familyRecs[localData.viewFamilyMember.fNdx].other_members.splice(localData.viewFamilyMember.other_index, 1);
+                          await updateReactData({ current: currentValues }, false);
+                          updateLocalData({
+                            viewFamilyMember: false
+                          }, true);
+                        }}
+                      >
+                        {"Don't Create"}
+                      </Button>
+                      :
+                      (((localData.viewFamilyMember.other_index || (localData.viewFamilyMember.other_index === 0))
+                        ?
+                        <Button
+                          className={AVAClass.AVAButton}
+                          style={{ marginTop: '16px', backgroundColor: 'white', color: 'black' }}
+                          size='small'
+                          onClick={async () => {
+                            updateLocalData({
+                              viewFamilyMember: false,
+                              openFamilyMember: currentValues.familyRecs[localData.viewFamilyMember.fNdx].other_members[localData.viewFamilyMember.other_index].id
+                            }, true);
+                          }}
+                        >
+                          {`View this Account`}
+                        </Button>
+                        :
+                        null
+                      ))
+                    }
+                    {/* The primary can only be removed when they're the family's last member -
+                        otherwise there's no valid outcome (can't leave a family with no primary)
+                        so the button is omitted entirely rather than shown disabled. */}
+                    {!localData.viewFamilyMember.createAccount
+                      && (!localData.viewFamilyMember.primary || !(currentValues.familyRecs[localData.viewFamilyMember.fNdx].other_members?.length > 0))
+                      &&
+                      <Button
+                        className={AVAClass.AVAButton}
+                        style={{ marginTop: '16px', backgroundColor: 'red', color: 'white' }}
+                        size='small'
+                        onClick={() => {
+                          updateLocalData({ confirmRemove: true }, true);
+                        }}
+                      >
+                        {'Remove from Family'}
+                      </Button>
+                    }
+                  </React.Fragment>
                 }
               </DialogActions>
             </Dialog>

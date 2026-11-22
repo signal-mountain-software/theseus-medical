@@ -244,6 +244,22 @@ export default ({ request = {}, onClose }) => {
   const FORM_PAPER_WIDTH_VW = 80;
   const MAX_FIELD_WIDTH_VW = (.93 * FORM_PAPER_WIDTH_VW);
   const PRINT_SNAPSHOT_VERSION = 1;
+  // 'image'/'upload'/'profile_photo' fields assume their value is an absolute URL (e.g. an S3
+  // link) - a defaulted-from-DataDictionary value of some other shape (a date, a number, an
+  // object, etc.) would otherwise reach this_image.split('.') and throw, which - since there's
+  // no error boundary around individual fields, only the single app-wide one in App.js - takes
+  // down the whole app rather than just this field. Anything that isn't a parseable absolute
+  // URL is treated as "not displayable" so the UI can show a safe fallback instead of crashing.
+  const isDisplayableFileUrl = (value) => {
+    if (typeof value !== 'string' || !value.trim()) { return false; }
+    try {
+      // eslint-disable-next-line no-new
+      new URL(value);
+      return true;
+    } catch {
+      return false;
+    }
+  };
   // 'family&guests' fields append free-text guest names (people with no AVA person_id) to the
   // same value array as selected family member person_ids; this prefix is how consumers tell
   // the two apart (person_ids never contain a colon). Falling back to the raw prefixed string
@@ -1591,12 +1607,12 @@ export default ({ request = {}, onClose }) => {
     returnObj.options = Object.assign({}, field_variables.options || {}, {
       required: field_variables.required !== undefined
         ? !!field_variables.required
-        : !!(field_variables.value?.required || returnObj.value?.required),
-      log_results: returnObj.value?.log_results || false,
-      viewOnly: (returnObj.value?.edit === 'view'),
-      hidden: (returnObj.value?.edit === 'hidden'),
+        : !!field_variables.value?.required,
+      log_results: field_variables.value?.log_results || false,
+      viewOnly: (field_variables.value?.edit === 'view'),
+      hidden: (field_variables.value?.edit === 'hidden'),
       ifEmpty: field_variables.options ? field_variables.options.ifEmpty : null,
-      resetFields: (returnObj.value?.resetFields
+      resetFields: (field_variables.value?.resetFields
         || (field_variables.options ? field_variables.options.resetFields : null))
     });
 
@@ -6245,9 +6261,10 @@ export default ({ request = {}, onClose }) => {
                                       padding={(makeArray(reactData.fields[this_field].valueText).length > 1) ? 1 : 0}
                                     >
                                       {makeArray(reactData.fields[this_field].valueText).map((this_image, imageNdx) => {
-                                        const fileExtension = this_image.split('.').pop().toLowerCase();
-                                        const isImage = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg'].includes(fileExtension);
-                                        const isPDF = fileExtension === 'pdf';
+                                        const isDisplayableUrl = isDisplayableFileUrl(this_image);
+                                        const fileExtension = isDisplayableUrl ? (this_image.split('.').pop() || '').toLowerCase() : '';
+                                        const isImage = isDisplayableUrl && ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg'].includes(fileExtension);
+                                        const isPDF = isDisplayableUrl && (fileExtension === 'pdf');
 
                                         return (
                                           <Box
@@ -6256,7 +6273,7 @@ export default ({ request = {}, onClose }) => {
                                             marginRight={(makeArray(reactData.fields[this_field].valueText).length > 1) ? 1 : 0}
                                             key={`image_${sectionNdx}_${fieldNdx}_${imageNdx}`}
                                             onClick={() => {
-                                              window.open(this_image, `${fileExtension} File`);
+                                              if (isDisplayableUrl) { window.open(this_image, `${fileExtension} File`); }
                                             }}
                                             style={{
                                               minWidth: '150px',
@@ -6267,7 +6284,7 @@ export default ({ request = {}, onClose }) => {
                                               flexDirection: 'column',
                                               justifyContent: 'center',
                                               alignItems: 'center',
-                                              cursor: 'pointer',
+                                              cursor: isDisplayableUrl ? 'pointer' : 'default',
                                               backgroundColor: isImage ? 'transparent' : '#f5f5f5',
                                               overflow: 'hidden'
                                             }}
@@ -6294,7 +6311,7 @@ export default ({ request = {}, onClose }) => {
                                                   pointerEvents: 'none'
                                                 }}
                                               />
-                                            ) : (
+                                            ) : isDisplayableUrl ? (
                                               <>
                                                 <InsertDriveFileIcon style={{ fontSize: '48px', color: '#666' }} />
                                                 <Typography style={{ fontSize: '0.7rem', marginTop: '8px', textAlign: 'center' }}>
@@ -6302,6 +6319,13 @@ export default ({ request = {}, onClose }) => {
                                                 </Typography>
                                                 <Typography style={{ fontSize: '0.6rem', color: '#999', textAlign: 'center' }}>
                                                   Tap to view
+                                                </Typography>
+                                              </>
+                                            ) : (
+                                              <>
+                                                <InsertDriveFileIcon style={{ fontSize: '48px', color: '#bbb' }} />
+                                                <Typography style={{ fontSize: '0.65rem', color: '#999', textAlign: 'center', padding: '0 4px' }}>
+                                                  {'Unable to display this file'}
                                                 </Typography>
                                               </>
                                             )}
@@ -6361,9 +6385,10 @@ export default ({ request = {}, onClose }) => {
                                       padding={(makeArray(reactData.fields[this_field].valueText).length > 1) ? 1 : 0}
                                     >
                                       {makeArray(reactData.fields[this_field].valueText).map((this_image, imageNdx) => {
-                                        const fileExtension = this_image.split('.').pop().toLowerCase();
-                                        const isImage = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg'].includes(fileExtension);
-                                        const isPDF = fileExtension === 'pdf';
+                                        const isDisplayableUrl = isDisplayableFileUrl(this_image);
+                                        const fileExtension = isDisplayableUrl ? (this_image.split('.').pop() || '').toLowerCase() : '';
+                                        const isImage = isDisplayableUrl && ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg'].includes(fileExtension);
+                                        const isPDF = isDisplayableUrl && (fileExtension === 'pdf');
 
                                         return (
                                           <Box
@@ -6372,7 +6397,7 @@ export default ({ request = {}, onClose }) => {
                                             marginRight={(makeArray(reactData.fields[this_field].valueText).length > 1) ? 1 : 0}
                                             key={`image_${sectionNdx}_${fieldNdx}_${imageNdx}`}
                                             onClick={() => {
-                                              window.open(this_image, `${fileExtension} File`);
+                                              if (isDisplayableUrl) { window.open(this_image, `${fileExtension} File`); }
                                             }}
                                             style={{
                                               minWidth: '150px',
@@ -6383,7 +6408,7 @@ export default ({ request = {}, onClose }) => {
                                               flexDirection: 'column',
                                               justifyContent: 'center',
                                               alignItems: 'center',
-                                              cursor: 'pointer',
+                                              cursor: isDisplayableUrl ? 'pointer' : 'default',
                                               backgroundColor: isImage ? 'transparent' : '#f5f5f5',
                                               overflow: 'hidden'
                                             }}
@@ -6410,7 +6435,7 @@ export default ({ request = {}, onClose }) => {
                                                   pointerEvents: 'none'
                                                 }}
                                               />
-                                            ) : (
+                                            ) : isDisplayableUrl ? (
                                               <>
                                                 <InsertDriveFileIcon style={{ fontSize: '48px', color: '#666' }} />
                                                 <Typography style={{ fontSize: '0.7rem', marginTop: '8px', textAlign: 'center' }}>
@@ -6418,6 +6443,13 @@ export default ({ request = {}, onClose }) => {
                                                 </Typography>
                                                 <Typography style={{ fontSize: '0.6rem', color: '#999', textAlign: 'center' }}>
                                                   Tap to view
+                                                </Typography>
+                                              </>
+                                            ) : (
+                                              <>
+                                                <InsertDriveFileIcon style={{ fontSize: '48px', color: '#bbb' }} />
+                                                <Typography style={{ fontSize: '0.65rem', color: '#999', textAlign: 'center', padding: '0 4px' }}>
+                                                  {'Unable to display this file'}
                                                 </Typography>
                                               </>
                                             )}

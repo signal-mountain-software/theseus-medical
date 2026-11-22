@@ -64,3 +64,28 @@ it.each([false, true])('filters both group and document-derived forms when curre
   expect(result.masterCategoryList.sort()).toEqual(expected.sort());
   expect(result.masterFormList.person.myFormListObj.current.assignedDocs).toHaveLength(1);
 });
+
+it('accumulates every group name that lists a shared form instead of overwriting it', async () => {
+  dbClient.get.mockImplementation(({ TableName, Key }) => ({
+    promise: async () => ({
+      Item: TableName === 'People'
+        ? { person_id: 'person', name: { first: 'Test' }, groups: ['groupA', 'groupB'] }
+        : TableName === 'Groups'
+          ? { name: Key.group_id === 'groupA' ? 'Group A' : 'Group B', forms: ['shared_form'] }
+          : { form_id: Key.form_id, form_name: Key.form_id, current: true },
+    }),
+  }));
+  dbClient.query.mockImplementation(() => ({ promise: async () => ({ Items: [] }) }));
+  const updateReactData = jest.fn();
+  render(<FormSection
+    currentOnly={false}
+    currentValues={{ peopleRec: { person_id: 'person' } }}
+    reactData={{ groupObj: {}, administrative_account: true }}
+    updateReactData={updateReactData}
+  />);
+  await wait(() => expect(updateReactData).toHaveBeenCalledWith(
+    expect.objectContaining({ formsInitialized: true }), true
+  ));
+  const result = updateReactData.mock.calls.find(([data]) => data.formsInitialized)[0];
+  expect(result.masterFormList.person.myFormListObj.shared_form.whyGroups).toEqual(['Group A', 'Group B']);
+});

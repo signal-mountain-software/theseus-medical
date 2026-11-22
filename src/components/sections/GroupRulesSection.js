@@ -55,17 +55,20 @@ const TEST_TYPES_ARRAY = [
 ];
 
 // Test types for an onAdd/onRemove action's optional per-target-person data condition
-// (action.condition.data_test). Extends the withData test types with 'one_of' (match against
-// several acceptable values), which is intentionally NOT offered for withData rules - those are
-// also enforced by the separately-deployed evaluate-with-data-rules Lambda, which doesn't
-// implement 'one_of', while action conditions are only ever evaluated client-side.
+// (action.condition.data_test). Extends the withData test types with 'one_of'/'not_one_of'
+// (match against, or exclude, several acceptable values), which are intentionally NOT offered
+// for withData rules - those are also enforced by the separately-deployed
+// evaluate-with-data-rules Lambda, which doesn't implement them, while action conditions are
+// only ever evaluated client-side.
 const ACTION_CONDITION_TEST_TYPES = [
   ...TEST_TYPES,
-  { value: 'one_of', label: 'is one of (match any of these values)' },
+  { value: 'one_of',     label: 'is one of (match any of these values)' },
+  { value: 'not_one_of', label: 'is NOT one of (match none of these values)' },
 ];
 const ACTION_CONDITION_TEST_TYPES_ARRAY = [
   ...TEST_TYPES_ARRAY,
-  { value: 'one_of', label: 'list includes any of these values' },
+  { value: 'one_of',     label: 'list includes any of these values' },
+  { value: 'not_one_of', label: 'list includes none of these values' },
 ];
 
 const emptyAction = () => ({ action: 'addMember', who: 'self', where: [] });
@@ -329,8 +332,8 @@ export default ({ currentValues, updateField, updateReactData: parentUpdateReact
       : '(no groups)';
     const dataTest = action.condition?.data_test;
     const conditionText = dataTest?.dictionaryField
-      ? (dataTest.test === 'one_of'
-        ? ` — only if ${dataTest.dictionaryField} is one of ${(dataTest.testValues || []).join(', ') || '(no values set)'}`
+      ? (['one_of', 'not_one_of'].includes(dataTest.test)
+        ? ` — only if ${dataTest.dictionaryField} is ${(dataTest.test === 'not_one_of') ? 'NOT ' : ''}one of ${(dataTest.testValues || []).join(', ') || '(no values set)'}`
         : ` — only if ${dataTest.dictionaryField} ${dataTest.test || 'eq'} "${dataTest.testValue || ''}"`)
       : '';
     return (
@@ -588,11 +591,11 @@ export default ({ currentValues, updateField, updateReactData: parentUpdateReact
                     </Select>
                   </FormControl>
 
-                  {dataTest.test === 'one_of'
+                  {['one_of', 'not_one_of'].includes(dataTest.test)
                     ? (
                       <Box mt={0.5}>
                         <Typography style={AVATextStyle({ size: 0.85, color: 'grey', margin: { bottom: 0.5 } })}>
-                          {'Acceptable Values'}
+                          {(dataTest.test === 'not_one_of') ? 'Excluded Values' : 'Acceptable Values'}
                         </Typography>
                         {(dataTest.testValues || []).length > 0 && (
                           <Box display='flex' flexWrap='wrap' style={{ gap: 6, marginBottom: 8 }}>
