@@ -265,19 +265,24 @@ const normalizeList = ({ groupMemberList, pClient }) => {
 };
 
 const getSearchBlob = (person) => {
-    const values = [
-        person?.person_id,
-        person?.display_name,
-        person?.name?.first,
-        person?.name?.last,
-        person?.location,
-        ...Object.values(person?.address || {}),
-        person?.messaging?.sms,
-        person?.messaging?.voice,
-        person?.messaging?.office,
-        person?.messaging?.email,
-    ];
-    return values.filter(Boolean).join(' ').toLowerCase();
+    if (person?.search_data) {
+        return person.search_data.toLowerCase();
+    }
+    else {
+        const values = [
+            person?.person_id,
+            person?.display_name,
+            person?.name?.first,
+            person?.name?.last,
+            person?.location,
+            ...Object.values(person?.address || {}),
+            person?.messaging?.sms,
+            person?.messaging?.voice,
+            person?.messaging?.office,
+            person?.messaging?.email,
+        ];
+        return values.filter(Boolean).join(' ').toLowerCase();
+    }
 };
 
 const toTelHref = (phoneValue = '') => {
