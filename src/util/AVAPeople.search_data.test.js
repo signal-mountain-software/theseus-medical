@@ -73,6 +73,39 @@ it('extends search_data with arbitrary DataDictionaryV3 fields configured via se
   );
 });
 
+// Phone-type DataDictionary fields resolve to a human-display `formatted` string (punctuated)
+// plus a `details.raw` digits-only form - prefer the latter so every phone number in search_data
+// is a single contiguous digit run, consistent with the hardcoded cell-phone handling in
+// makeSearchData(). Without this, a configured home/office phone would be stored with its
+// "(444) 112-3456" formatting while cell phones are stored as "14441123456" - an inconsistency
+// that broke dash-typed phone searches for one source but not the other.
+it('prefers a phone field\'s digits-only details.raw over its punctuated formatted display', async () => {
+  const personRec = { person_id: 'p1', name: { first: 'Jane', last: 'Doe' } };
+  mockGetCustomizations.mockResolvedValue({ customization_value: ['home_phone'] });
+  mockResolveData.mockResolvedValue([
+    { formatted: '(444) 112-3456', raw: '4441123456', details: { raw: '4441123456', display: '(444) 112-3456' } },
+  ]);
+
+  const result = await buildPersonSearchData({ personRec, client_id: 'client' });
+
+  expect(result).toContain('4441123456');
+  expect(result).not.toContain('(444)');
+  expect(result).not.toContain('112-3456');
+});
+
+// A non-phone configured field (no `details.raw`) should still fall back to `formatted`/`raw` as
+// before - the preference for `details.raw` is additive, not a regression for other field types.
+it('still falls back to formatted/raw for a resolved field with no details.raw (non-phone types)', async () => {
+  const personRec = { person_id: 'p1', name: { first: 'Jane', last: 'Doe' } };
+  mockGetCustomizations.mockResolvedValue({ customization_value: ['custom_notes'] });
+  mockResolveData.mockResolvedValue([{ formatted: 'some note text', details: null }]);
+
+  const result = await buildPersonSearchData({ personRec, client_id: 'client' });
+
+  expect(result).toMatch(/some/i);
+  expect(result).toMatch(/note/i);
+});
+
 it('skips DataDictionary field resolution when the person has no person_id yet', async () => {
   const personRec = { name: { first: 'Jane', last: 'Doe' } };
   mockGetCustomizations.mockResolvedValue({ customization_value: ['custom_email'] });

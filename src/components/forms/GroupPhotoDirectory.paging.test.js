@@ -11,7 +11,8 @@ jest.mock('../../hooks/useSession', () => {
 jest.mock('../../util/AVAPeople', () => ({
   getImage: () => '',
   getPerson: jest.fn(),
-  formatPhone: value => value
+  formatPhone: value => value,
+  searchDataIncludes: jest.requireActual('../../util/AVAPeople').searchDataIncludes,
 }));
 jest.mock('../../util/AVAStyles', () => ({ AVAclasses: () => ({}) }));
 jest.mock('../../util/AVAUtilities', () => ({

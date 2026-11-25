@@ -1,6 +1,6 @@
 import React from 'react';
 import { makeArray, isObject, deepCopy } from '../../util/AVAUtilities';
-import { getImage } from '../../util/AVAPeople';
+import { getImage, searchDataIncludes } from '../../util/AVAPeople';
 
 import Paper from '@material-ui/core/Paper';
 import TextField from '@material-ui/core/TextField';
@@ -246,10 +246,10 @@ export default ({
     else if (!isObject(pLine)) { return false; }
     else if (!person_filter || (person_filter.trim() === '')) { return true; }
     else if (pLine.searchString) {
-      return (pLine.searchString.toLowerCase().includes(person_filter));
+      return searchDataIncludes(pLine.searchString, person_filter);
     }
     else if (pLine.search_data) {
-      return (pLine.search_data.toLowerCase().includes(person_filter));
+      return searchDataIncludes(pLine.search_data, person_filter);
     }
     else {
       return true;

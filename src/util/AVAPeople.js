@@ -900,6 +900,30 @@ export function makeSearchData(iArray) {
     return wordCheck.join(' ');
 }
 
+// Strips punctuation that's harmless to drop but otherwise blocks an obviously-intended match:
+// phone formatting ("(", ")", "-") and the hyphen in a hyphenated name ("Smith-Shawver") or
+// location ("CV-43"). Deliberately leaves whitespace alone - this is scoped to punctuation, not
+// a general "ignore everything" normalizer, so multi-word search_data/query behavior is otherwise
+// unaffected. The one accepted side effect: stripping the hyphen merges a hyphenated name/location
+// into one run (e.g. "Smith-Shawver" -> "smithshawver"), so an unrelated query could occasionally
+// land inside that merged boundary (e.g. "miths") - a deliberate, small trade-off for consistently
+// finding phone numbers and hyphenated text regardless of whether punctuation was typed.
+const stripSearchPunctuation = (value) => `${value || ''}`.replace(/[()-]/g, '');
+
+// Shared substring-match comparison for the "search_data only" search standard (see
+// GroupPhotoDirectory.js's getSearchBlob and PersonFilter.js's okToShow) - lowercases and strips
+// punctuation from both sides before comparing, so formatting differences on either side (a
+// DataDictionary-resolved phone's "(444) 112-3456" vs. a typed "112-3456" or "1123456", or a
+// hyphenated name typed with or without its hyphen) don't block an otherwise-matching search.
+// Every "search_data only" consumer should call this instead of its own `.includes()` check, so a
+// fix here (like this one) reaches every consumer instead of needing to be re-applied per file.
+export function searchDataIncludes(searchData, queryText) {
+    const needle = stripSearchPunctuation(`${queryText || ''}`.toLowerCase().trim());
+    if (!needle) { return true; }
+    const haystack = stripSearchPunctuation(`${searchData || ''}`.toLowerCase());
+    return haystack.includes(needle);
+}
+
 // Coerces a resolved DataDictionary value into text usable inside search_data. Values that can't
 // be meaningfully reduced to words (objects, null/undefined, e.g. a raw address-details object)
 // are dropped rather than JSON-stringified into noise; arrays are flattened/joined.
@@ -951,7 +975,14 @@ export async function buildPersonSearchData({ personRec, client_id, extraWords }
             recordOverrides: { People: personRec }
         }).catch(() => []);
         resolvedEntries.forEach((entry) => {
-            const word = coerceSearchableValue(entry?.formatted ?? entry?.raw);
+            // A phone-type DataDictionary field resolves to a human-display `formatted` string
+            // (e.g. "(444) 112-3456") but also carries a punctuation-free `details.raw` (e.g.
+            // "4441123456") - prefer that digits-only form so every phone number in search_data
+            // is a single contiguous digit run, matching the cell-phone handling in
+            // makeSearchData() below instead of silently diverging from it. See
+            // searchDataIncludes() for the comparison-side half of this (a typed query's own
+            // punctuation also has to be stripped before matching either form).
+            const word = coerceSearchableValue(entry?.details?.raw ?? entry?.formatted ?? entry?.raw);
             if (word) { extraTerms.push(word); }
         });
     }
