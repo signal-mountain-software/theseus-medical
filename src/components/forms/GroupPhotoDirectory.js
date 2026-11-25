@@ -17,7 +17,7 @@ import PrintIcon from '@material-ui/icons/Print';
 
 import useSession from '../../hooks/useSession';
 import useMediaQuery from '@material-ui/core/useMediaQuery';
-import { getImage, getPerson, formatPhone } from '../../util/AVAPeople';
+import { getImage, getPerson, formatPhone, searchDataIncludes } from '../../util/AVAPeople';
 import { AVAclasses } from '../../util/AVAStyles';
 import { isEmpty, sentenceCase, getObject, lambda, titleCase } from '../../util/AVAUtilities';
 import { determineClass, getRole } from '../../util/AVAGroups';
@@ -265,19 +265,24 @@ const normalizeList = ({ groupMemberList, pClient }) => {
 };
 
 const getSearchBlob = (person) => {
-    const values = [
-        person?.person_id,
-        person?.display_name,
-        person?.name?.first,
-        person?.name?.last,
-        person?.location,
-        ...Object.values(person?.address || {}),
-        person?.messaging?.sms,
-        person?.messaging?.voice,
-        person?.messaging?.office,
-        person?.messaging?.email,
-    ];
-    return values.filter(Boolean).join(' ').toLowerCase();
+    if (person?.search_data) {
+        return person.search_data.toLowerCase();
+    }
+    else {
+        const values = [
+            person?.person_id,
+            person?.display_name,
+            person?.name?.first,
+            person?.name?.last,
+            person?.location,
+            ...Object.values(person?.address || {}),
+            person?.messaging?.sms,
+            person?.messaging?.voice,
+            person?.messaging?.office,
+            person?.messaging?.email,
+        ];
+        return values.filter(Boolean).join(' ').toLowerCase();
+    }
 };
 
 const toTelHref = (phoneValue = '') => {
@@ -468,8 +473,7 @@ export default function GroupPhotoDirectory({ options = {}, onReset = () => { } 
             return records;
         }
 
-        const lowerSearch = searchValue.trim().toLowerCase();
-        return records.filter(person => getSearchBlob(person).includes(lowerSearch));
+        return records.filter(person => searchDataIncludes(getSearchBlob(person), searchValue));
     }, [rawMembers, personCache, memberOverrides, searchValue]);
 
     const peopleByID = React.useMemo(() => {

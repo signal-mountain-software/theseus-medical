@@ -37,6 +37,10 @@ jest.mock('../../util/AVAUtilities', () => ({
   recordExists: value => !!(value?.Item || value?.Items?.length),
   getDb: jest.fn(),
   putDb: jest.fn(),
+  // getCustomizations/cl are pulled in transitively via AVAPeople.js's buildPersonSearchData
+  // (called when QuickAdd builds a new person's search_data) - not used directly by QuickAdd.js.
+  getCustomizations: jest.fn().mockResolvedValue(false),
+  cl: jest.fn(),
   dbClient: { get: jest.fn(), query: jest.fn(), batchWrite: jest.fn(), update: jest.fn() }
 }));
 

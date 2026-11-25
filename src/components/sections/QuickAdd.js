@@ -70,6 +70,7 @@ import { useCookies } from 'react-cookie';
 
 import { deepCopy, titleCase, getDb, putDb, isEmpty, uuid, recordExists, dbClient, isObject, makeArray } from '../../util/AVAUtilities';
 import { getGroupAccess, addMember } from '../../util/AVAGroups';
+import { buildPersonSearchData } from '../../util/AVAPeople';
 import { makeDate } from '../../util/AVADateTime';
 import { AVATextStyle, AVAclasses } from '../../util/AVAStyles';
 import { sendMessages } from '../../util/AVAMessages';
@@ -2419,15 +2420,6 @@ export default ({ onClose, options = {}, new_account_form }) => {
         }
       }
 
-      // Build search data following PeopleMaintenance.js pattern (lines 834-854)
-      let search_words = [
-        normalizedFirstName,
-        normalizedLastName,
-        normalizedFirstName.toLowerCase(),
-        normalizedLastName.toLowerCase(),
-        cellForStorage ? cellForStorage.slice(-10) : ' '
-      ];
-
       // Build contact_info object
       const contact_info = {};
       const messaging = {};
@@ -2488,9 +2480,13 @@ export default ({ onClose, options = {}, new_account_form }) => {
         }
       });
 
-      // Set search_data following PeopleMaintenance.js pattern (lines 834-854)
-      // First, ensure we join the search_words as the base search_data
-      peopleRecord.search_data = search_words.join(' ');
+      // search_data is computed last, after any saveAs-mapped form fields above may have
+      // overridden contact_info/messaging/name - using the final, fully-resolved peopleRecord
+      // rather than a snapshot taken before those overrides were applied.
+      peopleRecord.search_data = await buildPersonSearchData({
+        personRec: peopleRecord,
+        client_id: reactData.client_id
+      });
 
       // Add family_id if it exists
       if (reactData.family_id) {

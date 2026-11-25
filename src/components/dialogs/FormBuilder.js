@@ -246,6 +246,11 @@ const blankField = () => ({
     // numeric only: optional inclusive bounds on the entered number.
     numericMin: '',
     numericMax: '',
+    // upload only: whether the picker allows selecting more than one file. Stored as
+    // prompt.oneOnly:false when true (see buildFormRecord) - FormFillB treats oneOnly as
+    // true whenever it's MISSING, not just when explicitly true, so this editor only ever
+    // writes oneOnly:false (checked) or omits it entirely (unchecked), never oneOnly:true.
+    allowMultipleUploads: false,
     // select_event only: event(s) offered, an optional occurrence cap, and an optional link
     // to a family/family&guests Item whose members should each get their own signup slot.
     eventIds: [],
@@ -781,6 +786,9 @@ export default ({ onClose, directForm }) => {
                     ...parseFieldDefaultForEditor(fieldDef),
                     numericMin: (numericMin !== undefined && numericMin !== null) ? String(numericMin) : '',
                     numericMax: (numericMax !== undefined && numericMax !== null) ? String(numericMax) : '',
+                    // FormFillB treats oneOnly as true whenever it's missing, not just when it's
+                    // explicitly true - so only an explicit `false` means "allow multiple".
+                    allowMultipleUploads: (typeof fieldDef.prompt === 'object' && fieldDef.prompt?.oneOnly === false),
                     eventIds: rawEventIds ? (Array.isArray(rawEventIds) ? rawEventIds : [rawEventIds]) : [],
                     eventOccurrenceLimit: (eventOccurrenceLimit !== undefined && eventOccurrenceLimit !== null) ? String(eventOccurrenceLimit) : '',
                     familySignupField: fieldDef.value?.selection?.family_signup_field || '',
@@ -1100,6 +1108,7 @@ export default ({ onClose, directForm }) => {
             nonDictionaryDefault: null,
             numericMin: '',
             numericMax: '',
+            allowMultipleUploads: false,
             eventIds: [],
             eventOccurrenceLimit: '',
             familySignupField: '',
@@ -1702,6 +1711,9 @@ export default ({ onClose, directForm }) => {
                     const promptExtras = {};
                     if (field.promptWidth) { promptExtras.width = Number(field.promptWidth); }
                     if (field.type === 'text' && field.promptRows) { promptExtras.rows = Number(field.promptRows); }
+                    // oneOnly is only ever written as `false` here - FormFillB already treats it as
+                    // true whenever it's absent, so there's no need (and no benefit) to write `true`.
+                    if (field.type === 'upload' && field.allowMultipleUploads) { promptExtras.oneOnly = false; }
                     const fieldDef = Object.assign(omitKeys(field.__raw, MANAGED_FIELD_KEYS), {
                         type: field.type,
                         prompt: Object.keys(promptExtras).length
@@ -2554,6 +2566,20 @@ export default ({ onClose, directForm }) => {
                                                                 />
                                                             }
                                                             label='Allow others? (Guests)'
+                                                        />
+                                                    </Box>
+                                                }
+                                                {field.type === 'upload' &&
+                                                    <Box display='flex' flexDirection='row' alignItems='center' style={{ marginTop: '20px' }}>
+                                                        <FormControlLabel
+                                                            control={
+                                                                <Checkbox
+                                                                    size='small'
+                                                                    checked={!!field.allowMultipleUploads}
+                                                                    onChange={(e) => updateField(sectionIdx, fieldIdx, { allowMultipleUploads: e.target.checked })}
+                                                                />
+                                                            }
+                                                            label='Allow multiple files to be uploaded?'
                                                         />
                                                     </Box>
                                                 }

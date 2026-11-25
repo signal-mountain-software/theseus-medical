@@ -1,7 +1,6 @@
 import React from 'react';
 import { Box, Typography, Switch, Checkbox } from '@material-ui/core/';
 import { getPerson } from '../../util/AVAPeople';
-import { titleCase } from '../../util/AVAUtilities';
 import DeleteIcon from '@material-ui/icons/Delete';
 import IconButton from '@material-ui/core/IconButton';
 import Dialog from '@material-ui/core/Dialog';
@@ -183,26 +182,10 @@ export default ({ currentValues, ogValues, errorList, reactData, setError, updat
     }
   };
 
-  let search_words = [
-    titleCase(reactData.current.peopleRec.name.first),
-    titleCase(reactData.current.peopleRec.name.last),
-    reactData.current.peopleRec.name.first.toLowerCase(),
-    reactData.current.peopleRec.name.last.toLowerCase(),
-    reactData.current.peopleRec.contact_info?.cell?.number
-      ? reactData.current.peopleRec.contact_info.cell.number.slice(-10)
-      : (reactData.current.peopleRec.messaging?.sms ? reactData.current.peopleRec.messaging.sms.slice(-10) : ' ')
-  ];
-
-  if (!reactData.current.peopleRec.search_data) {
-    reactData.current.peopleRec.search_data = search_words.join(' ');
-  }
-  else {
-    for (let this_word of search_words) {
-      if (!reactData.current.peopleRec.search_data.includes(this_word)) {
-        reactData.current.peopleRec.search_data += ' ' + this_word;
-      }
-    }
-  }
+  // search_data itself is now fully (re)computed at save time in PeopleMaintenance.js's
+  // saveChanges(), via buildPersonSearchData - regardless of which tab triggered the edit. This
+  // used to duplicate that same append-only logic here, which both drifted out of sync with the
+  // PeopleMaintenance.js copy over time and never removed stale words on a rename/phone change.
 
   function filteredPerson(pID, pName = { last: '*No Name*', first: '*No Name*' }) {
     if (!pName.first) { pName.first = '*No First Name*'; }
@@ -651,23 +634,38 @@ export default ({ currentValues, ogValues, errorList, reactData, setError, updat
           <TextField
             style={{ minWidth: '80%', marginTop: '12px' }}
             multiline
-            id='search_data'
+            id='search_data_manual'
             autoComplete='off'
-            key={`techSection__search_data__${currentValues.peopleRec.person_id}__${errorList.hasOwnProperty('search_data') ? 'error' : 'ok'}`}
-            defaultValue={currentValues.peopleRec.search_data.replace(/undefined/g, '') || ''}
+            key={`techSection__search_data_manual__${currentValues.peopleRec.person_id}__${errorList.hasOwnProperty('search_data_manual') ? 'error' : 'ok'}`}
+            defaultValue={currentValues.peopleRec.search_data_manual || ''}
             onBlur={async (event) => {
               let updateObj = {
                 updateList:
                   [{
                     tableName: 'peopleRec',
-                    fieldName: 'search_data',
-                    newData: event.target.value.replace(/undefined/g, '')
+                    fieldName: 'search_data_manual',
+                    newData: event.target.value
                   }]
               };
               await updateField(updateObj);
             }
             }
-            helperText={'Search Data'}
+            helperText={'Additional Search Terms (always searchable, regardless of other changes)'}
+          />
+        </Box>
+
+        <Box display='flex' alignItems='center'
+          justifyContent='flex-start' flexDirection='row'>
+          <TextField
+            style={{ minWidth: '80%', marginTop: '12px' }}
+            multiline
+            id='search_data_current'
+            autoComplete='off'
+            key={`techSection__search_data_current__${currentValues.peopleRec.person_id}`}
+            label='Current Search Data'
+            value={currentValues.peopleRec.search_data || ''}
+            InputProps={{ readOnly: true }}
+            helperText={'Stored value - subject to update; regenerated automatically the next time this profile is saved'}
           />
         </Box>
 
