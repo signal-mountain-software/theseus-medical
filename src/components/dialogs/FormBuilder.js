@@ -64,6 +64,7 @@ const FIELD_TYPES = [
     { value: 'date', label: 'Date' },
     { value: 'phone', label: 'Phone Number' },
     { value: 'numeric', label: 'Number' },
+    { value: 'rating', label: 'Rating Scale' },
     { value: 'yes/no', label: 'Yes / No' },
     { value: 'select', label: 'Select from a list' },
     { value: 'family', label: 'Family Member(s) selector' },
@@ -243,9 +244,14 @@ const blankField = () => ({
     // source or a source array), so re-saving a form through this UI never silently drops it.
     defaultDictionaryKey: null,
     nonDictionaryDefault: null,
-    // numeric only: optional inclusive bounds on the entered number.
+    // numeric/rating only: optional (rating: required) inclusive bounds on the entered number -
+    // for 'rating' these also drive how many bubbles FormFillB's AVARatingScale renders.
     numericMin: '',
     numericMax: '',
+    // rating only: end-of-scale tags shown beside the lowest/highest bubble. Blank falls back
+    // to 'Low'/'High' at render time (see AVARatingScale) - these are never stored unless set.
+    ratingLowLabel: '',
+    ratingHighLabel: '',
     // upload only: whether the picker allows selecting more than one file. Stored as
     // prompt.oneOnly:false when true (see buildFormRecord) - FormFillB treats oneOnly as
     // true whenever it's MISSING, not just when explicitly true, so this editor only ever
@@ -769,6 +775,8 @@ export default ({ onClose, directForm }) => {
                 const eventOccurrenceLimit = fieldDef.value?.selection?.event_filter?.count;
                 const numericMin = fieldDef.options?.minValue ?? fieldDef.options?.min_value;
                 const numericMax = fieldDef.options?.maxValue ?? fieldDef.options?.max_value;
+                const ratingLowLabel = fieldDef.options?.lowLabel ?? fieldDef.options?.low_label ?? '';
+                const ratingHighLabel = fieldDef.options?.highLabel ?? fieldDef.options?.high_label ?? '';
                 return {
                     key: uuid(8),
                     field_name,
@@ -786,6 +794,8 @@ export default ({ onClose, directForm }) => {
                     ...parseFieldDefaultForEditor(fieldDef),
                     numericMin: (numericMin !== undefined && numericMin !== null) ? String(numericMin) : '',
                     numericMax: (numericMax !== undefined && numericMax !== null) ? String(numericMax) : '',
+                    ratingLowLabel,
+                    ratingHighLabel,
                     // FormFillB treats oneOnly as true whenever it's missing, not just when it's
                     // explicitly true - so only an explicit `false` means "allow multiple".
                     allowMultipleUploads: (typeof fieldDef.prompt === 'object' && fieldDef.prompt?.oneOnly === false),
@@ -1108,6 +1118,8 @@ export default ({ onClose, directForm }) => {
             nonDictionaryDefault: null,
             numericMin: '',
             numericMax: '',
+            ratingLowLabel: '',
+            ratingHighLabel: '',
             allowMultipleUploads: false,
             eventIds: [],
             eventOccurrenceLimit: '',
@@ -1760,12 +1772,18 @@ export default ({ onClose, directForm }) => {
                             selection,
                             column: !!field.column,
                         };
-                    } else if (field.type === 'numeric') {
+                    } else if (field.type === 'numeric' || field.type === 'rating') {
                         const numericOptions = {};
                         const parsedMin = parseInt(field.numericMin, 10);
                         const parsedMax = parseInt(field.numericMax, 10);
                         if (Number.isFinite(parsedMin)) { numericOptions.minValue = parsedMin; }
                         if (Number.isFinite(parsedMax)) { numericOptions.maxValue = parsedMax; }
+                        if (field.type === 'rating') {
+                            // Blank falls back to 'Low'/'High' in FormFillB's AVARatingScale - only
+                            // persist a tag the author actually typed.
+                            if ((field.ratingLowLabel || '').trim()) { numericOptions.lowLabel = field.ratingLowLabel.trim(); }
+                            if ((field.ratingHighLabel || '').trim()) { numericOptions.highLabel = field.ratingHighLabel.trim(); }
+                        }
                         if (Object.keys(numericOptions).length) { fieldDef.options = numericOptions; }
                     }
                     // Applies regardless of field type/branch above - merges into whatever
@@ -1809,8 +1827,32 @@ export default ({ onClose, directForm }) => {
         return false;
     };
 
+    // A rating field's bubble range comes entirely from numericMin/numericMax - unlike plain
+    // numeric fields (where bounds are optional free-entry limits), a Rating Scale can't render
+    // without both, so they're required here and must describe a real (min < max) range.
+    const ratingFieldIsInvalid = (field) => (
+        (field.type === 'rating')
+        && (!/^-?\d+$/.test(field.numericMin || '') || !/^-?\d+$/.test(field.numericMax || '')
+            || (Number(field.numericMin) >= Number(field.numericMax)))
+    );
+    const validateRatingFields = () => {
+        for (const section of reactData.editingForm.sections) {
+            const invalidField = section.fields.find(ratingFieldIsInvalid);
+            if (invalidField) {
+                updateReactData({
+                    alert: {
+                        severity: 'error',
+                        message: `Rating Scale "${invalidField.prompt || invalidField.field_name}" needs a Lowest Value and Highest Value (whole numbers, lowest less than highest).`,
+                    },
+                }, true);
+                return false;
+            }
+        }
+        return true;
+    };
+
     const previewForm = () => {
-        if (!validateAnswerLimits()) { return; }
+        if (!validateAnswerLimits() || !validateRatingFields()) { return; }
         updateReactData({
             previewFormRec: buildFormRecord(Object.assign({}, reactData.editingForm, {
                 form_name: reactData.editingForm.form_name || 'Untitled Form',
@@ -1819,7 +1861,7 @@ export default ({ onClose, directForm }) => {
     };
 
     const saveForm = async () => {
-        if (!validateAnswerLimits()) { return; }
+        if (!validateAnswerLimits() || !validateRatingFields()) { return; }
         const editingForm = reactData.editingForm;
 
         if (!(editingForm.form_name || '').trim()) {
@@ -1846,7 +1888,7 @@ export default ({ onClose, directForm }) => {
 
     // Writes the form like saveForm, but stays on the edit screen instead of exiting.
     const saveAndContinue = async () => {
-        if (!validateAnswerLimits()) { return; }
+        if (!validateAnswerLimits() || !validateRatingFields()) { return; }
         const editingForm = reactData.editingForm;
 
         if (!(editingForm.form_name || '').trim()) {
@@ -2373,7 +2415,17 @@ export default ({ onClose, directForm }) => {
                                                             <InputLabel>{'Type'}</InputLabel>
                                                             <Select
                                                                 value={isSelectType(field.type) ? 'select' : (isFamilyType(field.type) ? 'family' : field.type)}
-                                                                onChange={(e) => updateField(sectionIdx, fieldIdx, { type: e.target.value })}
+                                                                onChange={(e) => {
+                                                                    const newType = e.target.value;
+                                                                    // Seed a sensible 1-10 scale the first time a field becomes a Rating
+                                                                    // Scale - bubbles can't render with no configured bounds, and
+                                                                    // numericMin/numericMax are otherwise optional/blank by default.
+                                                                    const seedRatingBounds = (newType === 'rating') && !field.numericMin && !field.numericMax;
+                                                                    updateField(sectionIdx, fieldIdx, {
+                                                                        type: newType,
+                                                                        ...(seedRatingBounds ? { numericMin: '1', numericMax: '10' } : {}),
+                                                                    });
+                                                                }}
                                                             >
                                                                 {FIELD_TYPES.map((t) => (
                                                                     <MenuItem key={t.value} value={t.value}>{t.label}</MenuItem>
@@ -2583,22 +2635,40 @@ export default ({ onClose, directForm }) => {
                                                         />
                                                     </Box>
                                                 }
-                                                {field.type === 'numeric' &&
-                                                    <Box display='flex' flexDirection='row' alignItems='center' style={{ marginTop: '20px', gap: '16px' }}>
+                                                {(field.type === 'numeric' || field.type === 'rating') &&
+                                                    <Box display='flex' flexDirection='row' alignItems='center' style={{ marginTop: '20px', gap: '16px', flexWrap: 'wrap' }}>
                                                         <TextField
-                                                            label='Minimum value'
+                                                            label={field.type === 'rating' ? 'Lowest value' : 'Minimum value'}
                                                             type='number'
                                                             value={field.numericMin}
                                                             onChange={(e) => updateField(sectionIdx, fieldIdx, { numericMin: e.target.value })}
                                                             style={{ width: 180 }}
                                                         />
                                                         <TextField
-                                                            label='Maximum value'
+                                                            label={field.type === 'rating' ? 'Highest value' : 'Maximum value'}
                                                             type='number'
                                                             value={field.numericMax}
                                                             onChange={(e) => updateField(sectionIdx, fieldIdx, { numericMax: e.target.value })}
                                                             style={{ width: 180 }}
                                                         />
+                                                        {field.type === 'rating' &&
+                                                            <React.Fragment>
+                                                                <TextField
+                                                                    label='Low end tag'
+                                                                    placeholder='Low'
+                                                                    value={field.ratingLowLabel}
+                                                                    onChange={(e) => updateField(sectionIdx, fieldIdx, { ratingLowLabel: e.target.value })}
+                                                                    style={{ width: 180 }}
+                                                                />
+                                                                <TextField
+                                                                    label='High end tag'
+                                                                    placeholder='High'
+                                                                    value={field.ratingHighLabel}
+                                                                    onChange={(e) => updateField(sectionIdx, fieldIdx, { ratingHighLabel: e.target.value })}
+                                                                    style={{ width: 180 }}
+                                                                />
+                                                            </React.Fragment>
+                                                        }
                                                     </Box>
                                                 }
                                                 {field.type === 'select_event' &&

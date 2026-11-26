@@ -236,7 +236,36 @@ const useStyles = makeStyles(theme => ({
     color: theme.palette.success.main,
     fontWeight: 700,
     marginLeft: 3,
-  }
+  },
+  ratingBubble: {
+    width: 32,
+    height: 32,
+    minWidth: 32,
+    borderRadius: '50%',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    border: `1px solid ${theme.palette.divider}`,
+    backgroundColor: theme.palette.background.paper,
+    cursor: 'pointer',
+    userSelect: 'none',
+    transition: 'background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease',
+  },
+  ratingBubbleSelected: {
+    borderColor: theme.palette.primary.main,
+    backgroundColor: theme.palette.action.selected,
+    color: theme.palette.primary.main,
+    fontWeight: 700,
+  },
+  ratingBubbleDisabled: {
+    cursor: 'default',
+    opacity: 0.6,
+  },
+  ratingEndLabel: {
+    color: theme.palette.text.secondary,
+    fontSize: theme.typography.fontSize * 0.75,
+    whiteSpace: 'nowrap',
+  },
 }));
 
 export default ({ request = {}, onClose }) => {
@@ -3395,6 +3424,117 @@ export default ({ request = {}, onClose }) => {
     );
   };
 
+  // 'rating' fields are a single-select field under the hood (exactly one bubble/number can be
+  // chosen at a time, same as AVASelectionCheckGroup's shouldUseSingleSelection path) but
+  // rendered as a numbered scale instead of a checkbox list - FormBuilder's Lowest/Highest Value
+  // drive which numbers appear (fieldRec.options.minValue/maxValue, the same options a 'numeric'
+  // field uses for its bounds), and Low/High end tag default to 'Low'/'High' when blank.
+  const AVARatingScale = (props) => {
+    const fieldRec = reactData.fields[props.prop];
+    if (!fieldRec) {
+      return null;
+    }
+
+    const isRequiredField = isFieldRequired(fieldRec);
+    const isDisabled = fieldRec.options.viewOnly || reactData.viewOnlyMode || reactData.docRec?.formLocked;
+    const promptText = normalizePromptMarkup(reconcilePrompt({
+      rawValue: fieldRec.prompt?.value,
+      this_field: props.prop,
+      includeRequiredMarker: false
+    }));
+    const helperText = toInlineFieldText(fieldRec.prompt?.helper || '');
+
+    const ratingMin = parseNumericConstraint(fieldRec.options?.minValue ?? fieldRec.options?.min_value);
+    const ratingMax = parseNumericConstraint(fieldRec.options?.maxValue ?? fieldRec.options?.max_value);
+    const isConfigured = Number.isFinite(ratingMin) && Number.isFinite(ratingMax) && (ratingMax > ratingMin);
+    const bubbleValues = isConfigured
+      ? Array.from({ length: (ratingMax - ratingMin + 1) }, (_unused, i) => ratingMin + i)
+      : [];
+    const lowLabel = fieldRec.options?.lowLabel || fieldRec.options?.low_label || 'Low';
+    const highLabel = fieldRec.options?.highLabel || fieldRec.options?.high_label || 'High';
+
+    const containerStyle = {
+      minWidth: clampRequestedWidthToContainer(MIN_FIELD_WIDTH_PX, MIN_FIELD_WIDTH_PX),
+      maxWidth: 'calc(100% - 16px)',
+      marginTop: '24px',
+      marginLeft: '8px',
+      marginRight: '8px',
+      marginBottom: '8px'
+    };
+
+    const selectBubble = async (bubbleValue) => {
+      if (isDisabled) { return; }
+      const isSelected = isSelectionOptionSelected({ selectedValue: fieldRec.value, optionValue: bubbleValue, optionDisplay: bubbleValue });
+      await handleMakeSelection({
+        clickText: bubbleValue,
+        prop: props.prop,
+        singleValue: true,
+        deselect: !isRequiredField && isSelected
+      });
+    };
+
+    return (
+      <Box flexDirection='column' key={`Box__${props.prop}`} className={classes.formControlCheckGroup}>
+        <Box
+          key={`RatingScale__${props.prop}`}
+          className={`${classes.selectionFieldBox} ${isRequiredField ? classes.requiredOutline : ''}`}
+          style={containerStyle}
+        >
+          <Typography className={`${classes.selectionFieldLabelInline} ${isRequiredField ? classes.requiredLabel : ''}`}
+            style={{ fontSize: `${reactData.user_fontSize}rem` }}>
+            <span dangerouslySetInnerHTML={{ __html: adaptHtml(promptText || normalizePromptMarkup(props.prop)) }} />
+            {isRequiredField && <span className={classes.requiredAsterisk}>&nbsp;*</span>}
+          </Typography>
+          {!!helperText && (
+            <Typography className={classes.selectionFieldHelper}>{helperText}</Typography>
+          )}
+          {isConfigured
+            ? <React.Fragment>
+              <Box display='flex' flexDirection='row' justifyContent='space-between' style={{ marginTop: '16px' }}>
+                <Typography className={classes.ratingEndLabel}>{lowLabel}</Typography>
+                <Typography className={classes.ratingEndLabel}>{highLabel}</Typography>
+              </Box>
+              <Box
+                display='flex'
+                flexDirection='row'
+                flexWrap='wrap'
+                justifyContent='space-between'
+                alignItems='center'
+                style={{ marginTop: '10px', gap: '10px', padding: '0 14px 14px' }}
+              >
+                {bubbleValues.map((bubbleValue) => {
+                  const isSelected = isSelectionOptionSelected({ selectedValue: fieldRec.value, optionValue: bubbleValue, optionDisplay: bubbleValue });
+                  return (
+                    <Box
+                      key={`rating__${props.prop}_${bubbleValue}`}
+                      role='button'
+                      aria-pressed={isSelected}
+                      aria-label={`${props.prop}_${bubbleValue}`}
+                      tabIndex={isDisabled ? -1 : 0}
+                      onClick={() => selectBubble(bubbleValue)}
+                      onKeyDown={(e) => {
+                        if ((e.key === 'Enter') || (e.key === ' ')) {
+                          e.preventDefault();
+                          selectBubble(bubbleValue);
+                        }
+                      }}
+                      className={`${classes.ratingBubble} ${isSelected ? classes.ratingBubbleSelected : ''} ${isDisabled ? classes.ratingBubbleDisabled : ''}`}
+                    >
+                      <Typography style={{ fontSize: `${reactData.user_fontSize * 0.78}rem` }}>{bubbleValue}</Typography>
+                    </Box>
+                  );
+                })}
+              </Box>
+            </React.Fragment>
+            : <Typography style={AVATextStyle({ size: 0.8, color: 'error', margin: { top: 1 } })}>
+              {'Rating scale is not fully configured - set a Lowest Value and Highest Value in Form Builder.'}
+            </Typography>
+          }
+        </Box>
+      </Box>
+    );
+  };
+
   // Free-text guest lines for 'family&guests' fields - guests have no AVA person_id, so their
   // typed names live in fieldRec.guestNames until handleSave merges them (guest-prefixed) into
   // the same value array the family checkboxes populate. A new blank line appears as soon as
@@ -6477,6 +6617,17 @@ export default ({ request = {}, onClose }) => {
                                       column={reactData.fields[this_field].selectionObj.column || false}
                                       multiLine={reactData.fields[this_field].type === 'select_event'}
                                     />
+                                  </Box>
+                                }
+                                {(reactData.fields[this_field].type === 'rating') &&
+                                  <Box
+                                    display='flex'
+                                    mb={1}
+                                    flexDirection='row'
+                                    justifyContent='flex-start'
+                                    alignItems='center'
+                                  >
+                                    <AVARatingScale prop={this_field} />
                                   </Box>
                                 }
                                 {(reactData.fields[this_field].type.startsWith('drop')) &&
