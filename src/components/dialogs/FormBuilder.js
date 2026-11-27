@@ -164,7 +164,7 @@ const omitKeys = (obj, keys) => (
 // listed here are stripped out of that raw snapshot first so a key FormBuilder actively
 // edits/clears (even conditionally, e.g. show_if vs. ignore_if) always reflects the current
 // edit rather than a stale raw value "winning" because this save round didn't happen to set it.
-const MANAGED_FORM_KEYS = ['client_id', 'form_id', 'form_name', 'category', 'active', 'current', 'options', 'sections', 'fields', 'stages'];
+const MANAGED_FORM_KEYS = ['client_id', 'form_id', 'form_name', 'category', 'active', 'current', 'required', 'options', 'sections', 'fields', 'stages'];
 const MANAGED_SECTION_KEYS = ['section_name', 'belongs_to_stage', 'fields', 'show_if', 'ignore_if', 'clear_if', 'answer_limits'];
 const MANAGED_FIELD_KEYS = ['type', 'prompt', 'required', 'dictionary_field_key', 'default', 'show_if', 'ignore_if', 'clear_if', 'value', 'options'];
 
@@ -401,6 +401,7 @@ const blankForm = (client_id) => {
         category: '',
         active: true,
         current: false,
+        required: false,
         options: {},
         sections: [initialSection],
         stages: ensureCompleteStage([{ stage_name }]),
@@ -841,6 +842,7 @@ export default ({ onClose, directForm }) => {
             category: cloned.category || '',
             active: isFormActive(cloned),
             current: cloned.current === true,
+            required: cloned.required === true,
             options: cloned.options || {},
             sections: resolvedSections,
             stages: ensureCompleteStage(stages),
@@ -1805,6 +1807,7 @@ export default ({ onClose, directForm }) => {
             category: editingForm.category || '',
             active: isFormActive(editingForm),
             current: editingForm.current === true,
+            required: editingForm.required === true,
             options: editingForm.options || {},
             sections,
             fields,
@@ -2142,6 +2145,20 @@ export default ({ onClose, directForm }) => {
                                     />
                                 }
                                 label={<Typography style={{ fontSize: '0.8125rem' }}>Current Form?</Typography>}
+                            />
+                        </Tooltip>
+                        <Tooltip title="Require this form to be completed when it is listed in a person's Forms section">
+                            <FormControlLabel
+                                style={{ marginRight: 0, whiteSpace: 'nowrap' }}
+                                control={
+                                    <Radio
+                                        size='small'
+                                        style={{ padding: 4 }}
+                                        checked={editingForm.required === true}
+                                        onClick={() => updateEditingForm({ required: !(editingForm.required === true) })}
+                                    />
+                                }
+                                label={<Typography style={{ fontSize: '0.8125rem' }}>Required Form?</Typography>}
                             />
                         </Tooltip>
                         <Tooltip title='Only administrators will be able to see this form (and any of its documents) in a forms list; assignment to groups is unaffected'>

@@ -74,6 +74,18 @@ it('displays default width and single-line height for unset sizes and when retur
   expect(putDb.mock.calls[0][0].Item.fields.answer.prompt).toBe('Answer');
 });
 
+it('toggles and saves the form-level required setting', async () => {
+  render(<FormBuilder directForm={{
+    client_id: 'client', form_id: 'form', form_name: 'Required',
+    sections: [{ section_name: 'Questions', fields: [] }], fields: {},
+  }} onClose={jest.fn()} />);
+  const required = await screen.findByText('Required Form?');
+  fireEvent.click(required.closest('label').querySelector('.MuiRadio-root'));
+  fireEvent.click(screen.getByText('Save Form'));
+  await wait(() => expect(putDb).toHaveBeenCalled());
+  expect(putDb.mock.calls[0][0].Item.required).toBe(true);
+});
+
 it('uses mutually exclusive radio actions for field conditions', async () => {
   const dialog = await openCondition();
   expect(dialog.getByRole('radiogroup', { name: 'Conditional rule action' })).toBeInTheDocument();

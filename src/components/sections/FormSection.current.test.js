@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, wait } from '@testing-library/react';
+import { render, screen, wait } from '@testing-library/react';
 import FormSection from './FormSection';
 import { dbClient } from '../../util/AVAUtilities';
 
@@ -88,4 +88,82 @@ it('accumulates every group name that lists a shared form instead of overwriting
   ));
   const result = updateReactData.mock.calls.find(([data]) => data.formsInitialized)[0];
   expect(result.masterFormList.person.myFormListObj.shared_form.whyGroups).toEqual(['Group A', 'Group B']);
+});
+
+it('shows required-form completion progress and excludes optional forms', () => {
+  const form = (required, complete) => ({
+    required,
+    completedDocs: complete ? [{}] : [],
+    wipDocs: [],
+    assignedDocs: [],
+  });
+  render(<FormSection
+    currentValues={{ peopleRec: { person_id: 'person' } }}
+    reactData={{
+      groupObj: {},
+      administrative_account: true,
+      formsInitialized: true,
+      masterCategoryList: [],
+      masterFormList: {
+        person: {
+          person_id: 'person',
+          person_first_name: 'Test',
+          myFormListObj: {
+            done: form(true, true),
+            todo: form(true, false),
+            optional: form(false, false),
+          },
+        },
+      },
+    }}
+    updateReactData={jest.fn()}
+  />);
+  expect(screen.getByText('1 of 2 required forms are complete - 1 more to go!')).toBeInTheDocument();
+});
+
+it('says when every required form is complete', () => {
+  render(<FormSection
+    currentValues={{ peopleRec: { person_id: 'person' } }}
+    reactData={{
+      groupObj: {},
+      administrative_account: true,
+      formsInitialized: true,
+      masterCategoryList: [],
+      masterFormList: {
+        person: {
+          person_id: 'person',
+          person_first_name: 'Test',
+          myFormListObj: {
+            done: { required: true, completedDocs: [{}], wipDocs: [], assignedDocs: [] },
+          },
+        },
+      },
+    }}
+    updateReactData={jest.fn()}
+  />);
+  expect(screen.getByText('All required forms are complete.')).toBeInTheDocument();
+});
+
+it('prompts when none of the required forms are complete', () => {
+  render(<FormSection
+    currentValues={{ peopleRec: { person_id: 'person' } }}
+    reactData={{
+      groupObj: {},
+      administrative_account: true,
+      formsInitialized: true,
+      masterCategoryList: [],
+      masterFormList: {
+        person: {
+          person_id: 'person',
+          person_first_name: 'Test',
+          myFormListObj: {
+            first: { required: true, completedDocs: [], wipDocs: [], assignedDocs: [] },
+            second: { required: true, completedDocs: [], wipDocs: [], assignedDocs: [] },
+          },
+        },
+      },
+    }}
+    updateReactData={jest.fn()}
+  />);
+  expect(screen.getByText('Please complete these 2 required forms')).toBeInTheDocument();
 });

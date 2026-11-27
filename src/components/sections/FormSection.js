@@ -759,6 +759,15 @@ export default ({ currentValues, reactData, updateReactData, currentOnly = false
     }, true);
   };
 
+  const requiredForms = Object.values(reactData.masterFormList || {})
+    .flatMap(person => Object.values(person.myFormListObj || {}))
+    .filter(myDocs => myDocs.required === true);
+  const completeRequiredForms = requiredForms.filter(myDocs => (
+    myDocs.completedDocs?.length > 0
+    && myDocs.wipDocs?.length === 0
+    && !isCompletedDocStale(myDocs.completedDocs[0])
+  )).length;
+
   return (
     <React.Fragment
       key={`master_frag`}
@@ -773,6 +782,17 @@ export default ({ currentValues, reactData, updateReactData, currentOnly = false
               style={AVATextStyle({ margin: { left: 3, top: 1, bottom: 1 } })}
             >
               {`No Forms were found for you.`}
+            </Typography>
+          }
+          {requiredForms.length > 0 &&
+            <Typography
+              style={AVATextStyle({ size: 1.3, bold: true, margin: { top: 1, bottom: 1 } })}
+            >
+              {completeRequiredForms === 0
+                ? `Please complete these ${requiredForms.length} required form${requiredForms.length > 1 ? 's' : ''}`
+                : completeRequiredForms === requiredForms.length
+                  ? 'All required forms are complete.'
+                  : `${completeRequiredForms} of ${requiredForms.length} required forms are complete - ${requiredForms.length - completeRequiredForms} more to go!`}
             </Typography>
           }
           {(reactData.masterCategoryList || ['Uncategorized']).map((this_category, cat_index) => {
