@@ -252,9 +252,9 @@ const useStyles = makeStyles(theme => ({
     transition: 'background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease',
   },
   ratingBubbleSelected: {
-    borderColor: theme.palette.primary.main,
-    backgroundColor: theme.palette.action.selected,
-    color: theme.palette.primary.main,
+    borderColor: theme.palette.primary.dark,
+    backgroundColor: theme.palette.primary.dark,
+    color: theme.palette.primary.contrastText,
     fontWeight: 700,
   },
   ratingBubbleDisabled: {
@@ -1292,6 +1292,25 @@ export default ({ request = {}, onClose }) => {
     return dictionaryFieldDefinitionCacheRef.current[field_key];
   };
 
+  const coerceNumericFieldValue = (value, type) => {
+    if (!['number', 'numeric', 'rating'].includes(type)) {
+      return value;
+    }
+    if (Array.isArray(value)) {
+      if (value.length === 0) { return null; }
+      const coercedValues = value.map(item => coerceNumericFieldValue(item, type));
+      return coercedValues.some(item => item !== null) ? coercedValues : null;
+    }
+    if ((typeof value !== 'string') && (typeof value !== 'number')) {
+      return null;
+    }
+    if ((typeof value === 'string') && !value.trim()) {
+      return null;
+    }
+    const numericValue = Number(value);
+    return Number.isFinite(numericValue) ? numericValue : null;
+  };
+
   // Helper function to process a single field from a section
   const processFieldForSectionField = async ({ field_name, field_key, fieldEntry, docFields, index, section, formRec, response }) => {
 
@@ -1426,6 +1445,8 @@ export default ({ request = {}, onClose }) => {
       });
       returnObj.field_value = preset_values[field_name];
     }
+
+    returnObj.field_value = coerceNumericFieldValue(returnObj.field_value, returnObj.type);
 
     // format the default value for display
     returnObj.field_valueText = formatValue({
@@ -2060,17 +2081,21 @@ export default ({ request = {}, onClose }) => {
                 const docFieldValue = docFieldValues.hasOwnProperty(resolvedFieldName)
                   ? docFieldValues[resolvedFieldName]
                   : null;
+                const occurrenceFieldValue = coerceNumericFieldValue(
+                  docFieldValue,
+                  reactData.fields[baseFieldName].type
+                );
                 reactData.fields[resolvedFieldName] = Object.assign({}, deepCopy(reactData.fields[baseFieldName]), {
-                  value: docFieldValue,
+                  value: occurrenceFieldValue,
                   valueText: formatValue({
-                    rawValue: docFieldValue,
+                    rawValue: occurrenceFieldValue,
                     type: reactData.fields[baseFieldName].type,
                     date_format: reactData.fields[baseFieldName].options?.date_format,
                     numeric_options: reactData.fields[baseFieldName].options
                   }),
                   _occurrence_number: section_number,
                   _clearedByRule: !!enrichedField.clear_if && Object.prototype.hasOwnProperty.call(docFieldValues, resolvedFieldName)
-                    && !hasAnswer(docFieldValue),
+                    && !hasAnswer(occurrenceFieldValue),
                 });
               }
             } else if (enrichedField) {

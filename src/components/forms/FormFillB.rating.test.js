@@ -65,6 +65,27 @@ beforeEach(() => {
     ? { person_id: 'person', name: { first: 'Test', last: 'Person' }, groups: [] } : null);
 });
 
+const renderSavedFieldValue = async (type, value) => {
+  const savedDocument = {
+    document_id: 'doc',
+    form_type: 'form',
+    pertains_to: 'person',
+    status: 'in_process',
+    form_stage: 'default',
+    field_values: { a: value },
+    history: [],
+  };
+  dbClient.get.mockImplementation(({ TableName }) => ({
+    promise: async () => (TableName === 'DocumentMaster' ? { Item: savedDocument } : {}),
+  }));
+  const savedForm = {
+    ...form,
+    fields: { a: { ...form.fields.a, type } },
+  };
+  render(<FormFillB request={{ form_id: 'form', document_id: 'doc', previewFormRec: savedForm }} onClose={jest.fn()} />);
+  await screen.findByText('How was today?');
+}
+
 it('renders one bubble per configured value, defaulting the end tags to Low/High', async () => {
   render(<FormFillB request={{ form_id: 'form', previewFormRec: form }} onClose={jest.fn()} />);
   await screen.findByText('How was today?');
@@ -98,6 +119,28 @@ it('honors custom end tags, selects a bubble on click, and stores a plain intege
   await wait(() => expect(updateDocument).toHaveBeenCalled());
   const [[{ docData }]] = updateDocument.mock.calls;
   expect(docData.field_values.a).toBe(4);
+});
+
+it('coerces a stored text rating into its numeric selection when reopening the document', async () => {
+  await renderSavedFieldValue('rating', '2');
+  expect(screen.getByLabelText('a_2')).toHaveAttribute('aria-pressed', 'true');
+});
+
+it('saves a previously text-stored numeric value as a number', async () => {
+  await renderSavedFieldValue('numeric', '2');
+  fireEvent.click(screen.getByText('Finish'));
+  expect(await screen.findByText('This form is complete!')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Complete' }));
+  await wait(() => expect(updateDocument).toHaveBeenCalled());
+  const [[{ docData }]] = updateDocument.mock.calls;
+  expect(docData.field_values.a).toBe(2);
+});
+
+it.each([null, 'not a number', ''])('treats an invalid stored rating value (%s) as unanswered', async value => {
+  await renderSavedFieldValue('rating', value);
+  for (const rating of [1, 2, 3, 4, 5]) {
+    expect(screen.getByLabelText(`a_${rating}`)).toHaveAttribute('aria-pressed', 'false');
+  }
 });
 
 it('allows un-clicking to remove a selection when the field is not required', async () => {
